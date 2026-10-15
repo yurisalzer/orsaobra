@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# amostras oficiais e saídas de teste
+/amostras
+/test-results
+/playwright-report
+!.env.example

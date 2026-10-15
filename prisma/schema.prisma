@@ -1,0 +1,620 @@
+// =============================================================================
+// Sistema de Orçamento de Obras — EMOP-RJ e SINAPI
+// Modelo de dados (PostgreSQL). Convenções:
+//   * Identificadores internos: UUID (gen_random_uuid()).
+//   * Códigos das fontes oficiais: TEXT (preserva zeros à esquerda).
+//   * Valores monetários e coeficientes: NUMERIC (nunca float).
+//   * Tabelas e colunas em snake_case no banco; modelos em PascalCase no código.
+// Objetos que o Prisma não expressa (extensões, índices trigram, gatilhos de
+// proteção de revisões fechadas, tabelas de staging UNLOGGED) estão nas
+// migrações SQL em prisma/migrations.
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DATABASE_URL_UNPOOLED")
+  extensions = [pgcrypto, pg_trgm, unaccent]
+}
+
+// -----------------------------------------------------------------------------
+// Usuários, permissões e auditoria
+// -----------------------------------------------------------------------------
+
+enum Papel {
+  ADMIN // gerencia usuários, importa e publica bases
+  ORCAMENTISTA // cria e edita orçamentos
+  LEITOR // apenas consulta
+}
+
+model Usuario {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique
+  nome         String
+  senhaHash    String    @map("senha_hash")
+  papel        Papel     @default(LEITOR)
+  ativo        Boolean   @default(true)
+  tentativas   Int       @default(0) // falhas de login consecutivas
+  bloqueadoAte DateTime? @map("bloqueado_ate") @db.Timestamptz
+  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
+
+  sessoes      Sessao[]
+  auditorias   Auditoria[]
+  importacoes  Importacao[]
+  membroObras  ObraMembro[]
+  revisoesFech OrcamentoRevisao[] @relation("RevisaoFechadaPor")
+
+  @@map("usuario")
+}
+
+model Sessao {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") // SHA-256 do token do cookie
+  expiraEm  DateTime @map("expira_em") @db.Timestamptz
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  ip        String?
+  userAgent String?  @map("user_agent")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("sessao")
+}
+
+model Auditoria {
+  id         BigInt   @id @default(autoincrement())
+  usuarioId  String?  @map("usuario_id") @db.Uuid
+  acao       String // ex.: LOGIN, IMPORTACAO_CONFIRMADA, ITEM_ALTERADO
+  entidade   String
+  entidadeId String?  @map("entidade_id")
+  antes      Json?
+  depois     Json?
+  ip         String?
+  criadoEm   DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidade, entidadeId])
+  @@index([usuarioId, criadoEm])
+  @@map("auditoria")
+}
+
+// -----------------------------------------------------------------------------
+// Fontes de referência, regimes, bases mensais e revisões (retificações)
+// -----------------------------------------------------------------------------
+
+model Fonte {
+  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo  String  @unique // SINAPI | EMOP | PROPRIA
+  nome    String
+  oficial Boolean @default(true) // PROPRIA = false
+
+  regimes Regime[]
+  bases   BaseMensal[]
+  itens   ItemReferencia[]
+
+  @@map("fonte")
+}
+
+/// Regimes de encargos sociais efetivamente publicados por cada fonte.
+/// Cadastrados a partir dos arquivos oficiais — nunca presumidos.
+model Regime {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fonteId   String  @map("fonte_id") @db.Uuid
+  codigo    String // código interno estável, ex.: "DESONERADO"
+  nome      String // nome como aparece na publicação oficial
+  descricao String?
+
+  fonte       Fonte               @relation(fields: [fonteId], references: [id])
+  precos      Preco[]
+  importacoes Importacao[]
+  padroes     RevisaoBasePadrao[]
+  itensOrc    ItemOrcamento[]
+  composicoes BaseComposicao[]
+
+  @@unique([fonteId, codigo])
+  @@map("regime")
+}
+
+enum StatusBase {
+  EM_IMPORTACAO
+  VALIDADA
+  PUBLICADA // disponível para novos orçamentos
+  SUBSTITUIDA // houve retificação publicada posteriormente
+  DESCARTADA
+}
+
+/// Uma publicação mensal (fonte + UF + competência).
+model BaseMensal {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fonteId     String   @map("fonte_id") @db.Uuid
+  uf          String   @db.Char(2)
+  competencia DateTime @db.Date // sempre o dia 1 do mês
+  criadoEm    DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  fonte    Fonte         @relation(fields: [fonteId], references: [id])
+  revisoes BaseRevisao[]
+
+  @@unique([fonteId, uf, competencia])
+  @@index([competencia])
+  @@map("base_mensal")
+}
+
+/// Revisão de uma base mensal: 0 = publicação original; 1, 2... = retificações.
+/// Preços e composições pertencem a uma revisão específica e nunca são
+/// sobrescritos — orçamentos antigos continuam apontando para a revisão usada.
+model BaseRevisao {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  baseId      String     @map("base_id") @db.Uuid
+  numero      Int
+  status      StatusBase @default(EM_IMPORTACAO)
+  motivo      String? // ex.: "Retificação publicada em 20/02/2026"
+  validadaEm  DateTime?  @map("validada_em") @db.Timestamptz
+  publicadaEm DateTime?  @map("publicada_em") @db.Timestamptz
+  criadoEm    DateTime   @default(now()) @map("criado_em") @db.Timestamptz
+
+  base        BaseMensal          @relation(fields: [baseId], references: [id])
+  importacoes Importacao[]
+  precos      Preco[]
+  composicoes BaseComposicao[]
+  versoesItem ItemVersao[]
+  padroes     RevisaoBasePadrao[]
+  itensOrc    ItemOrcamento[]
+
+  @@unique([baseId, numero])
+  @@index([status])
+  @@map("base_revisao")
+}
+
+// -----------------------------------------------------------------------------
+// Importação: lotes, arquivos, verificações (staging fica em SQL puro)
+// -----------------------------------------------------------------------------
+
+enum StatusImportacao {
+  RECEBIDA // arquivos enviados, hash calculado
+  ANALISADA // layout identificado, dados em staging
+  COM_ERROS // validação encontrou erros bloqueantes
+  VALIDADA // pronta para confirmação
+  CONFIRMADA // gravada nas tabelas definitivas
+  FALHOU // erro técnico; nada foi gravado (rollback)
+  CANCELADA
+}
+
+model Importacao {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  baseRevisaoId         String           @map("base_revisao_id") @db.Uuid
+  regimeId              String?          @map("regime_id") @db.Uuid
+  usuarioId             String           @map("usuario_id") @db.Uuid
+  adaptador             String // ex.: "sinapi-xlsx-2025"
+  adaptadorVersao       String           @map("adaptador_versao")
+  status                StatusImportacao @default(RECEBIDA)
+  duplicidadeAutorizada Boolean          @default(false) @map("duplicidade_autorizada")
+  resumo                Json? // contagens por tipo, totais de controle
+  erro                  String?
+  iniciadaEm            DateTime         @default(now()) @map("iniciada_em") @db.Timestamptz
+  concluidaEm           DateTime?        @map("concluida_em") @db.Timestamptz
+
+  baseRevisao  BaseRevisao             @relation(fields: [baseRevisaoId], references: [id])
+  regime       Regime?                 @relation(fields: [regimeId], references: [id])
+  usuario      Usuario                 @relation(fields: [usuarioId], references: [id])
+  arquivos     ArquivoImportacao[]
+  verificacoes VerificacaoImportacao[]
+
+  @@index([baseRevisaoId])
+  @@index([status])
+  @@map("importacao")
+}
+
+model ArquivoImportacao {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  importacaoId  String  @map("importacao_id") @db.Uuid
+  nomeOriginal  String  @map("nome_original")
+  tamanhoBytes  BigInt  @map("tamanho_bytes")
+  sha256        String  @db.Char(64)
+  tipoMime      String? @map("tipo_mime")
+  layout        String? // layout identificado pelo adaptador
+  armazenamento String? // chave do arquivo original no storage (opcional)
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@index([sha256])
+  @@map("arquivo_importacao")
+}
+
+enum Severidade {
+  ERRO // bloqueia a confirmação
+  AVISO // exige ciência do usuário
+  INFO
+}
+
+model VerificacaoImportacao {
+  id           BigInt     @id @default(autoincrement())
+  importacaoId String     @map("importacao_id") @db.Uuid
+  regra        String // ex.: PRECO_ZERADO, CODIGO_DUPLICADO
+  severidade   Severidade
+  mensagem     String
+  arquivo      String?
+  planilha     String?
+  linha        Int?
+  campo        String?
+  valor        String?
+
+  importacao Importacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@index([importacaoId, severidade])
+  @@map("verificacao_importacao")
+}
+
+// -----------------------------------------------------------------------------
+// Catálogo: insumos, serviços/composições, versões de descrição e preços
+// -----------------------------------------------------------------------------
+
+enum TipoItem {
+  INSUMO
+  COMPOSICAO // serviço com composição (analítica publicada ou não)
+}
+
+/// Identidade estável de um código numa fonte. O código é TEXT e é gravado
+/// exatamente como publicado (ex.: "00000370" não vira "370").
+model ItemReferencia {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fonteId  String   @map("fonte_id") @db.Uuid
+  tipo     TipoItem
+  codigo   String
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  fonte           Fonte                  @relation(fields: [fonteId], references: [id])
+  versoes         ItemVersao[]
+  precos          Preco[]
+  precosProprios  PrecoProprio[]
+  composicoes     ComposicaoVersao[]
+  usadoEm         ComposicaoComponente[]
+  baseComposicoes BaseComposicao[]
+  itensOrc        ItemOrcamento[]
+
+  @@unique([fonteId, tipo, codigo])
+  @@index([codigo])
+  @@index([codigo(ops: raw("gin_trgm_ops"))], map: "item_referencia_codigo_trgm", type: Gin)
+  @@map("item_referencia")
+}
+
+/// Descrição/unidade/atributos de um item. Uma nova versão só é criada quando
+/// algo muda entre publicações, evitando duplicação mês a mês.
+model ItemVersao {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId                String  @map("item_id") @db.Uuid
+  descricao             String
+  unidade               String
+  grupo                 String? // classe/grupo/família conforme publicado
+  atributos             Json? // demais campos originais, sem interpretação
+  hash                  String  @db.Char(64)
+  primeiraBaseRevisaoId String? @map("primeira_base_revisao_id") @db.Uuid
+
+  item                ItemReferencia @relation(fields: [itemId], references: [id])
+  primeiraBaseRevisao BaseRevisao?   @relation(fields: [primeiraBaseRevisaoId], references: [id])
+  precos              Preco[]
+
+  @@unique([itemId, hash])
+  @@map("item_versao")
+}
+
+/// Preço publicado: (revisão da base, item, regime) → valor.
+/// Ausência de linha = preço não publicado (nunca é tratado como zero).
+model Preco {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  baseRevisaoId String  @map("base_revisao_id") @db.Uuid
+  itemId        String  @map("item_id") @db.Uuid
+  itemVersaoId  String  @map("item_versao_id") @db.Uuid
+  regimeId      String  @map("regime_id") @db.Uuid
+  valor         Decimal @db.Decimal(18, 4)
+  origemPreco   String? @map("origem_preco") // atributo de origem conforme publicado
+  observacao    String?
+
+  baseRevisao BaseRevisao    @relation(fields: [baseRevisaoId], references: [id])
+  item        ItemReferencia @relation(fields: [itemId], references: [id])
+  itemVersao  ItemVersao     @relation(fields: [itemVersaoId], references: [id])
+  regime      Regime         @relation(fields: [regimeId], references: [id])
+
+  @@unique([baseRevisaoId, itemId, regimeId])
+  @@index([itemId, regimeId])
+  @@index([baseRevisaoId, regimeId], map: "preco_base_regime")
+  @@map("preco")
+}
+
+/// Preços de itens próprios (cotações), datados.
+model PrecoProprio {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  dataReferencia DateTime @map("data_referencia") @db.Date
+  valor          Decimal  @db.Decimal(18, 4)
+  fonteCotacao   String?  @map("fonte_cotacao")
+  observacao     String?
+
+  item ItemReferencia @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, dataReferencia])
+  @@map("preco_proprio")
+}
+
+// -----------------------------------------------------------------------------
+// Composições versionadas
+// -----------------------------------------------------------------------------
+
+enum OrigemComposicao {
+  OFICIAL // analítica publicada pela fonte (importada de arquivo oficial)
+  PROPRIA // criada pelo usuário
+}
+
+/// Estrutura (componentes + coeficientes) de uma composição. Deduplicada pelo
+/// hash: se a estrutura não muda de um mês para outro, reaproveita a versão.
+model ComposicaoVersao {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId     String           @map("item_id") @db.Uuid
+  origem     OrigemComposicao
+  hash       String           @db.Char(64)
+  observacao String?
+  criadoEm   DateTime         @default(now()) @map("criado_em") @db.Timestamptz
+
+  item        ItemReferencia         @relation(fields: [itemId], references: [id])
+  componentes ComposicaoComponente[]
+  bases       BaseComposicao[]
+
+  @@unique([itemId, hash])
+  @@map("composicao_versao")
+}
+
+model ComposicaoComponente {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  composicaoVersaoId String  @map("composicao_versao_id") @db.Uuid
+  componenteItemId   String  @map("componente_item_id") @db.Uuid
+  coeficiente        Decimal @db.Decimal(24, 10)
+  ordem              Int
+  tipoOriginal       String? @map("tipo_original") // ex.: "INSUMO"/"COMPOSICAO" como publicado
+
+  composicaoVersao ComposicaoVersao @relation(fields: [composicaoVersaoId], references: [id], onDelete: Cascade)
+  componente       ItemReferencia   @relation(fields: [componenteItemId], references: [id])
+
+  @@unique([composicaoVersaoId, ordem])
+  @@index([componenteItemId])
+  @@map("composicao_componente")
+}
+
+/// Qual versão de composição vigora em cada revisão de base (e regime, quando
+/// a fonte publica analíticas distintas por regime).
+model BaseComposicao {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  baseRevisaoId      String  @map("base_revisao_id") @db.Uuid
+  itemId             String  @map("item_id") @db.Uuid
+  regimeId           String? @map("regime_id") @db.Uuid
+  composicaoVersaoId String  @map("composicao_versao_id") @db.Uuid
+
+  baseRevisao      BaseRevisao      @relation(fields: [baseRevisaoId], references: [id])
+  item             ItemReferencia   @relation(fields: [itemId], references: [id])
+  regime           Regime?          @relation(fields: [regimeId], references: [id])
+  composicaoVersao ComposicaoVersao @relation(fields: [composicaoVersaoId], references: [id])
+
+  /// No banco: UNIQUE ... NULLS NOT DISTINCT (regime nulo também é único).
+  @@unique([baseRevisaoId, itemId, regimeId], map: "base_composicao_unica")
+  @@map("base_composicao")
+}
+
+// -----------------------------------------------------------------------------
+// BDI
+// -----------------------------------------------------------------------------
+
+/// Parcelas da fórmula do Acórdão TCU 2.622/2013:
+/// BDI = ((1+AC+S+R+G) × (1+DF) × (1+L)) / (1−I) − 1
+enum TipoParcelaBdi {
+  AC // administração central
+  S // seguro
+  R // risco
+  G // garantia
+  DF // despesas financeiras
+  L // lucro
+  I // tributos (PIS, COFINS, ISS, CPRB...) — somados
+}
+
+model BdiPerfil {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  parcelas BdiParcela[]
+  revisoes OrcamentoRevisao[]
+  itensOrc ItemOrcamento[]
+
+  @@map("bdi_perfil")
+}
+
+model BdiParcela {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  perfilId   String         @map("perfil_id") @db.Uuid
+  tipo       TipoParcelaBdi
+  nome       String // ex.: "ISS", "PIS"
+  percentual Decimal        @db.Decimal(9, 6) // 5% = 5.000000
+  ordem      Int
+
+  perfil BdiPerfil @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  @@unique([perfilId, ordem])
+  @@map("bdi_parcela")
+}
+
+// -----------------------------------------------------------------------------
+// Obras, orçamentos, revisões, etapas e itens
+// -----------------------------------------------------------------------------
+
+model Obra {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String
+  cliente   String?
+  endereco  String?
+  municipio String?
+  uf        String   @default("RJ") @db.Char(2)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  orcamentos Orcamento[]
+  membros    ObraMembro[]
+
+  @@map("obra")
+}
+
+model ObraMembro {
+  obraId    String @map("obra_id") @db.Uuid
+  usuarioId String @map("usuario_id") @db.Uuid
+  papel     Papel
+
+  obra    Obra    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@id([obraId, usuarioId])
+  @@map("obra_membro")
+}
+
+model Orcamento {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  obraId   String   @map("obra_id") @db.Uuid
+  codigo   String? // número/processo interno
+  titulo   String
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  obra     Obra               @relation(fields: [obraId], references: [id])
+  revisoes OrcamentoRevisao[]
+
+  @@index([obraId])
+  @@map("orcamento")
+}
+
+enum StatusRevisao {
+  EM_ELABORACAO
+  FECHADA // imutável (protegida por gatilho no banco)
+}
+
+enum Arredondamento {
+  ARREDONDAR // meio para cima, 2 casas
+  TRUNCAR // 2 casas
+}
+
+model OrcamentoRevisao {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orcamentoId      String         @map("orcamento_id") @db.Uuid
+  numero           Int
+  descricao        String?
+  status           StatusRevisao  @default(EM_ELABORACAO)
+  versao           Int            @default(1) // controle otimista de concorrência
+  bdiPerfilId      String?        @map("bdi_perfil_id") @db.Uuid
+  bdiPercentual    Decimal?       @map("bdi_percentual") @db.Decimal(9, 6) // snapshot do BDI global
+  arredondamento   Arredondamento @default(ARREDONDAR)
+  revisaoOrigemId  String?        @map("revisao_origem_id") @db.Uuid
+  fechadaEm        DateTime?      @map("fechada_em") @db.Timestamptz
+  fechadaPorId     String?        @map("fechada_por_id") @db.Uuid
+  totalCustoDireto Decimal?       @map("total_custo_direto") @db.Decimal(18, 2) // snapshot ao fechar
+  totalGeral       Decimal?       @map("total_geral") @db.Decimal(18, 2)
+  criadoEm         DateTime       @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm     DateTime       @updatedAt @map("atualizado_em") @db.Timestamptz
+
+  orcamento     Orcamento           @relation(fields: [orcamentoId], references: [id])
+  bdiPerfil     BdiPerfil?          @relation(fields: [bdiPerfilId], references: [id])
+  revisaoOrigem OrcamentoRevisao?   @relation("RevisaoOrigem", fields: [revisaoOrigemId], references: [id])
+  derivadas     OrcamentoRevisao[]  @relation("RevisaoOrigem")
+  fechadaPor    Usuario?            @relation("RevisaoFechadaPor", fields: [fechadaPorId], references: [id])
+  basesPadrao   RevisaoBasePadrao[]
+  etapas        Etapa[]
+  itens         ItemOrcamento[]
+  cronograma    CronogramaParcela[]
+
+  @@unique([orcamentoId, numero])
+  @@map("orcamento_revisao")
+}
+
+/// Base/regime padrão de cada fonte para uma revisão do orçamento
+/// (cada item pode sobrescrever).
+model RevisaoBasePadrao {
+  revisaoId     String @map("revisao_id") @db.Uuid
+  baseRevisaoId String @map("base_revisao_id") @db.Uuid
+  regimeId      String @map("regime_id") @db.Uuid
+
+  revisao     OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
+  baseRevisao BaseRevisao      @relation(fields: [baseRevisaoId], references: [id])
+  regime      Regime           @relation(fields: [regimeId], references: [id])
+
+  @@id([revisaoId, baseRevisaoId])
+  @@map("revisao_base_padrao")
+}
+
+/// Etapas e subetapas (árvore). A numeração exibida (1, 1.1, 1.1.2) é
+/// calculada a partir de `ordem`.
+model Etapa {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisaoId String  @map("revisao_id") @db.Uuid
+  paiId     String? @map("pai_id") @db.Uuid
+  ordem     Int
+  titulo    String
+
+  revisao    OrcamentoRevisao    @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
+  pai        Etapa?              @relation("EtapaPai", fields: [paiId], references: [id], onDelete: Cascade)
+  filhas     Etapa[]             @relation("EtapaPai")
+  itens      ItemOrcamento[]
+  cronograma CronogramaParcela[]
+
+  @@index([revisaoId, paiId, ordem])
+  @@map("etapa")
+}
+
+/// Item do orçamento. Guarda o snapshot de código, descrição, unidade e custo
+/// usados, para que relatórios de revisões fechadas não dependam de dados
+/// que possam mudar depois.
+model ItemOrcamento {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisaoId        String  @map("revisao_id") @db.Uuid
+  etapaId          String  @map("etapa_id") @db.Uuid
+  ordem            Int
+  itemReferenciaId String  @map("item_referencia_id") @db.Uuid
+  baseRevisaoId    String? @map("base_revisao_id") @db.Uuid // null p/ itens próprios
+  regimeId         String? @map("regime_id") @db.Uuid
+  codigo           String // snapshot
+  descricao        String // snapshot
+  unidade          String // snapshot
+  quantidade       Decimal @db.Decimal(18, 4)
+  custoUnitario    Decimal @map("custo_unitario") @db.Decimal(18, 4) // snapshot do custo de referência
+  bdiPerfilId      String? @map("bdi_perfil_id") @db.Uuid // BDI individual (ex.: diferenciado)
+  bdiPercentual    Decimal @map("bdi_percentual") @db.Decimal(9, 6) // BDI efetivamente aplicado
+  precoUnitario    Decimal @map("preco_unitario") @db.Decimal(18, 2)
+  precoTotal       Decimal @map("preco_total") @db.Decimal(18, 2)
+  memoriaCalculo   String? @map("memoria_calculo")
+  analitico        Json? // snapshot dos componentes (coeficientes e preços) ao fechar
+
+  revisao        OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
+  etapa          Etapa            @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+  itemReferencia ItemReferencia   @relation(fields: [itemReferenciaId], references: [id])
+  baseRevisao    BaseRevisao?     @relation(fields: [baseRevisaoId], references: [id])
+  regime         Regime?          @relation(fields: [regimeId], references: [id])
+  bdiPerfil      BdiPerfil?       @relation(fields: [bdiPerfilId], references: [id])
+
+  @@index([revisaoId, etapaId, ordem])
+  @@map("item_orcamento")
+}
+
+/// Cronograma físico-financeiro: percentual de cada etapa por período.
+model CronogramaParcela {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisaoId  String  @map("revisao_id") @db.Uuid
+  etapaId    String  @map("etapa_id") @db.Uuid
+  periodo    Int // 1 = primeiro mês
+  percentual Decimal @db.Decimal(9, 6)
+
+  revisao OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
+  etapa   Etapa            @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  @@unique([etapaId, periodo])
+  @@map("cronograma_parcela")
+}
