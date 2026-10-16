@@ -279,6 +279,7 @@ model ItemReferencia {
   usadoEm         ComposicaoComponente[]
   baseComposicoes BaseComposicao[]
   itensOrc        ItemOrcamento[]
+  proprio         ItemProprio?
 
   @@unique([fonteId, tipo, codigo])
   @@index([codigo])
@@ -301,6 +302,7 @@ model ItemVersao {
   item                ItemReferencia @relation(fields: [itemId], references: [id])
   primeiraBaseRevisao BaseRevisao?   @relation(fields: [primeiraBaseRevisaoId], references: [id])
   precos              Preco[]
+  itemProprios        ItemProprio[]
 
   @@unique([itemId, hash])
   @@map("item_versao")
@@ -330,6 +332,24 @@ model Preco {
   @@unique([baseRevisaoId, itemId, regimeId], map: "preco_unico")
   @@index([itemId, regimeId])
   @@map("preco")
+}
+
+/// Versão vigente de um item próprio (insumo ou composição criada pelo usuário).
+/// As versões antigas continuam guardadas (orçamentos antigos as referenciam).
+model ItemProprio {
+  itemId             String   @id @map("item_id") @db.Uuid
+  itemVersaoId       String   @map("item_versao_id") @db.Uuid
+  composicaoVersaoId String?  @map("composicao_versao_id") @db.Uuid
+  versao             Int      @default(1) // controle otimista de concorrência
+  ativo              Boolean  @default(true)
+  criadoPorId        String?  @map("criado_por_id") @db.Uuid
+  atualizadoEm       DateTime @default(now()) @map("atualizado_em") @db.Timestamptz
+
+  item             ItemReferencia    @relation(fields: [itemId], references: [id])
+  itemVersao       ItemVersao        @relation(fields: [itemVersaoId], references: [id])
+  composicaoVersao ComposicaoVersao? @relation(fields: [composicaoVersaoId], references: [id])
+
+  @@map("item_proprio")
 }
 
 /// Preços de itens próprios (cotações), datados.
@@ -369,6 +389,7 @@ model ComposicaoVersao {
   item        ItemReferencia         @relation(fields: [itemId], references: [id])
   componentes ComposicaoComponente[]
   bases       BaseComposicao[]
+  proprios    ItemProprio[]
 
   @@unique([itemId, hash])
   @@map("composicao_versao")
