@@ -95,6 +95,9 @@ describe("precificação", () => {
     const servico = await idDe("01.001.0001-0");
     const r2 = await precificar(ex, [servico], { bases: [], dataReferencia: "2026-10-01" });
     expect(r2.get(servico)?.pendencia).toMatch(/Nenhuma base EMOP/);
+    // código EMOP "-0" consultado com regime "com desoneração": explica o motivo
+    const r3 = await precificar(ex, [servico], ctx("SEM_DESONERACAO", "COM_DESONERACAO"));
+    expect(r3.get(servico)).toMatchObject({ valor: null, pendencia: expect.stringMatching(/apenas no regime "Sem desoneração"/) });
   });
 });
 

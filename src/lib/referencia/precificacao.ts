@@ -98,6 +98,18 @@ export async function precificar(ex: Executor, itemIds: string[], ctx: ContextoP
       publicados.set(l.item_id, { valor: dec(l.valor), referencia: `${l.rotulo}${l.regime_nome ? ` — ${l.regime_nome}` : " — preço único"}` });
     }
   }
+  // para explicar ausências: item publicado só em outro regime (ex.: código EMOP de outro regime)
+  const outrosRegimes = new Map<string, string>();
+  for (const [fonte, ids] of agrupar(todos.filter((i) => info.get(i)!.fonte !== "PROPRIA" && !publicados.has(i)), (i) => info.get(i)!.fonte)) {
+    const base = ctx.bases.find((b) => b.fonte === fonte);
+    if (!base) continue;
+    const linhas = await ex.consulta<{ item_id: string; nomes: string }>(
+      `SELECT p.item_id, string_agg(DISTINCT g.nome, ', ') AS nomes FROM preco p JOIN regime g ON g.id = p.regime_id
+        WHERE p.base_revisao_id = $1 AND p.item_id = ANY($2::uuid[]) GROUP BY p.item_id`,
+      [base.baseRevisaoId, ids],
+    );
+    for (const l of linhas) outrosRegimes.set(l.item_id, l.nomes);
+  }
   const cotacoes = new Map<string, { valor: Dec; data: string }>();
   const proprios = todos.filter((i) => info.get(i)!.fonte === "PROPRIA" && info.get(i)!.tipo === "INSUMO");
   if (proprios.length) {
@@ -128,7 +140,7 @@ export async function precificar(ex: Executor, itemIds: string[], ctx: ContextoP
       const p = publicados.get(id);
       resultado.set(id, p
         ? { itemId: id, valor: p.valor, origem: "PUBLICADO", referencia: p.referencia }
-        : { itemId: id, valor: null, origem: "AUSENTE", referencia: null, pendencia: semBase.has(id) ? `Nenhuma base ${it.fonte} selecionada.` : "Sem preço publicado na base/regime selecionados." });
+        : { itemId: id, valor: null, origem: "AUSENTE", referencia: null, pendencia: semBase.has(id) ? `Nenhuma base ${it.fonte} selecionada.` : outrosRegimes.get(id) ? `Publicado apenas no regime "${outrosRegimes.get(id)}" (diferente do regime selecionado).` : "Sem preço publicado na base/regime selecionados." });
     } else if (it.tipo === "INSUMO") {
       const c = cotacoes.get(id);
       resultado.set(id, c
