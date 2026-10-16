@@ -1,35 +1,41 @@
-import { prisma } from "@/lib/db";
+import Link from "next/link";
 import { exigirUsuario } from "@/lib/auth/sessao";
+import { executor } from "@/lib/banco/servidor";
 
 export const dynamic = "force-dynamic";
 
-const fmtCompetencia = (d: Date) =>
-  d.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric", timeZone: "UTC" });
-
 export default async function Inicio() {
-  await exigirUsuario();
-  const [bases, orcamentos, obras] = await Promise.all([
-    prisma.baseRevisao.findMany({
-      where: { status: "PUBLICADA" },
-      include: { base: { include: { fonte: true } } },
-      orderBy: { base: { competencia: "desc" } },
-      take: 12,
-    }),
-    prisma.orcamento.count(),
-    prisma.obra.count(),
+  const u = await exigirUsuario();
+  const ex = await executor();
+  const [bases, [contagem]] = await Promise.all([
+    ex.consulta<{ id: string; fonte: string; uf: string; competencia: string; numero: number; status: string }>(
+      `SELECT r.id, f.nome AS fonte, b.uf, to_char(b.competencia, 'MM/YYYY') AS competencia, r.numero, r.status::text AS status
+         FROM base_revisao r JOIN base_mensal b ON b.id = r.base_id JOIN fonte f ON f.id = b.fonte_id
+        WHERE r.status IN ('PUBLICADA', 'EM_IMPORTACAO', 'VALIDADA')
+        ORDER BY (r.status = 'PUBLICADA') DESC, b.competencia DESC, f.codigo LIMIT 24`,
+    ),
+    ex.consulta<{ obras: number; orcamentos: number }>(`SELECT (SELECT count(*)::int FROM obra) AS obras, (SELECT count(*)::int FROM orcamento) AS orcamentos`),
   ]);
+  const publicadas = bases.filter((b) => b.status === "PUBLICADA");
+  const pendentes = bases.filter((b) => b.status !== "PUBLICADA");
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Início</h1>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Cartao titulo="Obras" valor={obras} />
-        <Cartao titulo="Orçamentos" valor={orcamentos} />
-        <Cartao titulo="Bases publicadas" valor={bases.length} />
+        <Cartao titulo="Obras" valor={contagem.obras} />
+        <Cartao titulo="Orçamentos" valor={contagem.orcamentos} />
+        <Cartao titulo="Bases publicadas" valor={publicadas.length} />
       </div>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 font-medium">Bases de referência disponíveis</h2>
-        {bases.length === 0 ? (
+        {u.papel === "ADMIN" && pendentes.length > 0 && (
+          <p className="mb-3 rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {pendentes.length} base(s) importada(s) aguardando validação/publicação: {pendentes.map((b) => `${b.fonte.split(" ")[0]} ${b.competencia}`).join(", ")}.{" "}
+            <Link href="/importacao" className="underline">Revisar e publicar</Link>
+          </p>
+        )}
+        {publicadas.length === 0 ? (
           <p className="text-sm text-slate-500">
             Nenhuma base publicada ainda. Um administrador deve importar e publicar as bases SINAPI e EMOP-RJ
             no menu Importação.
@@ -40,11 +46,11 @@ export default async function Inicio() {
               <tr><th className="py-1">Fonte</th><th>UF</th><th>Competência</th><th>Revisão</th></tr>
             </thead>
             <tbody>
-              {bases.map((b) => (
+              {publicadas.map((b) => (
                 <tr key={b.id} className="border-t border-slate-100">
-                  <td className="py-1">{b.base.fonte.nome}</td>
-                  <td>{b.base.uf}</td>
-                  <td>{fmtCompetencia(b.base.competencia)}</td>
+                  <td className="py-1">{b.fonte}</td>
+                  <td>{b.uf}</td>
+                  <td>{b.competencia}</td>
                   <td>{b.numero === 0 ? "Original" : `Retificação ${b.numero}`}</td>
                 </tr>
               ))}

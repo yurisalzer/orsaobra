@@ -10,7 +10,7 @@ const seguranca = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["@prisma/client", ".prisma/client", "bcryptjs"],
+  serverExternalPackages: ["bcryptjs"],
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   webpack(config, { isServer, dev }) {
     // Grupos de rotas como "(app)" geram arquivos com parênteses no nome; o

@@ -37,7 +37,7 @@ Decisões e justificativas:
 | Tema | Escolha | Por quê |
 |---|---|---|
 | Framework | Next.js 15 (App Router) + TypeScript | Front e back no mesmo projeto; hospedagem gratuita fácil |
-| ORM | **Prisma 6** | Migrações versionadas, tipos gerados, `Decimal` nativo. Cargas em massa usam SQL direto (Prisma não é eficiente para 100 mil linhas) |
+| ORM | **Prisma 6** para o *esquema e migrações*; em execução, **SQL parametrizado** por um executor fino (`src/lib/banco/executor.ts`) | Na Cloudflare, conexões persistentes do Prisma não podem ser compartilhadas entre requisições (erro medido em produção). O executor usa o endpoint HTTPS do Neon, sem estado, e transações em lote — o mesmo caminho da importação. Localmente/testes usa node-postgres |
 | Decimais | `decimal.js` (40 dígitos) + `NUMERIC` no banco | Nenhum valor monetário passa por `float` |
 | Leitura DBF | **Leitor próprio** (`src/lib/importacao/leitores/dbf.ts`) | As bibliotecas testadas rejeitaram o DBF da EMOP (campos numéricos > 20 posições) e convertem números para `float`. O leitor próprio é em fluxo e devolve números como texto exato |
 | Leitura XLSX | Leitor em fluxo (exceljs streaming) | O arquivo SINAPI tem 13,6 MB e ~67 mil linhas na aba Analítico |
@@ -263,8 +263,8 @@ Cada etapa termina com testes passando e uma demonstração para sua validação
 | Etapa | Entregas | Situação |
 |---|---|---|
 | 1 — Fundação | Projeto, banco, migrações, gatilhos, login, permissões, auditoria, tela inicial, núcleo de cálculo | **Concluída** |
-| 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga 09/2026 no Neon | **Concluída** (aguarda validação) |
-| 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias | |
+| 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga 09/2026 no Neon | **Concluída** |
+| 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias, precificação multi-fonte | **Concluída** (aguarda validação) — no ar |
 | 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | |
 | 5 — Relatórios | 10 relatórios em PDF e XLSX | |
 | 6 — Produção | Neon + hospedagem, domínio, backups automáticos com teste de restauração, revisão de segurança | |

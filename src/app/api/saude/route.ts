@@ -1,11 +1,11 @@
-import { prisma } from "@/lib/db";
+import { executor } from "@/lib/banco/servidor";
 
 export const dynamic = "force-dynamic";
 
 /** Verificação de saúde: confirma que a aplicação alcança o banco. */
 export async function GET() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await (await executor()).consulta("SELECT 1");
     return Response.json({ ok: true });
   } catch (e) {
     // detalhe só no log do servidor (não exposto ao visitante)
