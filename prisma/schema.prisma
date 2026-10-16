@@ -307,22 +307,26 @@ model ItemVersao {
 
 /// Preço publicado: (revisão da base, item, regime) → valor.
 /// Ausência de linha = preço não publicado (nunca é tratado como zero).
+/// regime nulo = a fonte publica um único preço, que independe do regime
+/// (ex.: elementares da EMOP; a desoneração lá é expressa por códigos distintos).
 model Preco {
   id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   baseRevisaoId String  @map("base_revisao_id") @db.Uuid
   itemId        String  @map("item_id") @db.Uuid
   itemVersaoId  String  @map("item_versao_id") @db.Uuid
-  regimeId      String  @map("regime_id") @db.Uuid
+  regimeId      String? @map("regime_id") @db.Uuid
   valor         Decimal @db.Decimal(18, 4)
   origemPreco   String? @map("origem_preco") // atributo de origem conforme publicado
+  atributos     Json? // demais campos do preço como publicados (ex.: %AS do SINAPI)
   observacao    String?
 
   baseRevisao BaseRevisao    @relation(fields: [baseRevisaoId], references: [id])
   item        ItemReferencia @relation(fields: [itemId], references: [id])
   itemVersao  ItemVersao     @relation(fields: [itemVersaoId], references: [id])
-  regime      Regime         @relation(fields: [regimeId], references: [id])
+  regime      Regime?        @relation(fields: [regimeId], references: [id], onDelete: Restrict)
 
-  @@unique([baseRevisaoId, itemId, regimeId])
+  /// No banco: UNIQUE ... NULLS NOT DISTINCT.
+  @@unique([baseRevisaoId, itemId, regimeId], map: "preco_unico")
   @@index([itemId, regimeId])
   @@index([baseRevisaoId, regimeId], map: "preco_base_regime")
   @@map("preco")
@@ -371,12 +375,15 @@ model ComposicaoVersao {
 }
 
 model ComposicaoComponente {
-  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  composicaoVersaoId String  @map("composicao_versao_id") @db.Uuid
-  componenteItemId   String  @map("componente_item_id") @db.Uuid
-  coeficiente        Decimal @db.Decimal(24, 10)
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  composicaoVersaoId String   @map("composicao_versao_id") @db.Uuid
+  componenteItemId   String   @map("componente_item_id") @db.Uuid
+  coeficiente        Decimal  @db.Decimal(24, 10)
+  /// Percentual adicional aplicado à linha, quando a fonte publica (EMOP: campo PERCENTUAL)
+  percentual         Decimal? @db.Decimal(24, 10)
   ordem              Int
-  tipoOriginal       String? @map("tipo_original") // ex.: "INSUMO"/"COMPOSICAO" como publicado
+  tipoOriginal       String?  @map("tipo_original") // ex.: "INSUMO"/"COMPOSICAO" como publicado
+  situacao           String? // situação publicada (SINAPI: COM PREÇO, SEM PREÇO...)
 
   composicaoVersao ComposicaoVersao @relation(fields: [composicaoVersaoId], references: [id], onDelete: Cascade)
   componente       ItemReferencia   @relation(fields: [componenteItemId], references: [id])
@@ -397,7 +404,7 @@ model BaseComposicao {
 
   baseRevisao      BaseRevisao      @relation(fields: [baseRevisaoId], references: [id])
   item             ItemReferencia   @relation(fields: [itemId], references: [id])
-  regime           Regime?          @relation(fields: [regimeId], references: [id])
+  regime           Regime?          @relation(fields: [regimeId], references: [id], onDelete: Restrict)
   composicaoVersao ComposicaoVersao @relation(fields: [composicaoVersaoId], references: [id])
 
   /// No banco: UNIQUE ... NULLS NOT DISTINCT (regime nulo também é único).
