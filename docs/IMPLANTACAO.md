@@ -14,7 +14,25 @@ senha, ~200 ms de CPU por segurança) e a montagem das páginas ultrapassam
 time limit"). **Recomendação: Workers Paid (US$ 5/mês).** O banco Neon
 continua no plano gratuito.
 
-## Passo a passo (pelo painel, sem programar)
+## Situação atual
+
+- No ar em **https://orsaobra.orsaobra.workers.dev** (Worker `orsaobra`, conta Cloudflare do usuário).
+- Segredo `DATABASE_URL` configurado no Worker (URL *pooled* do Neon).
+- Medido em produção: login ≈ 0,95 s de CPU (criptografia da senha) — concluído
+  normalmente na conta atual; acompanhe em Workers → orsaobra → Metrics.
+
+## Implantação automática a cada atualização (GitHub Actions)
+
+O fluxo `.github/workflows/testes.yml` roda os testes e, se passarem, publica
+na Cloudflare. Para ativar, cadastre 2 segredos no GitHub (uma única vez):
+**github.com/yurisalzer/orsaobra → Settings → Secrets and variables → Actions → New repository secret**
+
+| Nome | Valor |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | o token da Cloudflare (começa com `cfat_`) |
+| `CLOUDFLARE_ACCOUNT_ID` | `2138d6809e04a1508fbc87b3deb396cb` |
+
+## Passo a passo alternativo (pelo painel, sem programar)
 
 1. Crie/acesse sua conta em <https://dash.cloudflare.com>.
 2. **Workers & Pages → Create → Import a repository** → conecte o GitHub e

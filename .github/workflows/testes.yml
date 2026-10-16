@@ -42,3 +42,28 @@ jobs:
         with:
           name: resultados-e2e
           path: test-results/
+
+  implantar:
+    # Publica na Cloudflare após os testes passarem (somente na branch main).
+    # Requer os segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID no GitHub;
+    # sem eles, o job termina sem publicar.
+    needs: testes
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Verificar segredos
+        id: seg
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "Segredos da Cloudflare não configurados; implantação pulada."; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.seg.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.seg.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.seg.outputs.ok == 'true'
+        run: npm ci && npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
