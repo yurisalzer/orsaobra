@@ -1,10 +1,10 @@
-import { PrismaClient } from "@prisma/client";
+import { criarPrisma } from "@/lib/db";
 
 if (!process.env.DATABASE_URL?.includes("_test")) {
   throw new Error("Testes de banco só rodam no banco de teste (DATABASE_URL deve conter _test). Use `npm test`.");
 }
 
-export const prisma = new PrismaClient();
+export const prisma = criarPrisma();
 
 /** Limpa todas as tabelas (TRUNCATE não dispara os gatilhos de linha). */
 export async function limparBanco() {

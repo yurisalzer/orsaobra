@@ -13,6 +13,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  engineType      = "client" // sem motor nativo: necessário na Cloudflare
 }
 
 datasource db {

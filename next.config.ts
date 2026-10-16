@@ -10,8 +10,22 @@ const seguranca = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", ".prisma/client", "bcryptjs"],
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
+  webpack(config, { isServer, dev }) {
+    // Grupos de rotas como "(app)" geram arquivos com parênteses no nome; o
+    // servidor de arquivos da Cloudflare redireciona "%28app%29" para "(app)"
+    // e o navegador entra em laço de redirecionamento. Trocamos os parênteses.
+    if (!isServer && !dev) {
+      const original = config.output.filename;
+      config.output.filename = (dados: { chunk?: { name?: string | null } }) => {
+        const nome = dados.chunk?.name;
+        if (nome && /[()]/.test(nome)) return `static/chunks/${nome.replace(/[()]/g, "_")}-[contenthash].js`;
+        return typeof original === "function" ? original(dados) : original;
+      };
+    }
+    return config;
+  },
   async headers() {
     return [{ source: "/:path*", headers: seguranca }];
   },

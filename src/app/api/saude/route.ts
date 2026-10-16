@@ -7,7 +7,9 @@ export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     return Response.json({ ok: true });
-  } catch {
+  } catch (e) {
+    // detalhe só no log do servidor (não exposto ao visitante)
+    console.error("saude: falha ao acessar o banco", e);
     return Response.json({ ok: false }, { status: 503 });
   }
 }
