@@ -17,3 +17,13 @@ body {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* espaçamento padrão entre colunas das tabelas */
+table th,
+table td {
+  padding-right: 0.75rem;
+}
+table th:last-child,
+table td:last-child {
+  padding-right: 0;
+}

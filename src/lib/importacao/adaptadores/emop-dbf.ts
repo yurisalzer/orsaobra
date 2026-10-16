@@ -96,6 +96,10 @@ export const adaptadorEmopDbf: Adaptador = {
   fonte: "EMOP",
   descricao: "EMOP-RJ — boletim mensal em DBF (EMOP, DIPR, COMP, MAT, ELEM, REUT)",
 
+  regimeDoCodigo(tipo, codigo) {
+    return tipo === "COMPOSICAO" ? regimeEmop(codigo) : null;
+  },
+
   async identificar(arquivos, { uf }) {
     const achados = localizar(arquivos);
     if (achados.size === 0) return null;

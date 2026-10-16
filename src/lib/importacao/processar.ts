@@ -45,8 +45,13 @@ export interface Progresso { itens: number; precos: number; componentes: number;
 export async function lerEmLotes(
   id: Identificado,
   destino: (lote: Lote) => Promise<void>,
-  opcoes: { tamanhoLote?: number; aoProgresso?: (p: Progresso) => void } = {},
+  opcoes: { tamanhoLote?: number; aoProgresso?: (p: Progresso) => void; regimes?: string[] } = {},
 ): Promise<Progresso> {
+  // filtro de regimes escolhidos pelo usuário (padrão: todos os publicados)
+  const escolhidos = opcoes.regimes ? new Set(opcoes.regimes) : null;
+  const regimeDoCodigo = id.adaptador.regimeDoCodigo?.bind(id.adaptador);
+  const aceita = (regime: string | null | undefined) => !escolhidos || regime == null || escolhidos.has(regime);
+  const aceitaCodigo = (tipo: "INSUMO" | "COMPOSICAO", codigo: string) => aceita(regimeDoCodigo?.(tipo, codigo));
   const limite = opcoes.tamanhoLote ?? 2000;
   let lote: Required<Lote> = { itens: [], precos: [], componentes: [], ocorrencias: [] };
   const total: Progresso = { itens: 0, precos: 0, componentes: 0, ocorrencias: 0 };
@@ -59,9 +64,9 @@ export async function lerEmLotes(
     opcoes.aoProgresso?.({ ...total });
   };
   const emissor: Emissor = {
-    async item(r) { lote.itens.push(r); total.itens++; if (tamanho() >= limite) await descarregar(); },
-    async preco(r) { lote.precos.push(r); total.precos++; if (tamanho() >= limite) await descarregar(); },
-    async componente(r) { lote.componentes.push(r); total.componentes++; if (tamanho() >= limite) await descarregar(); },
+    async item(r) { if (!aceitaCodigo(r.tipo, r.codigo)) return; lote.itens.push(r); total.itens++; if (tamanho() >= limite) await descarregar(); },
+    async preco(r) { if (!aceita(r.regime) || !aceitaCodigo(r.tipo, r.codigo)) return; lote.precos.push(r); total.precos++; if (tamanho() >= limite) await descarregar(); },
+    async componente(r) { if (!aceita(r.regime) || !aceitaCodigo("COMPOSICAO", r.composicao)) return; lote.componentes.push(r); total.componentes++; if (tamanho() >= limite) await descarregar(); },
     async ocorrencia(o) { lote.ocorrencias.push(o); total.ocorrencias++; if (tamanho() >= limite) await descarregar(); },
   };
   await id.adaptador.ler(id.entradas, id.identificacao, emissor);

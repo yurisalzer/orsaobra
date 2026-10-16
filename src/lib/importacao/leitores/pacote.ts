@@ -38,11 +38,20 @@ export async function expandirZip(dados: Uint8Array, filtro: (nome: string) => b
   return Object.entries(conteudo).map(([caminho, bytes]) => arquivoDeBytes(caminho, bytes));
 }
 
+/** No navegador, o WebAssembly do descompactador RAR é carregado por esta função. */
+let carregarWasmRar: (() => Promise<ArrayBuffer>) | null = null;
+export function configurarWasmRar(f: () => Promise<ArrayBuffer>) {
+  carregarWasmRar = f;
+}
+
 export async function expandirRar(dados: Uint8Array, filtro: (nome: string) => boolean = () => true): Promise<ArquivoEntrada[]> {
   const { createExtractorFromData } = await import("node-unrar-js");
   let extrator;
   try {
-    extrator = await createExtractorFromData({ data: dados.buffer.slice(dados.byteOffset, dados.byteOffset + dados.byteLength) as ArrayBuffer });
+    extrator = await createExtractorFromData({
+      data: dados.buffer.slice(dados.byteOffset, dados.byteOffset + dados.byteLength) as ArrayBuffer,
+      wasmBinary: carregarWasmRar ? await carregarWasmRar() : undefined,
+    });
   } catch (e) {
     throw new ErroPacote(`RAR inválido: ${(e as Error).message}`);
   }

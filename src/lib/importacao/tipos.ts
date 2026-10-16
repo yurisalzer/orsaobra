@@ -93,6 +93,11 @@ export interface Adaptador {
   descricao: string;
   identificar(arquivos: ArquivoEntrada[], opcoes: { uf: string }): Promise<ResultadoIdentificacao>;
   ler(arquivos: ArquivoEntrada[], ident: Identificacao, emitir: Emissor): Promise<void>;
+  /**
+   * Quando o regime está embutido no código do item (EMOP), informa-o para
+   * permitir importar só os regimes escolhidos. null = item sem regime.
+   */
+  regimeDoCodigo?(tipo: TipoItemImp, codigo: string): string | null;
 }
 
 /** Converte "MM/AAAA" → "AAAA-MM". */

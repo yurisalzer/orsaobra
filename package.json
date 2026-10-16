@@ -13,7 +13,8 @@
     "criar-admin": "tsx scripts/criar-admin.ts",
     "test": "dotenv -e .env.test -- sh -c \"prisma migrate deploy && vitest run\"",
     "test:unit": "vitest run tests/unit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "node scripts/copiar-wasm.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

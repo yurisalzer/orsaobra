@@ -5,6 +5,7 @@ import { expandirPacotes } from "@/lib/importacao/leitores/pacote";
 import {
   confirmarImportacao, descartarBase, ErroImportacao, gravarLote, iniciarImportacao, publicarBase, validarBase, validarImportacao,
 } from "@/lib/importacao/servico";
+import { amostraStaging, detalheImportacao, listarBases, listarImportacoes, verificacoes } from "@/lib/importacao/consultas";
 import { arquivo, EMOP_DBFS, SINAPI_ZIP } from "../importacao/ajuda";
 import { limparBanco, prisma } from "./ajuda";
 
@@ -148,6 +149,22 @@ describe("fluxo completo de importação (EMOP)", () => {
     const c = await prisma.verificacaoImportacao.findMany({ where: { regra: "REFERENCIA_CIRCULAR" } });
     expect(c.length).toBeGreaterThan(0);
     expect(c[0].mensagem).toMatch(/C1 → C2 → C1|C2 → C1 → C2/);
+  });
+});
+
+describe("consultas das telas de importação", () => {
+  it("prévia, relatório e listas", async () => {
+    const p = await preparar();
+    await validarImportacao(ex, p.importacaoId);
+    const amostra = await amostraStaging(ex, p.importacaoId, 100);
+    expect(amostra.find((a) => a.codigo === "01.001.0001-0")?.precos).toEqual({ SEM_DESONERACAO: "211.9700" });
+    const d = await detalheImportacao(ex, p.importacaoId);
+    expect(d?.grupos.map((g) => `${g.severidade}:${g.regra}`)).toEqual(["AVISO:ITEM_SEM_UNIDADE", "INFO:INDICE_SETORIAL", "INFO:RECALCULO_RESUMO"]);
+    expect(d?.arquivos).toHaveLength(6);
+    expect((await verificacoes(ex, p.importacaoId))[0].severidade).toBe("AVISO");
+    await confirmarImportacao(ex, p.importacaoId, { usuarioId, cienteAvisos: true });
+    expect((await listarBases(ex))[0]).toMatchObject({ fonte: "EMOP", competencia: "09/2026", status: "EM_IMPORTACAO", importacoes_confirmadas: 1 });
+    expect((await listarImportacoes(ex))[0]).toMatchObject({ status: "CONFIRMADA", erros: 0, avisos: 1 });
   });
 });
 

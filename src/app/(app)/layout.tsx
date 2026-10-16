@@ -25,7 +25,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="text-slate-600">{u.nome} · {NOME_PAPEL[u.papel]}</span>
+            <Link href="/conta" className="text-slate-600 hover:text-marca-700">{u.nome} · {NOME_PAPEL[u.papel]}</Link>
             <form action={acaoSair}>
               <button className="rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-100">Sair</button>
             </form>
