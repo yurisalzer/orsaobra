@@ -1,0 +1,12 @@
+{
+  // Cloudflare Workers — aplicação Next.js via OpenNext.
+  // Segredos (DATABASE_URL) NÃO ficam aqui: configure no painel da Cloudflare
+  // (Workers → orsaobra → Settings → Variables and Secrets) ou com `wrangler secret put`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "orsaobra",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": true }
+}

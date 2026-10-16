@@ -4,6 +4,7 @@ Sistema web para orçamentos de obras com bases oficiais EMOP-RJ e SINAPI (UF RJ
 
 - Planejamento completo: [`docs/PLANEJAMENTO.md`](docs/PLANEJAMENTO.md)
 - Layouts dos arquivos oficiais: [`docs/LAYOUTS.md`](docs/LAYOUTS.md)
+- Implantação (Cloudflare + Neon): [`docs/IMPLANTACAO.md`](docs/IMPLANTACAO.md)
 
 ## Para rodar no seu computador (desenvolvimento)
 
@@ -22,6 +23,7 @@ npm run dev                   # abre em http://localhost:3000
 
 ```bash
 npm test          # unidade + banco (usa .env.test, banco separado)
+AMOSTRAS_REAIS=/pasta/com/os/originais npm test   # inclui os arquivos oficiais completos
 npm run build && npm run test:e2e   # navegador real (Playwright)
 ```
 

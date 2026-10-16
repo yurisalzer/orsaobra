@@ -48,3 +48,8 @@ next-env.d.ts
 
 # gerado no postinstall
 /public/unrar.wasm
+
+# Cloudflare / OpenNext
+/.open-next
+/.wrangler
+.dev.vars

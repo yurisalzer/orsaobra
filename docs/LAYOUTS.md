@@ -42,6 +42,9 @@ ZIP com:
   e o valor armazenado é **0**. O código deve ser extraído da fórmula
   (`MATCH(<código>,`) e conferido com a aba Analítico.
 - `%AS`: percentual do custo obtido com preços atribuídos de São Paulo.
+- **Custo zero**: nota oficial na própria aba — "Custo zerado (hífen) indica
+  que pelo menos um dos itens da composição não tem custo/preço". Em 09/2026,
+  2.156 composições no RJ (por regime). São gravadas **sem preço**, nunca R$ 0.
 - 10.599 composições.
 
 ### Aba Analítico
@@ -87,3 +90,9 @@ Observações verificadas:
   = CUSTO publicado em 22.013 de 22.238 serviços com analítica (99,0%);
   os demais diferem em R$ 0,01. O sistema usa o CUSTO publicado.
 - Data de última atualização no cabeçalho DBF: 05/10/2026.
+- **Índices setoriais**: 10 registros `CC.FFF.9999-D` do DIPR/EMOP sem unidade
+  (ex.: 05.100.9999-0 = Índice Geral da Construção Civil = 8683). O "custo"
+  é número-índice (conferido com o PDF "Índices com e sem desoneração"); não
+  entram no catálogo de preços, ficam no relatório da importação.
+- **Sem unidade**: 6 elementares do REUT 09/2026 (01294–01296, 30500–30502,
+  guindaste CP/CF/CI) não têm unidade publicada; são gravados sem unidade.

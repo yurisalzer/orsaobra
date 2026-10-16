@@ -14,10 +14,14 @@
     "test": "dotenv -e .env.test -- sh -c \"prisma migrate deploy && vitest run\"",
     "test:unit": "vitest run tests/unit",
     "test:e2e": "playwright test",
-    "postinstall": "node scripts/copiar-wasm.mjs"
+    "postinstall": "node scripts/copiar-wasm.mjs",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
+    "@prisma/adapter-neon": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "decimal.js": "^10.6.0",
@@ -36,6 +40,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@opennextjs/cloudflare": "^1.20.12",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
@@ -52,7 +57,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "undici": "^8.12.2",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "wrangler": "^4.151.0"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

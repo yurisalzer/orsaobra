@@ -209,27 +209,26 @@ para a carga inicial de jan–set/2026 a partir de um computador.
 
 ## 5. Estratégia para permanecer no plano gratuito
 
+*Atualizado em 16/10/2026 com medições reais (importação de 09/2026).*
+
 | Serviço | Plano | Observações |
 |---|---|---|
-| Banco | **Neon Free** | ~0,5 GB por projeto e cota mensal de computação; o banco "dorme" quando ocioso (1ª requisição após pausa leva ~1 s) |
-| Aplicação | **Vercel Hobby** na fase de testes | Hobby é **apenas para uso pessoal/não comercial**. Para uso comercial: Netlify Free ou Cloudflare (confirmar termos vigentes) ou Vercel Pro (US$ 20/mês) |
-| Código | GitHub (repositório privado gratuito) | |
-| Backups | GitHub Actions (gratuito em repositório privado até a cota mensal) | `pg_dump` diário, criptografado, guardado como artefato/Release privada |
+| Banco | **Neon Free** (0,5 GB) | O banco "dorme" quando ocioso (1ª requisição após pausa leva ~1 s) |
+| Aplicação | **Cloudflare Workers** | Escolha do usuário. O plano gratuito limita a **10 ms de CPU por requisição** — insuficiente para login seguro e páginas; recomendado **Workers Paid (US$ 5/mês)**. Detalhes em [`IMPLANTACAO.md`](IMPLANTACAO.md) |
+| Código | GitHub (privado) | GitHub Actions roda os testes a cada envio |
+| Backups | GitHub Actions + Neon | `pg_dump` diário (Etapa 6) |
 
-Medidas para caber nos limites:
-- **Somente UF RJ** é gravada (o arquivo SINAPI traz 27 UFs).
-- Descrições e estruturas de composições **deduplicadas** entre meses
-  (`item_versao` e `composicao_versao` por hash).
-- Staging `UNLOGGED`, esvaziado após cada importação.
-- Arquivos originais **não** são guardados no banco (só o SHA-256); guarde
-  os originais numa pasta do Google Drive/OneDrive.
-- Parsing pesado no **navegador**, não na função serverless.
+Espaço medido no Neon após importar SINAPI-RJ e EMOP de 09/2026: **~120 MB**,
+dos quais ~90 MB são cadastro "único" (descrições e estruturas de composições,
+reaproveitadas nos meses seguintes enquanto não mudarem). Cada nova competência
+acrescenta estimados **~28 MB** (preços e vínculos). Previsão: **cabe ~12–13
+meses** no plano gratuito. Depois: arquivar competências antigas não usadas
+em orçamentos, ou plano pago do Neon.
 
-Estimativa de espaço (dados reais de 09/2026): ~45 mil preços SINAPI-RJ +
-~29 mil preços EMOP por mês ≈ 12–18 MB/mês com índices; estruturas de
-composição ~40 MB uma única vez. **Cabe por cerca de 18–24 meses** no
-gratuito. Depois: plano pago do Neon (a partir de ~US$ 5–19/mês) ou
-arquivamento de competências antigas.
+Medidas já aplicadas: só a UF RJ é gravada; descrições e composições
+deduplicadas por hash; staging `UNLOGGED` e compactado após cada importação;
+arquivos originais não ficam no banco (só o SHA-256); leitura dos arquivos no
+navegador; índice redundante removido.
 
 ## 6. Plano de testes
 
@@ -252,10 +251,10 @@ Casos obrigatórios (do pedido) e situação:
 | Competências duplicadas, bases retificadas | ✅ (banco) — fluxo na Etapa 2 |
 | Preservação de revisões encerradas | ✅ feito (gatilhos) |
 | Login seguro, sessão forjada | ✅ feito (E2E) |
-| Importação válida/inválida, falha e rollback | Etapa 2 |
-| Diferentes regimes | Etapa 2 |
+| Importação válida/inválida, falha e rollback | ✅ feito |
+| Diferentes regimes | ✅ feito (3 SINAPI, 2 EMOP) |
 | Exportação PDF/XLSX | Etapa 5 |
-| Confronto com registros oficiais | Etapa 2 (ex.: custo EMOP recalculado × publicado; preço SINAPI-RJ do código X conferido com o PDF oficial) |
+| Confronto com registros oficiais | ✅ 140/140 valores no Neon iguais aos oficiais (PDFs EMOP e planilha SINAPI lida por ferramenta independente); recálculo EMOP 22.013/22.238 idênticos |
 
 ## 7. Cronograma por módulos
 
@@ -263,8 +262,8 @@ Cada etapa termina com testes passando e uma demonstração para sua validação
 
 | Etapa | Entregas | Situação |
 |---|---|---|
-| 1 — Fundação | Projeto, banco, migrações, gatilhos, login, permissões, auditoria, tela inicial, núcleo de cálculo | **Concluída** (aguarda sua validação) |
-| 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga jan–set/2026 | Próxima |
+| 1 — Fundação | Projeto, banco, migrações, gatilhos, login, permissões, auditoria, tela inicial, núcleo de cálculo | **Concluída** |
+| 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga 09/2026 no Neon | **Concluída** (aguarda validação) |
 | 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias | |
 | 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | |
 | 5 — Relatórios | 10 relatórios em PDF e XLSX | |
