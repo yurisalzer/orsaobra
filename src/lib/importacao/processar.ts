@@ -1,0 +1,70 @@
+/**
+ * Orquestra identificação do layout e leitura em lotes. Roda no navegador
+ * (assistente web, enviando lotes ao servidor) ou no Node (linha de comando).
+ */
+import { ADAPTADORES } from "./adaptadores";
+import { sha256Hex, type ArquivoEntrada } from "./leitores/arquivo";
+import { expandirPacotes } from "./leitores/pacote";
+import type { Lote } from "./servico";
+import type { Adaptador, Emissor, Identificacao } from "./tipos";
+
+/** Só estes arquivos de dentro dos pacotes interessam aos adaptadores. */
+const RELEVANTE = /\.(dbf|xlsx)$/i;
+
+export interface Identificado {
+  adaptador: Adaptador;
+  identificacao: Identificacao;
+  entradas: ArquivoEntrada[];
+  originais: { nome: string; tamanho: number; sha256: string }[];
+}
+
+export async function identificar(originais: ArquivoEntrada[], opcoes: { uf: string; fonte?: "SINAPI" | "EMOP" }): Promise<Identificado> {
+  if (originais.length === 0) throw new Error("Nenhum arquivo enviado.");
+  const hashes = [];
+  for (const o of originais) hashes.push({ nome: o.nome, tamanho: o.tamanho, sha256: await sha256Hex(await o.bytes()) });
+  const entradas = await expandirPacotes(originais, (n) => RELEVANTE.test(n));
+  const recusas: string[] = [];
+  for (const ad of ADAPTADORES) {
+    if (opcoes.fonte && ad.fonte !== opcoes.fonte) continue;
+    const r = await ad.identificar(entradas, { uf: opcoes.uf });
+    if (r === null) continue;
+    if (!r.ok) { recusas.push(`${ad.descricao}: ${r.motivo}`); continue; }
+    return { adaptador: ad, identificacao: r.identificacao, entradas, originais: hashes };
+  }
+  throw new Error(
+    recusas.length
+      ? `Arquivos reconhecidos, mas com problema de layout:\n${recusas.join("\n")}`
+      : `Layout não reconhecido. Arquivos encontrados: ${entradas.map((e) => e.nome).join(", ") || "nenhum"}. ` +
+        "Envie o ZIP oficial do SINAPI (formato XLSX) ou o RAR/DBFs oficiais da EMOP. Se o layout oficial mudou, é necessário um novo adaptador.",
+  );
+}
+
+export interface Progresso { itens: number; precos: number; componentes: number; ocorrencias: number }
+
+/** Lê com o adaptador e entrega lotes de até `tamanhoLote` registros. */
+export async function lerEmLotes(
+  id: Identificado,
+  destino: (lote: Lote) => Promise<void>,
+  opcoes: { tamanhoLote?: number; aoProgresso?: (p: Progresso) => void } = {},
+): Promise<Progresso> {
+  const limite = opcoes.tamanhoLote ?? 2000;
+  let lote: Required<Lote> = { itens: [], precos: [], componentes: [], ocorrencias: [] };
+  const total: Progresso = { itens: 0, precos: 0, componentes: 0, ocorrencias: 0 };
+  const tamanho = () => lote.itens.length + lote.precos.length + lote.componentes.length + lote.ocorrencias.length;
+  const descarregar = async () => {
+    if (tamanho() === 0) return;
+    const enviar = lote;
+    lote = { itens: [], precos: [], componentes: [], ocorrencias: [] };
+    await destino(enviar);
+    opcoes.aoProgresso?.({ ...total });
+  };
+  const emissor: Emissor = {
+    async item(r) { lote.itens.push(r); total.itens++; if (tamanho() >= limite) await descarregar(); },
+    async preco(r) { lote.precos.push(r); total.precos++; if (tamanho() >= limite) await descarregar(); },
+    async componente(r) { lote.componentes.push(r); total.componentes++; if (tamanho() >= limite) await descarregar(); },
+    async ocorrencia(o) { lote.ocorrencias.push(o); total.ocorrencias++; if (tamanho() >= limite) await descarregar(); },
+  };
+  await id.adaptador.ler(id.entradas, id.identificacao, emissor);
+  await descarregar();
+  return total;
+}

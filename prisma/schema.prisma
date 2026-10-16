@@ -291,7 +291,7 @@ model ItemVersao {
   id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   itemId                String  @map("item_id") @db.Uuid
   descricao             String
-  unidade               String
+  unidade               String? // nulo = unidade não publicada pela fonte (nunca é inventada)
   grupo                 String? // classe/grupo/família conforme publicado
   atributos             Json? // demais campos originais, sem interpretação
   hash                  String  @db.Char(64)
@@ -328,7 +328,6 @@ model Preco {
   /// No banco: UNIQUE ... NULLS NOT DISTINCT.
   @@unique([baseRevisaoId, itemId, regimeId], map: "preco_unico")
   @@index([itemId, regimeId])
-  @@index([baseRevisaoId, regimeId], map: "preco_base_regime")
   @@map("preco")
 }
 

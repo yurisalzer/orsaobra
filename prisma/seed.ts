@@ -3,9 +3,11 @@
  * Regimes, preços e composições vêm exclusivamente da importação dos
  * arquivos oficiais — nada é presumido aqui.
  */
-import { PrismaClient } from "@prisma/client";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
+import { criarExecutor } from "../src/lib/banco/executor";
 
-const prisma = new PrismaClient();
+const proxy = process.env.HTTPS_PROXY ?? process.env.https_proxy;
+if (proxy) setGlobalDispatcher(new ProxyAgent(proxy));
 
 async function main() {
   const fontes = [
@@ -13,10 +15,18 @@ async function main() {
     { codigo: "EMOP", nome: "EMOP-RJ — Empresa de Obras Públicas do Estado do Rio de Janeiro", oficial: true },
     { codigo: "PROPRIA", nome: "Composições e insumos próprios", oficial: false },
   ];
+  const ex = await criarExecutor();
   for (const f of fontes) {
-    await prisma.fonte.upsert({ where: { codigo: f.codigo }, create: f, update: { nome: f.nome, oficial: f.oficial } });
+    await ex.consulta(
+      `INSERT INTO fonte (codigo, nome, oficial) VALUES ($1, $2, $3) ON CONFLICT (codigo) DO UPDATE SET nome = EXCLUDED.nome, oficial = EXCLUDED.oficial`,
+      [f.codigo, f.nome, f.oficial],
+    );
   }
   console.log("Fontes cadastradas:", fontes.map((f) => f.codigo).join(", "));
+  await ex.encerrar?.();
 }
 
-main().finally(() => prisma.$disconnect());
+main().catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});
