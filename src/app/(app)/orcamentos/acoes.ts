@@ -7,7 +7,7 @@ import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
-  excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao,
+  excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
 
@@ -110,6 +110,9 @@ export async function acaoAlterarItem(revisaoId: string, versao: number, itemId:
     bdiPerfilId: d.bdiPerfilId === undefined ? undefined : d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null,
     base: d.base ? base.parse(d.base) : undefined, etapaId: d.etapaId ? uuid.parse(d.etapaId) : undefined,
   }, u)));
+}
+export async function acaoTrocarItem(revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string) {
+  return executar((u) => executor().then((ex) => trocarItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), uuid.parse(novoItemReferenciaId), u)));
 }
 export async function acaoExcluirItem(revisaoId: string, versao: number, itemId: string) {
   return executar((u) => executor().then((ex) => excluirItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), u)));

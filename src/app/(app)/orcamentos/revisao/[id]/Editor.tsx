@@ -8,7 +8,7 @@ import { dec, formatarMoeda, formatarNumero } from "@/lib/calculo/decimal";
 import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
-  acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem,
+  acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem, acaoTrocarItem,
   acaoFechar, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
 } from "../../acoes";
 
@@ -49,6 +49,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
   const [adicionandoEm, setAdicionandoEm] = useState<string | null>(null);
   const [config, setConfig] = useState(false);
   const [memoria, setMemoria] = useState<string | null>(null);
+  const [trocando, setTrocando] = useState<string | null>(null);
   useEffect(() => setVersao(estado.revisao.versao), [estado.revisao.versao]);
 
   const aberta = estado.revisao.status === "EM_ELABORACAO" && podeEditar;
@@ -120,7 +121,10 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
         <tr className="border-t border-slate-100 align-top">
           <td className="py-1 pl-2 text-xs">{i.numero}</td>
           <td><SeloFonte fonte={i.fonte} /></td>
-          <td className="whitespace-nowrap font-mono text-xs"><Link className="text-marca-700 hover:underline" href={`/consulta/item/${i.itemReferenciaId}${i.baseRevisaoId ? `?b_${i.fonte}=${i.baseRevisaoId}${i.regime ? `&r_${i.fonte}=${i.regime}` : ""}` : ""}`} target="_blank">{i.codigo}</Link></td>
+          <td className="whitespace-nowrap font-mono text-xs">
+            <Link className="text-marca-700 hover:underline" href={`/consulta/item/${i.itemReferenciaId}${i.baseRevisaoId ? `?b_${i.fonte}=${i.baseRevisaoId}${i.regime ? `&r_${i.fonte}=${i.regime}` : ""}` : ""}`} target="_blank">{i.codigo}</Link>
+            {aberta && <button title="Editar código (trocar o serviço/insumo)" aria-label={`Editar código do item ${i.numero}`} className="ml-1 font-sans text-slate-500 hover:text-marca-700" onClick={() => setTrocando(trocando === i.id ? null : i.id)}>✎</button>}
+          </td>
           <td className="text-sm">
             {i.descricao}
             <div className="text-xs text-slate-500">{i.referenciaPreco}{outraBase && <span className="text-amber-700"> · base/regime diferente do padrão</span>}</div>
@@ -162,6 +166,12 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
               <MemoriaQuantitativo item={i} editavel={aberta} aoSalvar={(texto, quantidade) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { memoriaQuantitativo: texto, ...(quantidade ? { quantidade } : {}) }))} />
             </td>
           </tr>
+        )}
+        {trocando === i.id && (
+          <tr><td colSpan={11} className="bg-marca-50 p-3">
+            <TrocarCodigo revisaoId={r.id} item={i} aoCancelar={() => setTrocando(null)}
+              aoEscolher={(achado) => rodar(() => acaoTrocarItem(r.id, versao, i.id, achado.itemId), () => { setAviso(`Item ${i.numero}: código ${i.codigo} trocado por ${achado.codigo}.`); setTrocando(null); })} />
+          </td></tr>
         )}
         {memoria === i.id && <tr><td colSpan={11} className="bg-slate-50 px-3 py-2 text-xs text-slate-700"><strong>Cálculo do preço:</strong> {i.memoriaCalculo}</td></tr>}
       </Fragment>
@@ -323,6 +333,65 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
           <button disabled={!quantidade.trim()} onClick={() => aoAdicionar(escolhido, quantidade, memoriaQtd)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50">Adicionar</button>
           <button onClick={() => setEscolhido(null)} className="rounded-md border border-slate-300 px-3 py-1.5">Voltar</button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Busca do novo código para um item já lançado (mesmas regras de base/regime da inclusão). */
+function TrocarCodigo({ revisaoId, item, aoEscolher, aoCancelar }: { revisaoId: string; item: LinhaItem; aoEscolher: (a: Achado) => void; aoCancelar: () => void }) {
+  const [busca, setBusca] = useState(item.codigo);
+  const [achados, setAchados] = useState<Achado[]>([]);
+  const [total, setTotal] = useState(0);
+  const [carregando, setCarregando] = useState(false);
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (t.current) clearTimeout(t.current);
+    if (busca.trim().length < 2) { setAchados([]); return; }
+    t.current = setTimeout(async () => {
+      setCarregando(true);
+      const r = await acaoBuscarParaOrcamento(revisaoId, busca);
+      setCarregando(false);
+      if (r.ok) { setAchados(r.dados.itens); setTotal(r.dados.total); }
+    }, 300);
+  }, [busca, revisaoId]);
+  const escolher = (a: Achado) => {
+    if (a.itemId === item.itemReferenciaId) return aoCancelar();
+    const unidade = a.unidade ?? "";
+    const aviso = unidade.toUpperCase() !== (item.unidade ?? "").toUpperCase()
+      ? `\n\nAtenção: a unidade muda de ${item.unidade || "(sem unidade)"} para ${unidade || "(sem unidade)"}. A quantidade (${qtd(item.quantidade)}) e a memória de cálculo serão mantidas — confira.`
+      : "";
+    if (window.confirm(`Trocar o código do item ${item.numero} de ${item.codigo} para ${a.codigo}?\n\n${a.descricao}${aviso}`)) aoEscolher(a);
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} onFocus={(e) => e.target.select()}
+          aria-label={`Novo código do item ${item.numero}`} placeholder="Digite o novo código ou parte da descrição"
+          onKeyDown={(e) => { if (e.key === "Escape") aoCancelar(); }}
+          className="flex-1 rounded-md border border-slate-300 px-3 py-2 font-mono text-sm" />
+        <button onClick={aoCancelar} className="rounded-md border border-slate-300 px-3 text-sm">Cancelar</button>
+      </div>
+      <p className="text-xs text-slate-500">
+        Editar o código do item {item.numero}: escolha o novo serviço/insumo. Quantidade, memória de cálculo, BDI e posição são mantidos; o preço vem da base padrão da revisão, no regime adotado.
+        {carregando ? " Buscando…" : busca.trim().length >= 2 ? ` ${total} encontrado(s)${total > achados.length ? `, mostrando ${achados.length}` : ""}.` : ""}
+      </p>
+      {achados.length > 0 && (
+        <ul className="max-h-72 overflow-auto rounded-md border border-slate-200 bg-white" role="listbox" aria-label="Códigos encontrados">
+          {achados.map((a) => (
+            <li key={a.itemId}>
+              <button role="option" aria-selected={a.itemId === item.itemReferenciaId} onClick={() => escolher(a)}
+                className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-marca-50 aria-selected:bg-slate-100">
+                <SeloFonte fonte={a.fonte} />
+                <span className="font-mono">{a.codigo}</span>
+                <span className="flex-1">{a.descricao} <span className="text-slate-500">({a.unidade ?? "s/ unid."})</span>{a.itemId === item.itemReferenciaId && <span className="text-slate-500"> — código atual</span>}</span>
+                <span className="whitespace-nowrap text-xs">
+                  {a.fonte === "PROPRIA" ? "calculado" : a.preco ? formatarMoeda(a.preco) : <span className="text-amber-700">sem preço</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

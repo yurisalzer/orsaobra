@@ -144,6 +144,24 @@ test("a conta da memória de cálculo preenche a quantidade (exemplo do usuário
   await page.screenshot({ path: "test-results/orcamento-memoria.png", fullPage: true });
 });
 
+test("editar o código de um item mantém quantidade e memória; o código continua abrindo a composição", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  const linha = () => page.getByRole("row").filter({ has: page.getByLabel("Quantidade 2.2") });
+  await expect(linha().getByRole("link", { name: /^01\.001\.0002/ })).toHaveAttribute("href", /\/consulta\/item\//);
+  await page.getByLabel("Editar código do item 2.2").click();
+  await expect(page.getByLabel("Novo código do item 2.2")).toHaveValue(/^01\.001\.0002/);
+  await page.getByLabel("Novo código do item 2.2").fill("01.001.0001");
+  await page.getByRole("listbox", { name: "Códigos encontrados" }).getByRole("option", { name: /01\.001\.0001-0/ }).click();
+  await expect(page.getByRole("status")).toContainText(/Item 2\.2: código 01\.001\.0002-\w trocado por 01\.001\.0001-0/);
+  await expect(linha().getByRole("link", { name: "01.001.0001-0" })).toHaveAttribute("href", /\/consulta\/item\//);
+  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,5");
+  await expect(page.getByText(/Memória de cálculo:.*3 x 4,5/)).toBeVisible();
+  await page.screenshot({ path: "test-results/orcamento-trocar-codigo.png", fullPage: true });
+});
+
 test("edição dos dados da obra", async ({ page }) => {
   await entrar(page);
   await page.goto("/orcamentos");
@@ -176,7 +194,7 @@ test("conflito de edição entre duas abas é detectado", async ({ page, browser
   await outra.goto(page.url());
   await page.getByLabel("Quantidade 1.1").fill("4");
   await page.getByLabel("Quantidade 1.1").press("Enter");
-  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 1.059,84"); // 4 × 264,96
+  await expect(page.getByRole("row", { name: /^1\.1 EMOP 01\.001\.0001-0/ })).toContainText("R$ 1.059,84"); // 4 × 264,96
   await outra.getByLabel("Quantidade 1.1").fill("5");
   await outra.getByLabel("Quantidade 1.1").press("Enter");
   await expect(outra.locator("main").getByRole("alert")).toContainText(/alterado por outra pessoa/);

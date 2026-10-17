@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  duplicarOrcamento, excluirItem, fecharRevisao, moverEtapa, novaRevisao,
+  duplicarOrcamento, excluirItem, fecharRevisao, moverEtapa, novaRevisao, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { prisma } from "./ajuda";
@@ -77,6 +77,28 @@ describe("orçamento completo", () => {
     await expect(alterarObra(ex, obra, aberto, { nome: "Outro nome" }, u)).rejects.toThrow(/alterada por outra pessoa/);
     await expect(alterarObra(ex, obra, { nome: "Obra Z - Bloco A", codigo: "OB-9", processo: "SEI-9/2026", orgaoSolicitante: "Secretaria de Obras" }, { nome: "x" }, u)).rejects.toThrow(/nome da obra/);
     expect((await prisma.obra.findUniqueOrThrow({ where: { id: obra } })).nome).toBe("Obra Z - Bloco A");
+  });
+
+  it("edita o código do item mantendo quantidade, memória e posição", async () => {
+    const obra = await criarObra(ex, { nome: "Obra T" }, u);
+    const { revisaoId } = await criarOrcamento(ex, { obraId: obra, titulo: "Troca de código", bases: basesPadrao() }, u);
+    const et = await criarEtapa(ex, revisaoId, (await carregarRevisao(ex, revisaoId)).revisao.versao, { titulo: "Etapa" }, u);
+    const a = await adicionarItem(ex, revisaoId, et.versao, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "10", memoriaQuantitativo: "2 x 5" }, u);
+    let vv = await trocarItem(ex, revisaoId, a.versao, a.id, await idDe("104658"), u);
+    const e = await carregarRevisao(ex, revisaoId);
+    expect(e.itens).toHaveLength(1);
+    // 194,45 sem BDI; 10 × 194,45 = 1.944,50
+    expect(e.itens[0]).toMatchObject({ id: a.id, numero: "1.1", fonte: "SINAPI", codigo: "104658", quantidade: "10.0000", memoriaQuantitativo: "2 x 5", custoUnitario: "194.4500", precoTotal: "1944.50" });
+    expect(e.itens[0].referenciaPreco).toMatch(/SINAPI RJ 09\/2026 — Encargos sociais sem desoneração/);
+    const aud = await prisma.auditoria.findFirstOrThrow({ where: { entidadeId: a.id, acao: "ITEM_CODIGO_TROCADO" } });
+    expect(aud.antes).toMatchObject({ codigo: "01.001.0001-0" });
+    // fora do regime adotado / sem preço: não troca
+    await expect(trocarItem(ex, revisaoId, vv, a.id, await idDe("01.001.0001-A"), u)).rejects.toThrow(/apenas no regime "Com desoneração"/);
+    await expect(trocarItem(ex, revisaoId, vv, a.id, await idDe("105006"), u)).rejects.toThrow(/Sem preço publicado/);
+    // versão desatualizada (outra aba)
+    await expect(trocarItem(ex, revisaoId, vv - 1, a.id, await idDe("01.001.0001-0"), u)).rejects.toThrow(/alterado por outra pessoa/);
+    vv = await trocarItem(ex, revisaoId, vv, a.id, await idDe("01.001.0001-0"), u);
+    expect((await carregarRevisao(ex, revisaoId)).itens[0]).toMatchObject({ codigo: "01.001.0001-0", custoUnitario: "211.9700", quantidade: "10.0000" });
   });
 
   it("não aceita base não publicada", async () => {

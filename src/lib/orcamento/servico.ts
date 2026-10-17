@@ -634,6 +634,40 @@ export async function alterarItem(
   return versao + 1;
 }
 
+/**
+ * Troca o serviço/insumo de um item (novo código), mantendo posição, quantidade,
+ * memória de cálculo do quantitativo e BDI. O preço vem da base padrão da
+ * revisão para a fonte do novo código.
+ */
+export async function trocarItem(ex: Executor, revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string, usuarioId: string) {
+  const [i] = await ex.consulta<{ item_referencia_id: string; codigo: string; unidade: string; quantidade: string; bdi_perfil_id: string | null; bdi_percentual: string }>(
+    `SELECT item_referencia_id, codigo, unidade, quantidade::text, bdi_perfil_id, bdi_percentual::text FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
+    [itemId, revisaoId],
+  );
+  if (!i) throw new ErroOrcamento("Item não encontrado nesta revisão.");
+  if (i.item_referencia_id === novoItemReferenciaId) return versao;
+  const r = await dadosRevisao(ex, revisaoId);
+  const { preco, base } = await precoParaItem(ex, revisaoId, novoItemReferenciaId, null);
+  if (!preco.valor) throw new ErroOrcamento(`O novo código não pode ser orçado nas bases/regimes desta revisão: ${preco.pendencia ?? "sem preço"}`);
+  const cab = await cabecalhoItem(ex, novoItemReferenciaId, base?.baseRevisaoId);
+  if (!cab) throw new ErroOrcamento("Item não encontrado.");
+  const bdi = i.bdi_perfil_id ? i.bdi_percentual : (r.bdi_percentual ?? "0");
+  const v = valoresDoItem({ quantidade: i.quantidade, custoReferencia: arredondar(preco.valor, 4), bdi, modo: r.arredondamento, unidade: cab.unidade ?? "", referencia: preco.referencia });
+  await ex.transacao([
+    ...travarEdicao(revisaoId, versao),
+    {
+      sql: `UPDATE item_orcamento SET item_referencia_id = $2, base_revisao_id = $3,
+                   regime_id = (SELECT g.id FROM regime g JOIN base_mensal b ON b.fonte_id = g.fonte_id JOIN base_revisao br ON br.base_id = b.id WHERE br.id = $3 AND g.codigo = $4),
+                   codigo = $5, descricao = $6, unidade = $7, origem_preco = $8, referencia_preco = $9, pendencia = NULL, analitico = NULL
+             WHERE id = $1`,
+      params: [itemId, novoItemReferenciaId, base?.baseRevisaoId ?? null, base?.regime ?? null, cab.codigo, cab.descricao, cab.unidade ?? "", preco.origem, preco.referencia],
+    },
+    comandoAtualizarValores([{ id: itemId, ...serializar(v) }]),
+    comandoAuditoria({ usuarioId, acao: "ITEM_CODIGO_TROCADO", entidade: "item_orcamento", entidadeId: itemId, antes: { codigo: i.codigo, unidade: i.unidade }, depois: { codigo: cab.codigo, unidade: cab.unidade, custo: v.custoUnitario.toString() } }),
+  ]);
+  return versao + 1;
+}
+
 export async function excluirItem(ex: Executor, revisaoId: string, versao: number, itemId: string, usuarioId: string) {
   await ex.transacao([
     ...travarEdicao(revisaoId, versao),
