@@ -96,3 +96,26 @@ Observações verificadas:
   entram no catálogo de preços, ficam no relatório da importação.
 - **Sem unidade**: 6 elementares do REUT 09/2026 (01294–01296, 30500–30502,
   guindaste CP/CF/CI) não têm unidade publicada; são gravados sem unidade.
+
+## SICRO (DNIT) — relatórios XLSX por UF (verificado em RJ 07/2026)
+
+Pacote mensal (`rj-07-2026.7z`) com PDFs e XLSX. O sistema usa 7 XLSX (aba única cada), identificados pelo nome
+`UF MM-AAAA Relatório (Sintético|Analítico) de <assunto>.xlsx`; o assistente aceita os XLSX soltos ou num ZIP
+(o 7z precisa ser extraído antes).
+
+| Arquivo | Linha 1 (cabeçalho) | Uso |
+|---|---|---|
+| Sintético de Composições de Custos | Código · Descrição do Serviço · Unidade · Custo Unitário (R$) | custo da composição — **somente sem desoneração** (o pacote não traz composições com desoneração) |
+| Sintético de Materiais | Código · Descrição · Unidade · Preço Unitário (R$) | preço único; `-` = sem preço |
+| Sintético de Mão de Obra (e "- com desoneração") | Código · Descrição · Unidade · Custo (R$) | dois regimes |
+| Sintético de Equipamentos (e "- com desoneração") | Código · Descrição · Valor de Aquisição · Depreciação · Oportunidade de Capital · Seguros e Impostos · Manutenção · Operação · Mão de Obra de Operação · Custo Produtivo · Custo Improdutivo | preço = custo produtivo (R$/h); demais colunas guardadas como atributos; linhas idênticas repetidas (15 em 07/2026) lidas uma vez |
+| Analítico de Composições de Custos | blocos por composição | composição guardada como publicada |
+
+Bloco do analítico (colunas A–I): linha 1 `SISTEMA DE CUSTOS REFERENCIAIS DE OBRAS - SICRO` · UF por extenso (D) · `FIC` (G) e valor (H);
+linha 2 `Custo Unitário de Referência` · mês/ano por extenso (D) · `Produção da equipe` (G), quantidade (H), unidade (I);
+linha 3 código e descrição. Seções: `A - EQUIPAMENTOS` (quantidade, utilização operativa/improdutiva, custo produtivo/improdutivo,
+custo horário total), `B - MÃO DE OBRA`, totais de execução, `Custo do FIC`, `C - MATERIAL`, `D - ATIVIDADES AUXILIARES`, `Subtotal`,
+`E - TEMPO FIXO` (item, composição de transporte, quantidade em t), `F - MOMENTO DE TRANSPORTE` (tkm e composições LN/RP/P — sem custo:
+depende da DMT da obra) e `Custo unitário direto total` (= custo do sintético em todas as 6.619 composições de 07/2026).
+
+Composições com custo zero no sintético (4 em 07/2026: genéricas como "Concreto", "Material de base") ficam sem preço.

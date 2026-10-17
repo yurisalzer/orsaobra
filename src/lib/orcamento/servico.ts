@@ -17,6 +17,7 @@ import { calcularItem } from "../calculo/item";
 import { numerarEtapas } from "../calculo/numeracao";
 import { cabecalhoItem, type LinhaAnalitica } from "../referencia/item";
 import { precificar, type ContextoPreco } from "../referencia/precificacao";
+import type { AnaliticaSicro } from "../importacao/adaptadores/sicro-xlsx";
 import { cabecalhoDaObra } from "../relatorios/cabecalhos";
 import { listarPerfis } from "./bdi";
 
@@ -763,7 +764,13 @@ export interface LinhaAnaliticoItem {
   ordem: number; itemId?: string; fonte: string; natureza?: "INSUMO" | "COMPOSICAO"; tipo: string; codigo: string; descricao: string; unidade: string | null;
   coeficiente: string; percentual: string | null; precoUnitario: string | null; referenciaPreco: string | null; custo: string | null;
 }
-export interface AnaliticoItem { tipo: "INSUMO" | "OFICIAL" | "PROPRIA" | "SEM_ANALITICA"; referencia: string | null; linhas?: LinhaAnaliticoItem[] }
+export interface AnaliticoItem {
+  tipo: "INSUMO" | "OFICIAL" | "PROPRIA" | "SEM_ANALITICA" | "SICRO";
+  referencia: string | null;
+  linhas?: LinhaAnaliticoItem[];
+  /** SICRO: composição como publicada pelo DNIT (estrutura própria, sem coeficientes) */
+  sicro?: AnaliticaSicro;
+}
 
 /**
  * Composição analítica de cada item, com os preços da base do item:
@@ -790,13 +797,28 @@ export async function montarAnaliticos(ex: Executor, revisaoId: string, itens: L
     for (const l of linhasPorVersao.get(v.versaoId) ?? []) g.ids.add(l.itemId);
     grupos.set(chaveCtx(c), g);
   }
+  // SICRO: composição publicada em formato próprio, guardada junto ao custo da base
+  const semVersao = comps.filter((it) => !versoes.has(it.id) && it.baseRevisaoId);
+  const sicro = new Map<string, AnaliticaSicro>();
+  if (semVersao.length) {
+    const linhas = await ex.consulta<{ chave: string; analitica: AnaliticaSicro }>(
+      `SELECT x.chave, p.atributos->'analitica_sicro' AS analitica
+         FROM jsonb_to_recordset($1::jsonb) AS x(chave text, item uuid, base uuid)
+         JOIN LATERAL (SELECT atributos FROM preco WHERE base_revisao_id = x.base AND item_id = x.item AND atributos ? 'analitica_sicro' LIMIT 1) p ON true`,
+      [json(semVersao.map((it) => ({ chave: it.id, item: it.itemReferenciaId, base: it.baseRevisaoId })))],
+    );
+    for (const l of linhas) sicro.set(l.chave, l.analitica);
+  }
   const precosPorCtx = new Map<string, Awaited<ReturnType<typeof precificar>>>();
   for (const [k, g] of grupos) precosPorCtx.set(k, await precificar(ex, [...g.ids], g.ctx));
 
   return itens.map((it) => {
     if (it.tipo !== "COMPOSICAO") return { id: it.id, analitico: { tipo: "INSUMO", referencia: it.referenciaPreco } };
     const v = versoes.get(it.id);
-    if (!v) return { id: it.id, analitico: { tipo: "SEM_ANALITICA", referencia: it.referenciaPreco } };
+    if (!v) {
+      const sc = sicro.get(it.id);
+      return { id: it.id, analitico: sc ? { tipo: "SICRO", referencia: it.referenciaPreco, sicro: sc } : { tipo: "SEM_ANALITICA", referencia: it.referenciaPreco } };
+    }
     const precos = precosPorCtx.get(chaveCtx(ctxDoItem(it)))!;
     return {
       id: it.id,

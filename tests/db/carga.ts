@@ -7,7 +7,7 @@ import { limparBanco, prisma } from "./ajuda";
 /** Banco limpo com as amostras reais (EMOP e SINAPI 09/2026) importadas e publicadas. */
 export async function carregarAmostras(ex: Executor) {
   await limparBanco();
-  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) {
+  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "SICRO", nome: "SICRO" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) {
     await prisma.fonte.create({ data: f });
   }
   const usuarioId = (await prisma.usuario.create({ data: { email: "carga@t.com", nome: "Carga", senhaHash: "x", papel: "ADMIN" } })).id;

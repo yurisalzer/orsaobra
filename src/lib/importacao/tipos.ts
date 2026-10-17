@@ -1,6 +1,7 @@
 import type { ArquivoEntrada } from "./leitores/arquivo";
 
 export type TipoItemImp = "INSUMO" | "COMPOSICAO";
+export type FonteOficial = "SINAPI" | "EMOP" | "SICRO";
 export type SeveridadeImp = "ERRO" | "AVISO" | "INFO";
 
 interface Origem {
@@ -62,7 +63,7 @@ export interface RegimeDeclarado {
 export interface Identificacao {
   adaptador: string;
   versao: string;
-  fonte: "SINAPI" | "EMOP";
+  fonte: FonteOficial;
   uf: string;
   /** "AAAA-MM" */
   competencia: string;
@@ -89,7 +90,7 @@ export interface Emissor {
 export interface Adaptador {
   id: string;
   versao: string;
-  fonte: "SINAPI" | "EMOP";
+  fonte: FonteOficial;
   descricao: string;
   identificar(arquivos: ArquivoEntrada[], opcoes: { uf: string }): Promise<ResultadoIdentificacao>;
   ler(arquivos: ArquivoEntrada[], ident: Identificacao, emitir: Emissor): Promise<void>;

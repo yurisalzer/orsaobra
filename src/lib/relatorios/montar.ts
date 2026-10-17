@@ -21,6 +21,7 @@ import {
 import { VERSAO_SISTEMA } from "../versao";
 import type { Celula, Coluna, Documento, Linha, Secao, TipoRelatorio } from "./documento";
 import { RELATORIOS } from "./documento";
+import type { AnaliticaSicro } from "../importacao/adaptadores/sicro-xlsx";
 import { cabecalhoDaRevisao, type CabecalhoDocumento } from "./cabecalhos";
 import { explodirInsumos } from "./insumos";
 
@@ -183,6 +184,14 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
       linhas.push({ celulas: analitico ? [...base, "", it.bdiPercentual, it.precoUnitario, it.precoTotal] : [...base, it.bdiPercentual, it.precoUnitario, it.precoTotal], estilo: analitico ? "destaque" : undefined });
       if (!analitico || it.tipo !== "COMPOSICAO") continue;
       const an = (analiticos?.get(it.id) ?? it.analitico) as AnaliticoItem | null;
+      if (an?.tipo === "SICRO" && an.sicro) {
+        for (const l of linhasSicro(an.sicro)) {
+          if ("grupo" in l) linhas.push({ celulas: ["", span(l.grupo, n - 1)], estilo: "detalhe" });
+          else if ("total" in l) linhas.push({ celulas: ["", span(l.total, 6), l.valor ? { valor: l.valor, tipo: "preco" } : "", "", "", ""], estilo: "detalhe" });
+          else linhas.push({ celulas: ["", "SICRO", l.codigo, l.descricao, l.unidade, { valor: l.quantidade, tipo: "coeficiente" }, l.preco ? { valor: l.preco, tipo: "preco" } : "", l.custo ? { valor: l.custo, tipo: "preco" } : l.tipo === "Transporte" ? "não incluído" : "", "", "", ""], estilo: "detalhe" });
+        }
+        continue;
+      }
       if (!an?.linhas?.length) {
         linhas.push({ celulas: ["", span("Composição analítica não publicada pela fonte nesta base — custo adotado = preço de referência publicado.", n - 1)], estilo: "detalhe" });
         continue;
@@ -208,6 +217,50 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
 
 const NATUREZA: Record<string, string> = { INSUMO: "Insumo", COMPOSICAO: "Composição" };
 
+/**
+ * Composição SICRO (formato publicado pelo DNIT) em linhas para os relatórios:
+ * grupos (A–F), linhas de componentes e totais, com os valores publicados.
+ */
+type LinhaSicro =
+  | { grupo: string }
+  | { codigo: string; descricao: string; tipo: string; unidade: string; quantidade: string | null; preco: string | null; custo: string | null }
+  | { total: string; valor: string | null };
+
+function linhasSicro(a: AnaliticaSicro): LinhaSicro[] {
+  const t = a.totais;
+  const fmtQ = (v: string | null) => (v ? formatarNumero(v, Math.min(Math.max(dec(v).decimalPlaces(), 2), 6)) : "—");
+  const out: LinhaSicro[] = [];
+  out.push({ grupo: `A - Equipamentos (custo horário) · produção da equipe: ${fmtQ(a.producao.quantidade)} ${a.producao.unidade ?? ""}/h` });
+  for (const e of a.equipamentos) out.push({ codigo: e.codigo, descricao: `${e.descricao ?? ""} (utilização operativa ${fmtQ(e.operativa)}, improdutiva ${fmtQ(e.improdutiva)}; custo improdutivo R$ ${e.custoImprodutivo ? formatarNumero(e.custoImprodutivo, 4) : "—"})`, tipo: "Equipamento", unidade: "h", quantidade: e.quantidade, preco: e.custoProdutivo, custo: e.custoHorario });
+  out.push({ total: "Custo horário total de equipamentos", valor: t.equipamentos ?? "0" });
+  out.push({ grupo: "B - Mão de obra (custo horário)" });
+  for (const m of a.maoDeObra) out.push({ codigo: m.codigo, descricao: m.descricao ?? "", tipo: "Mão de obra", unidade: m.unidade ?? "", quantidade: m.quantidade, preco: m.custoHorario, custo: m.custo });
+  out.push({ total: "Custo horário total de mão de obra", valor: t.maoDeObra ?? "0" });
+  out.push({ total: "Custo horário total de execução", valor: t.execucaoHorario ?? "0" });
+  out.push({ total: `Custo unitário de execução (÷ produção da equipe ${fmtQ(a.producao.quantidade)})`, valor: t.execucaoUnitario ?? "0" });
+  out.push({ total: `Custo do FIC (FIC ${a.fic ? formatarNumero(a.fic, Math.max(dec(a.fic).decimalPlaces(), 2)) : "—"})`, valor: t.fic ?? "0" });
+  out.push({ grupo: "C - Material" });
+  for (const m of a.materiais) out.push({ codigo: m.codigo, descricao: m.descricao ?? "", tipo: "Material", unidade: m.unidade ?? "", quantidade: m.quantidade, preco: m.precoUnitario, custo: m.custo });
+  out.push({ total: "Custo unitário total de material", valor: t.material ?? "0" });
+  if (a.auxiliares.length) {
+    out.push({ grupo: "D - Atividades auxiliares" });
+    for (const m of a.auxiliares) out.push({ codigo: m.codigo, descricao: m.descricao ?? "", tipo: "Ativ. auxiliar", unidade: m.unidade ?? "", quantidade: m.quantidade, preco: m.custoUnitario, custo: m.custo });
+    out.push({ total: "Custo total de atividades auxiliares", valor: t.auxiliares ?? "0" });
+  }
+  out.push({ total: "Subtotal", valor: t.subtotal });
+  if (a.tempoFixo.length) {
+    out.push({ grupo: "E - Tempo fixo" });
+    for (const m of a.tempoFixo) out.push({ codigo: m.item, descricao: `${m.descricao ?? ""}${m.codigo ? ` (comp. ${m.codigo})` : ""}`, tipo: "Tempo fixo", unidade: m.unidade ?? "", quantidade: m.quantidade, preco: m.custoUnitario, custo: m.custo });
+    out.push({ total: "Custo unitário total de tempo fixo", valor: t.tempoFixo ?? "0" });
+  }
+  if (a.transporte.length) {
+    out.push({ grupo: "F - Momento de transporte (custo não incluído: depende da DMT da obra)" });
+    for (const m of a.transporte) out.push({ codigo: m.item, descricao: `${m.descricao ?? ""} (DMT: LN ${m.ln ?? "—"}, RP ${m.rp ?? "—"}, P ${m.p ?? "—"})`, tipo: "Transporte", unidade: m.unidade ?? "", quantidade: m.quantidade, preco: null, custo: m.custo });
+  }
+  out.push({ total: "Custo unitário direto total (publicado)", valor: t.total });
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // 3. CPU
 // ---------------------------------------------------------------------------
@@ -230,10 +283,17 @@ async function cpu(c: Contexto): Promise<Documento> {
       { rotulo: "Serviço", valor: `${it.fonte === "PROPRIA" ? "Próprio" : it.fonte} ${it.codigo} — ${it.descricao}` },
       { rotulo: "Unidade", valor: it.unidade || "—" },
       { rotulo: "Referência", valor: referenciaDoItem(it) },
-      { rotulo: "Composição", valor: an?.tipo === "OFICIAL" ? "Analítica oficial publicada" : an?.tipo === "PROPRIA" ? "Composição própria" : "Analítica não publicada pela fonte" },
+      { rotulo: "Composição", valor: an?.tipo === "OFICIAL" ? "Analítica oficial publicada" : an?.tipo === "PROPRIA" ? "Composição própria" : an?.tipo === "SICRO" ? "Composição de custo unitário publicada pelo DNIT (SICRO, sem desoneração)" : "Analítica não publicada pela fonte" },
       { rotulo: "Itens do orçamento", valor: usados.join(", ") },
     ];
     const linhas: Linha[] = [];
+    if (an?.tipo === "SICRO" && an.sicro) {
+      for (const l of linhasSicro(an.sicro)) {
+        if ("grupo" in l) linhas.push({ celulas: [span(l.grupo, 9)], estilo: "grupo3" });
+        else if ("total" in l) linhas.push({ celulas: [span(l.total, 8), l.valor], estilo: "subtotal" });
+        else linhas.push({ celulas: ["SICRO", l.codigo, l.descricao, l.tipo, l.unidade, l.quantidade, null, l.preco ? { valor: l.preco, tipo: "preco" } : l.tipo === "Transporte" ? "—" : "sem preço", l.custo ? { valor: l.custo, tipo: "preco" } : l.tipo === "Transporte" ? "não incluído" : ""] });
+      }
+    }
     let soma = dec(0);
     for (const l of an?.linhas ?? []) {
       if (l.custo) soma = soma.plus(l.custo);
@@ -249,7 +309,9 @@ async function cpu(c: Contexto): Promise<Documento> {
     );
     secoes.push({
       titulo: `CPU — ${it.codigo}`, campos,
-      paragrafos: an?.linhas?.length ? undefined : ["A fonte não publicou composição analítica deste serviço nesta base: o custo adotado é o preço de referência publicado (não é recalculado)."],
+      paragrafos: an?.linhas?.length ? undefined : an?.tipo === "SICRO"
+        ? ["Quantidades: equipamentos e mão de obra por hora da equipe (o custo horário total ÷ produção da equipe dá o custo unitário de execução); materiais, atividades auxiliares e tempo fixo por unidade do serviço. Valores como publicados pelo DNIT; o custo unitário adotado é o custo publicado."]
+        : ["A fonte não publicou composição analítica deste serviço nesta base: o custo adotado é o preço de referência publicado (não é recalculado)."],
       tabela: {
         colunas: [
           { titulo: "Fonte", tipo: "texto", largura: 6 }, { titulo: "Código", tipo: "codigo", largura: 9 }, { titulo: "Descrição", tipo: "texto", largura: 42 },
@@ -321,7 +383,7 @@ async function abcInsumos(c: Contexto): Promise<Documento> {
   const curva = curvaAbc(comCusto.map((i) => ({ chave: i, valor: i.custo! })));
   const linhas: Linha[] = curva.map((l, i) => ({
     celulas: [String(i + 1), l.chave.fonte === "PROPRIA" ? "Próprio" : l.chave.fonte, l.chave.codigo,
-      `${l.chave.descricao}${l.chave.semAnalitica ? " [serviço sem analítica publicada]" : ""}`, l.chave.unidade ?? "",
+      `${l.chave.descricao}${l.chave.semAnalitica ? (l.chave.fonte === "SICRO" ? " [composição SICRO — não desmembrada]" : " [serviço sem analítica publicada]") : ""}`, l.chave.unidade ?? "",
       arredondar(l.chave.quantidade, 4).toString(), l.chave.precoUnitario!.toString(), moeda2(l.valor), l.percentual.toDecimalPlaces(6).toString(), l.acumulado.toDecimalPlaces(6).toString(), l.classe],
     estilo: l.classe === "A" ? "destaque" : undefined,
   }));
@@ -334,6 +396,7 @@ async function abcInsumos(c: Contexto): Promise<Documento> {
       paragrafos: [
         "Quantidade do insumo = quantidade do serviço × coeficiente da composição (× (1 + percentual adicional), quando houver), somada em todos os serviços e em todas as composições auxiliares.",
         "Somente composições analíticas oficiais publicadas (na base e regime de cada item) ou próprias são usadas. Serviços sem analítica publicada entram inteiros, com o seu preço.",
+        ...(c.estado.itens.some((i) => i.fonte === "SICRO" && i.tipo === "COMPOSICAO") ? ["Composições do SICRO entram inteiras: o DNIT publica a composição por equipe/hora (com produção, FIC e tempo fixo), que não é convertida em coeficientes por unidade."] : []),
         `Custo direto do orçamento: R$ ${formatarNumero(c.estado.totais.custoDireto, 2)}; soma dos insumos: R$ ${formatarNumero(total, 2)}. A diferença decorre dos arredondamentos dos preços unitários e das próprias composições oficiais.`,
       ],
     },

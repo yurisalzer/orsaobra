@@ -9,6 +9,8 @@ import { dec } from "@/lib/calculo/decimal";
 import { formatarCoeficiente, formatarPreco, nomeRegime } from "@/lib/formato/precos";
 import { rotuloBase } from "@/lib/referencia/bases";
 import { parametrosSelecao, selecaoDeBases } from "@/lib/referencia/contexto-tela";
+import { ComposicaoSicro } from "@/components/AnaliticaSicro";
+import type { AnaliticaSicro } from "@/lib/importacao/adaptadores/sicro-xlsx";
 import { analiticaOficial, cabecalhoItem, historicoPrecos, linhasDaVersao, usadoEm, type LinhaAnalitica } from "@/lib/referencia/item";
 import { precificar, type ContextoPreco, type PrecoItem } from "@/lib/referencia/precificacao";
 import { cotacoes } from "@/lib/referencia/proprios";
@@ -60,6 +62,11 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
     linhas = await linhasDaVersao(ex, item.proprio.composicaoVersaoId, minhaBase?.base.revisaoId ?? null);
     tituloAnalitica = `Composição própria (não oficial) — versão ${item.proprio.versao}`;
   }
+  // SICRO: composição publicada em formato próprio (guardada junto ao custo)
+  const analiticaSicro = !linhas && item.oficial && item.tipo === "COMPOSICAO" && selDaFonte
+    ? ((historico.find((h) => h.revisaoId === selDaFonte.base.revisaoId && h.atributos && "analitica_sicro" in h.atributos)?.atributos as { analitica_sicro?: AnaliticaSicro } | null)?.analitica_sicro ?? null)
+    : null;
+  if (analiticaSicro) tituloAnalitica = `Composição de custo unitário publicada pelo DNIT — ${rotuloBase(selDaFonte!.base)} (sem desoneração)`;
   const precos = await precificar(ex, [id, ...(linhas ?? []).map((l) => l.itemId)], ctx);
   const precoItem = precos.get(id)!;
   const listaCotacoes = item.fonte === "PROPRIA" && item.tipo === "INSUMO" ? await cotacoes(ex, id) : [];
@@ -123,8 +130,8 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
 
       {item.tipo === "COMPOSICAO" && (
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="font-medium">{linhas ? tituloAnalitica : "Composição analítica"}</h2>
-          {!linhas ? (
+          <h2 className="font-medium">{linhas || analiticaSicro ? tituloAnalitica : "Composição analítica"}</h2>
+          {analiticaSicro ? <ComposicaoSicro a={analiticaSicro} /> : !linhas ? (
             <p className="mt-2 text-sm text-slate-600">
               {item.oficial ? "A fonte não publicou composição analítica para este item na base/regime selecionados." : "Composição sem componentes."}
             </p>

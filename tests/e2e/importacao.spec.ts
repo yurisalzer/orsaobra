@@ -25,22 +25,26 @@ async function entrar(page: Page) {
   await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
 }
 
-async function ateIniciar(page: Page, fonte: "SINAPI" | "EMOP", arquivos: string[]) {
+const ROTULO = { SINAPI: "SINAPI (Caixa)", EMOP: "EMOP-RJ", SICRO: "SICRO (DNIT)" };
+
+type Arquivo = string | { name: string; mimeType: string; buffer: Buffer };
+
+async function ateIniciar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO", arquivos: Arquivo[], competencia = "09/2026") {
   await page.goto("/importacao/nova");
-  await page.getByLabel(fonte === "SINAPI" ? "SINAPI (Caixa)" : "EMOP-RJ").check();
+  await page.getByLabel(ROTULO[fonte]).check();
   await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByLabel("Arquivos oficiais").setInputFiles(arquivos);
+  await page.getByLabel("Arquivos oficiais").setInputFiles(arquivos as Parameters<Page["setInputFiles"]>[1]);
   await page.getByRole("button", { name: "Analisar arquivos" }).click();
   await expect(page.getByText("Competência (lida do arquivo)")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("09/2026", { exact: true })).toBeVisible();
+  await expect(page.getByText(competencia, { exact: true })).toBeVisible();
   const iniciar = page.getByRole("button", { name: "Iniciar importação" });
   await expect(iniciar).toBeDisabled(); // exige confirmar a competência
-  await page.getByLabel("Confirmo que a competência é 09/2026").check();
+  await page.getByLabel(`Confirmo que a competência é ${competencia}`).check();
   await iniciar.click();
 }
 
-async function importar(page: Page, fonte: "SINAPI" | "EMOP", arquivos: string[]) {
-  await ateIniciar(page, fonte, arquivos);
+async function importar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO", arquivos: Arquivo[], competencia?: string) {
+  await ateIniciar(page, fonte, arquivos, competencia);
   await expect(page.getByRole("heading", { name: "7. Resultado da validação" })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole("heading", { name: /8. Pré-visualização/ })).toBeVisible();
 }
@@ -108,4 +112,32 @@ test.describe(() => {
     await expect(page.getByText("EMOP DBF (dBase III, CP850)")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("COMP0926.dbf — Composições analíticas")).toBeVisible();
   });
+});
+
+test("importa SICRO (relatórios XLSX), valida e publica; composição publicada pelo DNIT na consulta", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await entrar(page);
+  const dir = path.join(FIX, "sicro");
+  // nomes com acento: enviados como conteúdo (a ferramenta de teste não os aceita por caminho)
+  const arquivos = fs.readdirSync(dir).map((n) => ({ name: n, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: fs.readFileSync(path.join(dir, n)) }));
+  await importar(page, "SICRO", arquivos, "07/2026");
+  await page.getByLabel(/Li e estou ciente/).check();
+  await page.getByRole("button", { name: "Confirmar importação" }).click();
+  await expect(page.getByRole("heading", { name: "10. Importação gravada" })).toBeVisible({ timeout: 120_000 });
+  await page.goto("/importacao");
+  const linha = page.getByRole("row", { name: /SICRO\s+RJ\s+07\/2026/ });
+  await linha.getByRole("button", { name: "Validar" }).click();
+  await expect(linha.getByText("Validada — aguardando publicação")).toBeVisible();
+  await linha.getByRole("button", { name: "Publicar" }).click();
+  await expect(linha.getByText("Publicada", { exact: true })).toBeVisible();
+
+  await page.goto("/consulta");
+  await page.getByLabel("Buscar").fill("0308308");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("link", { name: "0308308" }).click();
+  await expect(page.getByRole("heading", { name: /Composição de custo unitário publicada pelo DNIT/ })).toBeVisible();
+  await expect(page.getByText("A — Equipamentos")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "E9050" })).toBeVisible();
+  await expect(page.getByText("R$ 5.137,26").first()).toBeVisible();
+  await page.screenshot({ path: "test-results/sicro-composicao.png", fullPage: true });
 });

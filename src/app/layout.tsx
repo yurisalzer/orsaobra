@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Orçamento de Obras — EMOP e SINAPI",
-  description: "Elaboração de orçamentos de obras com bases EMOP-RJ e SINAPI",
+  title: "Orçamento de Obras — EMOP, SINAPI e SICRO",
+  description: "Elaboração de orçamentos de obras com bases EMOP-RJ, SINAPI e SICRO",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

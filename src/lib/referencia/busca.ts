@@ -102,6 +102,7 @@ export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens
            coalesce((SELECT jsonb_object_agg(coalesce(g.codigo, ''), pr.valor::text) FROM preco pr LEFT JOIN regime g ON g.id = pr.regime_id
                       WHERE pr.base_revisao_id = p.revisao_id AND pr.item_id = p.id), '{}'::jsonb) AS precos,
            (EXISTS (SELECT 1 FROM base_composicao bc WHERE bc.base_revisao_id = p.revisao_id AND bc.item_id = p.id)
+            OR EXISTS (SELECT 1 FROM preco x WHERE x.base_revisao_id = p.revisao_id AND x.item_id = p.id AND x.atributos ? 'analitica_sicro')
             OR EXISTS (SELECT 1 FROM item_proprio ip WHERE ip.item_id = p.id AND ip.composicao_versao_id IS NOT NULL)) AS tem_analitica
       FROM pagina p
       JOIN LATERAL (

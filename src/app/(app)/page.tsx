@@ -37,7 +37,7 @@ export default async function Inicio() {
         )}
         {publicadas.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Nenhuma base publicada ainda. Um administrador deve importar e publicar as bases SINAPI e EMOP-RJ
+            Nenhuma base publicada ainda. Um administrador deve importar e publicar as bases SINAPI, EMOP-RJ ou SICRO
             no menu Importação.
           </p>
         ) : (

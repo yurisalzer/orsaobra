@@ -7,7 +7,7 @@ import { limparBanco, prisma } from "../db/ajuda";
 
 async function main() {
   await limparBanco();
-  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) await prisma.fonte.create({ data: f });
+  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "SICRO", nome: "SICRO" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) await prisma.fonte.create({ data: f });
   const u = await prisma.usuario.create({ data: { email: "carga@t.com", nome: "Carga", senhaHash: "x", papel: "ADMIN" } });
   const ex = await executorPg(process.env.DATABASE_URL!);
   for (const arqs of [EMOP_DBFS.map((p) => arquivo(p)), [arquivo(SINAPI_ZIP)]]) {

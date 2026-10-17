@@ -6,7 +6,7 @@ import { ADAPTADORES } from "./adaptadores";
 import { sha256Hex, type ArquivoEntrada } from "./leitores/arquivo";
 import { expandirPacotes } from "./leitores/pacote";
 import type { Lote } from "./servico";
-import type { Adaptador, Emissor, Identificacao } from "./tipos";
+import type { Adaptador, Emissor, FonteOficial, Identificacao } from "./tipos";
 
 /** Só estes arquivos de dentro dos pacotes interessam aos adaptadores. */
 const RELEVANTE = /\.(dbf|xlsx)$/i;
@@ -18,7 +18,7 @@ export interface Identificado {
   originais: { nome: string; tamanho: number; sha256: string }[];
 }
 
-export async function identificar(originais: ArquivoEntrada[], opcoes: { uf: string; fonte?: "SINAPI" | "EMOP" }): Promise<Identificado> {
+export async function identificar(originais: ArquivoEntrada[], opcoes: { uf: string; fonte?: FonteOficial }): Promise<Identificado> {
   if (originais.length === 0) throw new Error("Nenhum arquivo enviado.");
   const hashes = [];
   for (const o of originais) hashes.push({ nome: o.nome, tamanho: o.tamanho, sha256: await sha256Hex(await o.bytes()) });
@@ -35,7 +35,7 @@ export async function identificar(originais: ArquivoEntrada[], opcoes: { uf: str
     recusas.length
       ? `Arquivos reconhecidos, mas com problema de layout:\n${recusas.join("\n")}`
       : `Layout não reconhecido. Arquivos encontrados: ${entradas.map((e) => e.nome).join(", ") || "nenhum"}. ` +
-        "Envie o ZIP oficial do SINAPI (formato XLSX) ou o RAR/DBFs oficiais da EMOP. Se o layout oficial mudou, é necessário um novo adaptador.",
+        "Envie o ZIP oficial do SINAPI (formato XLSX), o RAR/DBFs oficiais da EMOP ou os relatórios XLSX do SICRO. Se o layout oficial mudou, é necessário um novo adaptador.",
   );
 }
 
@@ -55,17 +55,23 @@ export async function lerEmLotes(
   const limite = opcoes.tamanhoLote ?? 2000;
   let lote: Required<Lote> = { itens: [], precos: [], componentes: [], ocorrencias: [] };
   const total: Progresso = { itens: 0, precos: 0, componentes: 0, ocorrencias: 0 };
-  const tamanho = () => lote.itens.length + lote.precos.length + lote.componentes.length + lote.ocorrencias.length;
+  // registros com atributos grandes (ex.: composição analítica do SICRO) contam pelo tamanho:
+  // cada lote deve caber no limite de envio ao servidor
+  let bytes = 0;
+  const LIMITE_BYTES = 1_500_000;
+  const pesar = (a: unknown) => { if (a) bytes += JSON.stringify(a).length; };
+  const tamanho = () => lote.itens.length + lote.precos.length + lote.componentes.length + lote.ocorrencias.length + Math.floor((bytes / LIMITE_BYTES) * limite);
   const descarregar = async () => {
     if (tamanho() === 0) return;
     const enviar = lote;
     lote = { itens: [], precos: [], componentes: [], ocorrencias: [] };
+    bytes = 0;
     await destino(enviar);
     opcoes.aoProgresso?.({ ...total });
   };
   const emissor: Emissor = {
-    async item(r) { if (!aceitaCodigo(r.tipo, r.codigo)) return; lote.itens.push(r); total.itens++; if (tamanho() >= limite) await descarregar(); },
-    async preco(r) { if (!aceita(r.regime) || !aceitaCodigo(r.tipo, r.codigo)) return; lote.precos.push(r); total.precos++; if (tamanho() >= limite) await descarregar(); },
+    async item(r) { if (!aceitaCodigo(r.tipo, r.codigo)) return; lote.itens.push(r); pesar(r.atributos); total.itens++; if (tamanho() >= limite) await descarregar(); },
+    async preco(r) { if (!aceita(r.regime) || !aceitaCodigo(r.tipo, r.codigo)) return; lote.precos.push(r); pesar(r.atributos); total.precos++; if (tamanho() >= limite) await descarregar(); },
     async componente(r) { if (!aceita(r.regime) || !aceitaCodigo("COMPOSICAO", r.composicao)) return; lote.componentes.push(r); total.componentes++; if (tamanho() >= limite) await descarregar(); },
     async ocorrencia(o) { lote.ocorrencias.push(o); total.ocorrencias++; if (tamanho() >= limite) await descarregar(); },
   };

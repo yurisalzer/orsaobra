@@ -1,5 +1,6 @@
 import type { Adaptador } from "../tipos";
 import { adaptadorEmopDbf } from "./emop-dbf";
+import { adaptadorSicroXlsx } from "./sicro-xlsx";
 import { adaptadorSinapiXlsx2025 } from "./sinapi-xlsx-2025";
 
 /**
@@ -7,7 +8,7 @@ import { adaptadorSinapiXlsx2025 } from "./sinapi-xlsx-2025";
  * adaptador (com nova versão) e adicione aqui — os antigos continuam
  * servindo para reimportar competências antigas.
  */
-export const ADAPTADORES: Adaptador[] = [adaptadorSinapiXlsx2025, adaptadorEmopDbf];
+export const ADAPTADORES: Adaptador[] = [adaptadorSinapiXlsx2025, adaptadorEmopDbf, adaptadorSicroXlsx];
 
 export function adaptadorPorId(id: string): Adaptador | undefined {
   return ADAPTADORES.find((a) => a.id === id);

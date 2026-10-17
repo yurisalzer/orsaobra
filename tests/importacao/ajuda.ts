@@ -6,6 +6,8 @@ import type { Emissor, Ocorrencia, RegComponente, RegItem, RegPreco } from "@/li
 export const FIXTURES = path.join(process.cwd(), "tests", "fixtures");
 export const EMOP_DBFS = ["EMOP", "DIPR", "COMP", "MAT", "ELEM", "REUT"].map((t) => path.join(FIXTURES, `${t}0926.dbf`));
 export const SINAPI_ZIP = path.join(FIXTURES, "SINAPI-2026-09-amostra.zip");
+export const SICRO_DIR = path.join(FIXTURES, "sicro");
+export const SICRO_XLSX = fs.readdirSync(SICRO_DIR).filter((n) => n.endsWith(".xlsx")).sort().map((n) => path.join(SICRO_DIR, n));
 
 export function arquivo(p: string, nome = path.basename(p)): ArquivoEntrada {
   return arquivoDeBytes(nome, new Uint8Array(fs.readFileSync(p)));
