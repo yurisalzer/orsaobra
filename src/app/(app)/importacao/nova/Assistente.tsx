@@ -24,7 +24,7 @@ const LIMITE_ARQUIVO = 200 * 1024 * 1024;
 
 export function Assistente() {
   const [fase, setFase] = useState<Fase>("fonte");
-  const [fonte, setFonte] = useState<"SINAPI" | "EMOP" | "SICRO">("SINAPI");
+  const [fonte, setFonte] = useState<"SINAPI" | "EMOP" | "SICRO" | "SCO">("SINAPI");
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [ident, setIdent] = useState<Identificacao | null>(null);
   const [originais, setOriginais] = useState<Original[]>([]);
@@ -153,10 +153,10 @@ export function Assistente() {
       {fase === "fonte" && (
         <Cartao titulo="1. Fonte de referência">
           <div className="flex gap-4">
-            {(["SINAPI", "EMOP", "SICRO"] as const).map((f) => (
+            {(["SINAPI", "EMOP", "SICRO", "SCO"] as const).map((f) => (
               <label key={f} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 ${fonte === f ? "border-marca-600 bg-marca-50" : "border-slate-200"}`}>
                 <input type="radio" name="fonte" checked={fonte === f} onChange={() => setFonte(f)} />
-                <span>{f === "SINAPI" ? "SINAPI (Caixa)" : f === "EMOP" ? "EMOP-RJ" : "SICRO (DNIT)"}</span>
+                <span>{f === "SINAPI" ? "SINAPI (Caixa)" : f === "EMOP" ? "EMOP-RJ" : f === "SICRO" ? "SICRO (DNIT)" : "SCO-Rio (Prefeitura/FGV)"}</span>
               </label>
             ))}
           </div>
@@ -172,7 +172,9 @@ export function Assistente() {
               ? "Envie o ZIP oficial \"SINAPI-AAAA-MM-formato-xlsx.zip\" (ou a planilha SINAPI_Referência_AAAA_MM.xlsx)."
               : fonte === "EMOP"
                 ? "Envie o RAR mensal da EMOP (ex.: 092026.rar) ou os arquivos DBF (EMOP, DIPR, COMP, MAT, ELEM, REUT)."
-                : "Extraia o pacote do SICRO (ex.: rj-07-2026.7z) e selecione os relatórios XLSX (pode selecionar todos; os PDFs não são usados), ou envie-os num ZIP. São necessários: Sintético de Composições de Custos, Materiais, Mão de Obra e Equipamentos (com e sem desoneração) e Analítico de Composições de Custos."}
+                : fonte === "SCO"
+                  ? "Envie os ZIPs do SCO (\"ARQUIVOS-COM-CATALOGO-DAS-COMPOSICOES-O-EXCEL.zip\" e/ou \"...-D-EXCEL.zip\") ou os XLSX FGV04, FGV06 e FGV07 de cada pacote. Envie o O (onerado) e o D (desonerado) juntos para ter os dois regimes."
+                  : "Extraia o pacote do SICRO (ex.: rj-07-2026.7z) e selecione os relatórios XLSX (pode selecionar todos; os PDFs não são usados), ou envie-os num ZIP. São necessários: Sintético de Composições de Custos, Materiais, Mão de Obra e Equipamentos (com e sem desoneração) e Analítico de Composições de Custos."}
             {" "}Os arquivos são lidos no seu computador; só os dados extraídos são enviados ao servidor.
           </p>
           <input

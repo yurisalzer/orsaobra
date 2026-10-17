@@ -201,7 +201,7 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
         if (l.custo) soma = soma.plus(l.custo);
         linhas.push({
           celulas: ["", l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, `${l.descricao}${l.percentual && !dec(l.percentual).isZero() ? ` (+${formatarNumero(l.percentual, 2)}%)` : ""}`, l.unidade ?? "",
-            { valor: l.coeficiente, tipo: "coeficiente" }, l.precoUnitario ? { valor: l.precoUnitario, tipo: "preco" } : "sem preço", l.custo ? moeda2(l.custo) : "", "", "", ""],
+            { valor: l.coeficiente, tipo: "coeficiente" }, l.precoUnitario ? { valor: l.precoUnitario, tipo: "preco" } : l.situacao === "% sobre a mão de obra" ? "% s/ MO" : "sem preço", l.custo ? moeda2(l.custo) : "", "", "", ""],
           estilo: "detalhe",
         });
       }
@@ -297,11 +297,14 @@ async function cpu(c: Contexto): Promise<Documento> {
     let soma = dec(0);
     for (const l of an?.linhas ?? []) {
       if (l.custo) soma = soma.plus(l.custo);
-      linhas.push({ celulas: [l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, l.descricao, NATUREZA[l.tipo] ?? l.tipo, l.unidade ?? "", l.coeficiente, l.percentual && !dec(l.percentual).isZero() ? l.percentual : null, l.precoUnitario ?? "sem preço", l.custo ? moeda2(l.custo) : ""] });
+      linhas.push({ celulas: [l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, l.descricao, NATUREZA[l.tipo] ?? l.tipo, l.unidade ?? "", l.coeficiente, l.percentual && !dec(l.percentual).isZero() ? l.percentual : null, l.precoUnitario ?? (l.situacao === "% sobre a mão de obra" ? `${formatarNumero(l.coeficiente, 2)}% s/ MO` : "sem preço"), l.custo ? moeda2(l.custo) : ""] });
     }
     const custo = dec(it.custoUnitario);
     const preco = dec(it.precoUnitario);
-    if (an?.linhas?.length) linhas.push({ celulas: [span("Soma dos componentes", 8), moeda2(soma)], estilo: "subtotal" });
+    if (an?.linhas?.length) {
+      const semPct = an.linhas.some((l) => l.situacao === "% sobre a mão de obra");
+      linhas.push({ celulas: [span(semPct ? "Soma dos componentes (sem o percentual sobre a mão de obra)" : "Soma dos componentes", 8), moeda2(soma)], estilo: "subtotal" });
+    }
     linhas.push(
       { celulas: [span(`Custo unitário adotado (${referenciaDoItem(it)})`, 8), moeda2(custo)], estilo: "subtotal" },
       { celulas: [span(`BDI (${fmtPct(it.bdiPercentual)})`, 8), moeda2(preco.minus(arredondar(custo, 2, e.revisao.arredondamento)))], estilo: "subtotal" },

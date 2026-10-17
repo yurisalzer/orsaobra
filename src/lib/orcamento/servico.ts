@@ -763,6 +763,7 @@ export async function reprecificarRevisao(ex: Executor, revisaoId: string, versa
 export interface LinhaAnaliticoItem {
   ordem: number; itemId?: string; fonte: string; natureza?: "INSUMO" | "COMPOSICAO"; tipo: string; codigo: string; descricao: string; unidade: string | null;
   coeficiente: string; percentual: string | null; precoUnitario: string | null; referenciaPreco: string | null; custo: string | null;
+  situacao?: string | null;
 }
 export interface AnaliticoItem {
   tipo: "INSUMO" | "OFICIAL" | "PROPRIA" | "SEM_ANALITICA" | "SICRO";
@@ -830,6 +831,7 @@ export async function montarAnaliticos(ex: Executor, revisaoId: string, itens: L
           return {
             ordem: l.ordem, itemId: l.itemId, fonte: l.fonte, natureza: l.tipo, tipo: l.tipoOriginal ?? l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade,
             coeficiente: l.coeficiente, percentual: l.percentual, precoUnitario: p?.valor?.toString() ?? null, referenciaPreco: p?.referencia ?? null, custo: custo?.toString() ?? null,
+            situacao: l.situacao,
           };
         }),
       },

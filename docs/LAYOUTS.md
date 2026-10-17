@@ -119,3 +119,22 @@ custo horário total), `B - MÃO DE OBRA`, totais de execução, `Custo do FIC`,
 depende da DMT da obra) e `Custo unitário direto total` (= custo do sintético em todas as 6.619 composições de 07/2026).
 
 Composições com custo zero no sintético (4 em 07/2026: genéricas como "Concreto", "Material de base") ficam sem preço.
+
+## SCO-Rio (Prefeitura do Rio / FGV) — catálogos XLSX (verificado em 09/2026)
+
+Dois ZIPs: `ARQUIVOS-COM-CATALOGO-DAS-COMPOSICOES-O-EXCEL.zip` (onerado → regime "sem desoneração") e `...-D-EXCEL.zip`
+(desonerado → "com desoneração"). Arquivos usados de cada um (identificados por `- O|D (FGV0x).xlsx`; linha 3 = `REFERÊNCIA: Mês/AAAA`):
+
+| Arquivo | Conteúdo | Uso |
+|---|---|---|
+| CATÁLOGO DOS ITENS DE SERVIÇO (FGV06) | área (col. A), grupo (B), subgrupo e serviço (C), descrição (D), unidade (E), preço texto pt-BR (F; `NA` nos títulos) | serviço = composição; preço publicado |
+| CATÁLOGO DAS COMPOSIÇÕES (FGV07) | linha do serviço (col. A, às vezes com o código de reutilização, ex. `(RSE006180)`) seguida dos elementares: descrição (B, cortada em 100 car.), código (C), `R` = reutilização (D), unidade (E), quantidade texto pt-BR (F) | componentes e coeficientes |
+| REL DE ITENS ELEMENTARES (FGV04) | seções Materiais, Instrumentos e Equipamentos, Mão de Obra Direta/Indireta, Eventuais, Reutilização de Serviços / de Instrumentos e Equipamentos (no D com sufixo "(Desonerado)"); código, descrição, unidade, reutilizado (código do serviço de origem), preço | insumos e preços |
+
+- Código do serviço publicado com a letra de revisão: `AD 05.05.0050 (/)`, `ET 05.05.0100 (A)`. O pacote D usa códigos próprios
+  (`AD 04.05.0050` ≙ `AD 05.05.0050`; `MOD902450` ≙ `MOD002450`); nenhum serviço é comum aos dois; elementares comuns (3.403) têm o mesmo preço.
+- Elementares EVE com unidade `%` (percentual sobre a mão de obra): o "preço" publicado é o percentual → sem preço em R$; na composição, situação "% sobre a mão de obra".
+- Conferência (09/2026): o preço publicado é igual a Σ arredondar(quantidade × preço, 2) em 4.173 das 4.462 composições do O; nas demais a regra do
+  percentual sobre a mão de obra não é publicada. O orçamento usa sempre o preço publicado.
+- No FGV06 do O há um grupo ("IP 07 Torres de Aço") na coluna do subgrupo; tratado como grupo.
+- FGV02 (Tabelas, .xls) e FGV08 (Ocorrências) não são necessários.

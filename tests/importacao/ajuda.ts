@@ -23,3 +23,5 @@ export function coletor() {
   };
   return { ...r, emissor };
 }
+export const SCO_DIR = path.join(FIXTURES, "sco");
+export const SCO_XLSX = (pacotes: ("O" | "D")[] = ["O", "D"]) => pacotes.flatMap((p) => fs.readdirSync(path.join(SCO_DIR, p)).sort().map((n) => path.join(SCO_DIR, p, n)));

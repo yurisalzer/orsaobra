@@ -33,7 +33,7 @@ const esquemaInicio = z.object({
   identificacao: z.object({
     adaptador: z.string(),
     versao: z.string(),
-    fonte: z.enum(["SINAPI", "EMOP", "SICRO"]),
+    fonte: z.enum(["SINAPI", "EMOP", "SICRO", "SCO"]),
     uf: z.string().length(2),
     competencia: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
     layout: z.string(),

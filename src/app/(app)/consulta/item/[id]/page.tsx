@@ -152,7 +152,7 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
                       <td>{l.unidade ?? "—"}</td>
                       <td className="num">{formatarCoeficiente(l.coeficiente)}</td>
                       {linhas.some((x) => x.percentual && Number(x.percentual)) ? <td className="num">{l.percentual && Number(l.percentual) ? formatarCoeficiente(l.percentual) : ""}</td> : null}
-                      <td className="num whitespace-nowrap" title={p?.referencia ?? p?.pendencia ?? ""}>{p?.valor ? formatarPreco(p.valor.toFixed(4)) : <em className="text-amber-700">sem preço</em>}</td>
+                      <td className="num whitespace-nowrap" title={p?.referencia ?? p?.pendencia ?? ""}>{p?.valor ? formatarPreco(p.valor.toFixed(4)) : l.situacao === "% sobre a mão de obra" ? <span className="text-slate-500">{formatarCoeficiente(l.coeficiente)}% s/ MO</span> : <em className="text-amber-700">sem preço</em>}</td>
                       <td className="num whitespace-nowrap">{v ? formatarPreco(v.toFixed(4)) : "—"}</td>
                       <td className="text-xs text-slate-500">{l.situacao ?? ""}</td>
                     </tr>
@@ -161,7 +161,7 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
               </table>
               <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[22rem_1fr]">
                 <dt className="text-slate-500">{item.oficial ? "Soma da analítica (apenas conferência)" : "Custo calculado da composição própria"}</dt>
-                <dd>{completa ? formatarPreco(soma.toFixed(4)) : <em className="text-amber-700">incompleta — há componente sem preço</em>}</dd>
+                <dd>{completa ? formatarPreco(soma.toFixed(4)) : linhas.some((l) => l.situacao === "% sobre a mão de obra") ? <em className="text-slate-600">não somada — há percentual sobre a mão de obra (a fonte não publica a base de cálculo)</em> : <em className="text-amber-700">incompleta — há componente sem preço</em>}</dd>
                 {item.oficial && (<><dt className="text-slate-500">Preço publicado (valor oficial)</dt><dd><strong>{precoItem.valor ? formatarPreco(precoItem.valor.toFixed(4)) : "sem preço publicado"}</strong></dd></>)}
               </dl>
               {item.oficial && <p className="mt-2 text-xs text-slate-500">Nos orçamentos é usado o preço publicado. Pequenas diferenças na soma decorrem dos arredondamentos aplicados pela fonte.</p>}

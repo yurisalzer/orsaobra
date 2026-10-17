@@ -35,7 +35,7 @@ export async function identificar(originais: ArquivoEntrada[], opcoes: { uf: str
     recusas.length
       ? `Arquivos reconhecidos, mas com problema de layout:\n${recusas.join("\n")}`
       : `Layout não reconhecido. Arquivos encontrados: ${entradas.map((e) => e.nome).join(", ") || "nenhum"}. ` +
-        "Envie o ZIP oficial do SINAPI (formato XLSX), o RAR/DBFs oficiais da EMOP ou os relatórios XLSX do SICRO. Se o layout oficial mudou, é necessário um novo adaptador.",
+        "Envie o ZIP oficial do SINAPI (formato XLSX), o RAR/DBFs oficiais da EMOP os relatórios XLSX do SICRO ou os ZIPs/XLSX do SCO-Rio. Se o layout oficial mudou, é necessário um novo adaptador.",
   );
 }
 

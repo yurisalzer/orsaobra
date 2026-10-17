@@ -73,7 +73,7 @@ export function EditorProprio({ inicial }: { inicial: DadosEditor }) {
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="font-medium">Componentes</h2>
           <div className="relative">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar insumo ou composição (SINAPI, EMOP, SICRO ou própria) por código ou descrição"
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar insumo ou composição (SINAPI, EMOP, SICRO, SCO ou própria) por código ou descrição"
               aria-label="Buscar componente" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             {achados.length > 0 && (
               <ul className="absolute z-10 mt-1 max-h-80 w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-lg" role="listbox">

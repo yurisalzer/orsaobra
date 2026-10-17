@@ -14,6 +14,7 @@ async function main() {
     { codigo: "SINAPI", nome: "SINAPI — Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil", oficial: true },
     { codigo: "EMOP", nome: "EMOP-RJ — Empresa de Obras Públicas do Estado do Rio de Janeiro", oficial: true },
     { codigo: "SICRO", nome: "SICRO — Sistema de Custos Referenciais de Obras (DNIT)", oficial: true },
+    { codigo: "SCO", nome: "SCO-Rio — Sistema de Custos de Obras e Serviços de Engenharia (Prefeitura do Rio de Janeiro)", oficial: true },
     { codigo: "PROPRIA", nome: "Composições e insumos próprios", oficial: false },
   ];
   const ex = await criarExecutor();

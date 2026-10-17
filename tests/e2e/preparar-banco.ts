@@ -3,7 +3,7 @@ import { limparBanco, prisma } from "../db/ajuda";
 
 async function main() {
   await limparBanco();
-  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "SICRO", nome: "SICRO" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) {
+  for (const f of [{ codigo: "SINAPI", nome: "SINAPI" }, { codigo: "EMOP", nome: "EMOP-RJ" }, { codigo: "SICRO", nome: "SICRO" }, { codigo: "SCO", nome: "SCO-Rio" }, { codigo: "PROPRIA", nome: "Próprias", oficial: false }]) {
     await prisma.fonte.create({ data: f });
   }
   await prisma.$disconnect();

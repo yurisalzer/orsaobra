@@ -1,7 +1,7 @@
 import type { ArquivoEntrada } from "./leitores/arquivo";
 
 export type TipoItemImp = "INSUMO" | "COMPOSICAO";
-export type FonteOficial = "SINAPI" | "EMOP" | "SICRO";
+export type FonteOficial = "SINAPI" | "EMOP" | "SICRO" | "SCO";
 export type SeveridadeImp = "ERRO" | "AVISO" | "INFO";
 
 interface Origem {

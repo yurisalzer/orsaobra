@@ -21,7 +21,7 @@ export default async function Composicoes() {
         )}
       </div>
       <p className="text-sm text-slate-600">
-        Composições analíticas <strong>oficiais</strong> (SINAPI/EMOP/SICRO) são consultadas em <Link href="/consulta" className="text-marca-700 underline">Consulta de preços</Link>.
+        Composições analíticas <strong>oficiais</strong> (SINAPI/EMOP/SICRO/SCO) são consultadas em <Link href="/consulta" className="text-marca-700 underline">Consulta de preços</Link>.
         Aqui ficam os itens criados por você — sempre identificados como não oficiais.
       </p>
       <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">

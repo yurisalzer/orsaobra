@@ -25,11 +25,11 @@ async function entrar(page: Page) {
   await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
 }
 
-const ROTULO = { SINAPI: "SINAPI (Caixa)", EMOP: "EMOP-RJ", SICRO: "SICRO (DNIT)" };
+const ROTULO = { SINAPI: "SINAPI (Caixa)", EMOP: "EMOP-RJ", SICRO: "SICRO (DNIT)", SCO: "SCO-Rio (Prefeitura/FGV)" };
 
 type Arquivo = string | { name: string; mimeType: string; buffer: Buffer };
 
-async function ateIniciar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO", arquivos: Arquivo[], competencia = "09/2026") {
+async function ateIniciar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO" | "SCO", arquivos: Arquivo[], competencia = "09/2026") {
   await page.goto("/importacao/nova");
   await page.getByLabel(ROTULO[fonte]).check();
   await page.getByRole("button", { name: "Continuar" }).click();
@@ -43,7 +43,7 @@ async function ateIniciar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO", arquiv
   await iniciar.click();
 }
 
-async function importar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO", arquivos: Arquivo[], competencia?: string) {
+async function importar(page: Page, fonte: "SINAPI" | "EMOP" | "SICRO" | "SCO", arquivos: Arquivo[], competencia?: string) {
   await ateIniciar(page, fonte, arquivos, competencia);
   await expect(page.getByRole("heading", { name: "7. Resultado da validação" })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole("heading", { name: /8. Pré-visualização/ })).toBeVisible();
@@ -140,4 +140,33 @@ test("importa SICRO (relatórios XLSX), valida e publica; composição publicada
   await expect(page.getByRole("cell", { name: "E9050" })).toBeVisible();
   await expect(page.getByText("R$ 5.137,26").first()).toBeVisible();
   await page.screenshot({ path: "test-results/sicro-composicao.png", fullPage: true });
+});
+
+test("importa SCO-Rio pelos dois ZIPs (O e D), valida e publica; busca por código do SCO", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await entrar(page);
+  const { zipSync } = await import("fflate");
+  const zip = (p: "O" | "D") => {
+    const dir = path.join(FIX, "sco", p);
+    return { name: `ARQUIVOS-COM-CATALOGO-DAS-COMPOSICOES-${p}-EXCEL.zip`, mimeType: "application/zip", buffer: Buffer.from(zipSync(Object.fromEntries(fs.readdirSync(dir).map((n) => [n, new Uint8Array(fs.readFileSync(path.join(dir, n)))])))) };
+  };
+  await importar(page, "SCO", [zip("O"), zip("D")], "09/2026");
+  await page.getByLabel(/Li e estou ciente/).check(); // aviso: elementares percentuais (EVE %) sem preço em R$
+  await page.getByRole("button", { name: "Confirmar importação" }).click();
+  await expect(page.getByRole("heading", { name: "10. Importação gravada" })).toBeVisible({ timeout: 120_000 });
+  await page.goto("/importacao");
+  const linha = page.getByRole("row", { name: /SCO\s+RJ\s+09\/2026/ });
+  await linha.getByRole("button", { name: "Validar" }).click();
+  await expect(linha.getByText("Validada — aguardando publicação")).toBeVisible();
+  await linha.getByRole("button", { name: "Publicar" }).click();
+  await expect(linha.getByText("Publicada", { exact: true })).toBeVisible();
+
+  await page.goto("/consulta");
+  await page.getByLabel("Buscar").fill("AD 05.05.07");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("link", { name: "AD 05.05.0706 (A)" }).click();
+  await expect(page.getByText(/Composição analítica publicada pela fonte — SCO RJ 09\/2026/)).toBeVisible();
+  await expect(page.getByRole("cell", { name: "% sobre a mão de obra" })).toBeVisible();
+  await expect(page.getByText("R$ 194,98").first()).toBeVisible();
+  await page.screenshot({ path: "test-results/sco-composicao.png", fullPage: true });
 });

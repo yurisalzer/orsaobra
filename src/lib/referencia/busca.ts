@@ -37,7 +37,9 @@ export function termos(texto: string): string[] {
     .toLowerCase().split(/\s+/).map((t) => t.replace(/[%_\\]/g, "")).filter((t) => t.length > 0).slice(0, 8);
 }
 
-const pareceCodigo = (t: string) => /^[\d.\-A-Za-z]*\d[\d.\-A-Za-z]*$/.test(t) && !/\s/.test(t);
+/** Código SCO-Rio: duas letras, espaço e números ("AD 05.05.0050 (/)"). */
+const RE_CODIGO_SCO = /^[A-Za-z]{2}\s+\d{2}(\.\d{0,2}(\.\d{0,4}(\s*\(([A-Za-z/]\)?)?)?)?)?$/;
+const pareceCodigo = (t: string) => (/^[\d.\-A-Za-z]*\d[\d.\-A-Za-z]*$/.test(t) && !/\s/.test(t)) || RE_CODIGO_SCO.test(t);
 
 /**
  * Busca por código (prefixo, preservando zeros à esquerda) ou por palavras da
@@ -70,7 +72,7 @@ export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens
     alvo = `SELECT item_id FROM base_item WHERE base_revisao_id = ANY($1::uuid[])
             UNION SELECT item_id FROM item_proprio WHERE $2 AND ativo`;
   } else if (porCodigo) {
-    params.push(texto.toUpperCase().replace(/[%_\\]/g, "") + "%");
+    params.push(texto.toUpperCase().replace(/[%_\\]/g, "").replace(/\s+/g, " ") + "%");
     alvo = `SELECT ir.id AS item_id FROM item_referencia ir WHERE ir.codigo LIKE $${params.length}`;
   } else {
     const conds = palavras.map((p) => {
