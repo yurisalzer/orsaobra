@@ -91,10 +91,12 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
               <>
                 <button className="text-marca-700 underline" onClick={() => setAdicionandoEm(e.id)}>+ item</button>{" "}
                 <button className="text-marca-700 underline" onClick={() => novaEtapa(e.id)}>+ subetapa</button>{" "}
+                <span className="ml-2 inline-flex items-center gap-3 align-middle text-2xl font-normal leading-none">
                 <button title="Renomear" aria-label={`Renomear ${e.titulo}`} onClick={() => { const t = window.prompt("Novo título:", e.titulo); if (t) rodar(() => acaoRenomearEtapa(r.id, versao, e.id, t)); }}>✎</button>
                 <button title="Subir" aria-label={`Subir ${e.titulo}`} onClick={() => rodar(() => acaoMoverEtapa(r.id, versao, e.id, -1))}>↑</button>
                 <button title="Descer" aria-label={`Descer ${e.titulo}`} onClick={() => rodar(() => acaoMoverEtapa(r.id, versao, e.id, 1))}>↓</button>
                 <button title="Excluir" aria-label={`Excluir ${e.titulo}`} className="text-red-700" onClick={() => { if (window.confirm(`Excluir a etapa "${e.titulo}" com todas as subetapas e itens?`)) rodar(() => acaoExcluirEtapa(r.id, versao, e.id)); }}>✕</button>
+                </span>
               </>
             )}
           </td>
@@ -147,7 +149,8 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
           </td>
           <td className="num text-sm">{formatarMoeda(i.precoUnitario)}</td>
           <td className="num text-sm font-medium">{formatarMoeda(i.precoTotal)}</td>
-          <td className="whitespace-nowrap text-xs">
+          <td className="whitespace-nowrap pl-2">
+            <div className="flex items-center gap-3 text-2xl leading-none">
             <button title="Como o preço foi calculado" aria-label={`Cálculo do preço ${i.numero}`} onClick={() => setMemoria(memoria === i.id ? null : i.id)}>ⓘ</button>
             {aberta && (
               <>
@@ -157,6 +160,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
                 <button title="Excluir" aria-label={`Excluir item ${i.numero}`} className="text-red-700" onClick={() => { if (window.confirm(`Excluir o item ${i.numero} (${i.codigo})?`)) rodar(() => acaoExcluirItem(r.id, versao, i.id)); }}>✕</button>
               </>
             )}
+            </div>
           </td>
         </tr>
         {(i.memoriaQuantitativo || aberta) && (
@@ -470,7 +474,7 @@ function TrocarBase({ item, bases, aoTrocar }: { item: LinhaItem; bases: BaseOpc
   const [regime, setRegime] = useState(item.regime ?? "");
   if (!aberto) return <button title="Base/regime deste item" aria-label={`Base do item ${item.numero}`} onClick={() => setAberto(true)}>⇄</button>;
   return (
-    <span className="ml-1 inline-flex items-center gap-1">
+    <span className="ml-1 inline-flex items-center gap-1 text-xs">
       <select value={base} onChange={(e) => setBase(e.target.value)} className="rounded border border-slate-300" aria-label="Base do item">
         {bases.map((b) => <option key={b.revisaoId} value={b.revisaoId}>{b.rotulo}</option>)}
       </select>
