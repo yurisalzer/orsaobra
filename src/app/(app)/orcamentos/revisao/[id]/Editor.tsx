@@ -1,0 +1,410 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { SeloFonte } from "@/components/SeloFonte";
+import { formatarMoeda, formatarNumero } from "@/lib/calculo/decimal";
+import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
+import {
+  acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem,
+  acaoFechar, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
+} from "../../acoes";
+
+export interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
+interface Perfil { id: string; nome: string; bdi: string }
+type Achado = Extract<Awaited<ReturnType<typeof acaoBuscarParaOrcamento>>, { ok: true }>["dados"][number];
+
+const qtd = (v: string) => {
+  const [i, f = ""] = v.split(".");
+  const frac = f.replace(/0+$/, "");
+  return formatarNumero(`${i}.${frac || "0"}`, frac.length);
+};
+const pct = (v: string | null) => (v === null ? "—" : `${formatarNumero(v, 2)}%`);
+
+export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean }) {
+  const router = useRouter();
+  const [versao, setVersao] = useState(estado.revisao.versao);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [pendente, iniciar] = useTransition();
+  const [adicionandoEm, setAdicionandoEm] = useState<string | null>(null);
+  const [config, setConfig] = useState(false);
+  const [memoria, setMemoria] = useState<string | null>(null);
+  useEffect(() => setVersao(estado.revisao.versao), [estado.revisao.versao]);
+
+  const aberta = estado.revisao.status === "EM_ELABORACAO" && podeEditar;
+  const r = estado.revisao;
+
+  /** Executa uma ação, atualiza a versão e recarrega os dados do servidor. */
+  function rodar<T>(f: () => Promise<Resultado<T>>, depois?: (d: T) => void) {
+    setErro(null);
+    setAviso(null);
+    iniciar(async () => {
+      const res = await f();
+      if (!res.ok) { setErro(res.erro); router.refresh(); return; }
+      const d = res.dados as unknown;
+      if (typeof d === "number") setVersao(d);
+      else if (d && typeof d === "object" && "versao" in d && typeof (d as { versao: unknown }).versao === "number") setVersao((d as { versao: number }).versao);
+      depois?.(res.dados);
+      router.refresh();
+    });
+  }
+
+  const filhas = (paiId: string | null) => estado.etapas.filter((e) => e.paiId === paiId).sort((a, b) => a.ordem - b.ordem);
+  const itensDe = (etapaId: string) => estado.itens.filter((i) => i.etapaId === etapaId).sort((a, b) => a.ordem - b.ordem);
+  const baseDaFonte = (fonte: string) => estado.basesPadrao.find((b) => b.fonte === fonte);
+
+  const novaEtapa = (paiId: string | null) => {
+    const t = window.prompt(paiId ? "Título da subetapa:" : "Título da etapa:");
+    if (t) rodar(() => acaoCriarEtapa(r.id, versao, paiId, t));
+  };
+
+  function linhaEtapa(e: EtapaLinha, nivel: number): React.ReactNode {
+    return (
+      <Fragment key={e.id}>
+        <tr className={nivel === 0 ? "bg-slate-100 font-semibold" : "bg-slate-50 font-medium"}>
+          <td className="py-2 pl-2">{e.numero}</td>
+          <td colSpan={8} style={{ paddingLeft: `${nivel * 1}rem` }}>{e.titulo}</td>
+          <td className="num">{formatarMoeda(e.total)}</td>
+          <td className="whitespace-nowrap text-xs font-normal">
+            {aberta && (
+              <>
+                <button className="text-marca-700 underline" onClick={() => setAdicionandoEm(e.id)}>+ item</button>{" "}
+                <button className="text-marca-700 underline" onClick={() => novaEtapa(e.id)}>+ subetapa</button>{" "}
+                <button title="Renomear" aria-label={`Renomear ${e.titulo}`} onClick={() => { const t = window.prompt("Novo título:", e.titulo); if (t) rodar(() => acaoRenomearEtapa(r.id, versao, e.id, t)); }}>✎</button>
+                <button title="Subir" aria-label={`Subir ${e.titulo}`} onClick={() => rodar(() => acaoMoverEtapa(r.id, versao, e.id, -1))}>↑</button>
+                <button title="Descer" aria-label={`Descer ${e.titulo}`} onClick={() => rodar(() => acaoMoverEtapa(r.id, versao, e.id, 1))}>↓</button>
+                <button title="Excluir" aria-label={`Excluir ${e.titulo}`} className="text-red-700" onClick={() => { if (window.confirm(`Excluir a etapa "${e.titulo}" com todas as subetapas e itens?`)) rodar(() => acaoExcluirEtapa(r.id, versao, e.id)); }}>✕</button>
+              </>
+            )}
+          </td>
+        </tr>
+        {filhas(e.id).map((f) => linhaEtapa(f, nivel + 1))}
+        {itensDe(e.id).map((i) => linhaItem(i))}
+        {adicionandoEm === e.id && (
+          <tr><td colSpan={11} className="bg-marca-50 p-3">
+            <AdicionarItem revisaoId={r.id} bases={estado.basesPadrao} aoCancelar={() => setAdicionandoEm(null)}
+              aoAdicionar={(achado, quantidade) => rodar(() => acaoAdicionarItem(r.id, versao, {
+                etapaId: e.id, itemReferenciaId: achado.itemId, quantidade,
+                base: achado.outroRegime && baseDaFonte(achado.fonte) ? { baseRevisaoId: baseDaFonte(achado.fonte)!.baseRevisaoId, regime: achado.outroRegime } : null,
+              }), () => { setAviso(`${achado.codigo} adicionado.`); setAdicionandoEm(null); })} />
+          </td></tr>
+        )}
+      </Fragment>
+    );
+  }
+
+  function linhaItem(i: LinhaItem) {
+    const padrao = baseDaFonte(i.fonte);
+    const outraBase = i.fonte !== "PROPRIA" && padrao && (padrao.baseRevisaoId !== i.baseRevisaoId || padrao.regime !== i.regime);
+    return (
+      <Fragment key={i.id}>
+        <tr className="border-t border-slate-100 align-top">
+          <td className="py-1 pl-2 text-xs">{i.numero}</td>
+          <td><SeloFonte fonte={i.fonte} /></td>
+          <td className="whitespace-nowrap font-mono text-xs"><Link className="text-marca-700 hover:underline" href={`/consulta/item/${i.itemReferenciaId}${i.baseRevisaoId ? `?b_${i.fonte}=${i.baseRevisaoId}${i.regime ? `&r_${i.fonte}=${i.regime}` : ""}` : ""}`} target="_blank">{i.codigo}</Link></td>
+          <td className="text-sm">
+            {i.descricao}
+            <div className="text-xs text-slate-500">{i.referenciaPreco}{outraBase && <span className="text-amber-700"> · base/regime diferente do padrão</span>}</div>
+            {i.pendencia && <div className="text-xs text-amber-800">⚠ {i.pendencia}</div>}
+          </td>
+          <td className="text-xs">{i.unidade || <em className="text-amber-700">s/ unid.</em>}</td>
+          <td className="num">
+            {aberta ? <CampoQuantidade valor={i.quantidade} rotulo={`Quantidade ${i.numero}`} aoSalvar={(q) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { quantidade: q }))} /> : qtd(i.quantidade)}
+          </td>
+          <td className="num text-sm">{formatarMoeda(i.custoUnitario)}</td>
+          <td className="text-xs">
+            {aberta ? (
+              <select value={i.bdiPerfilId ?? ""} aria-label={`BDI ${i.numero}`} className="max-w-[9rem] rounded border border-slate-300 px-1 py-0.5"
+                onChange={(ev) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { bdiPerfilId: ev.target.value || null }))}>
+                <option value="">Global ({pct(r.bdiPercentual ?? "0")})</option>
+                {perfis.map((p) => <option key={p.id} value={p.id}>{p.nome} ({pct(p.bdi)})</option>)}
+              </select>
+            ) : pct(i.bdiPercentual)}
+            {aberta && i.bdiPerfilId && <div className="text-slate-500">{pct(i.bdiPercentual)}</div>}
+          </td>
+          <td className="num text-sm">{formatarMoeda(i.precoUnitario)}</td>
+          <td className="num text-sm font-medium">{formatarMoeda(i.precoTotal)}</td>
+          <td className="whitespace-nowrap text-xs">
+            <button title="Memória de cálculo" aria-label={`Memória ${i.numero}`} onClick={() => setMemoria(memoria === i.id ? null : i.id)}>ⓘ</button>
+            {aberta && (
+              <>
+                <button title="Subir" aria-label={`Subir item ${i.numero}`} onClick={() => rodar(() => acaoMoverItem(r.id, versao, i.id, -1))}>↑</button>
+                <button title="Descer" aria-label={`Descer item ${i.numero}`} onClick={() => rodar(() => acaoMoverItem(r.id, versao, i.id, 1))}>↓</button>
+                {i.fonte !== "PROPRIA" && <TrocarBase item={i} bases={bases.filter((b) => b.fonte === i.fonte)} aoTrocar={(b) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { base: b }))} />}
+                <button title="Excluir" aria-label={`Excluir item ${i.numero}`} className="text-red-700" onClick={() => { if (window.confirm(`Excluir o item ${i.numero} (${i.codigo})?`)) rodar(() => acaoExcluirItem(r.id, versao, i.id)); }}>✕</button>
+              </>
+            )}
+          </td>
+        </tr>
+        {memoria === i.id && <tr><td colSpan={11} className="bg-slate-50 px-3 py-2 text-xs text-slate-700">{i.memoriaCalculo}</td></tr>}
+      </Fragment>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-slate-500"><Link href="/orcamentos" className="underline">Orçamentos</Link> · {estado.orcamento.obraNome}{estado.orcamento.cliente ? ` — ${estado.orcamento.cliente}` : ""}</p>
+          <h1 className="text-2xl font-semibold">{estado.orcamento.codigo ? `${estado.orcamento.codigo} — ` : ""}{estado.orcamento.titulo}</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+            <span>Revisão</span>
+            {estado.revisoes.map((x) => (
+              <Link key={x.id} href={`/orcamentos/revisao/${x.id}`} className={`rounded px-2 py-0.5 ${x.id === r.id ? "bg-marca-600 text-white" : "bg-slate-100 hover:bg-slate-200"}`} title={x.descricao ?? ""}>
+                {x.numero}{x.status === "FECHADA" ? " 🔒" : ""}
+              </Link>
+            ))}
+            <span className={`rounded px-2 py-0.5 text-xs ${r.status === "FECHADA" ? "bg-slate-200 text-slate-700" : "bg-green-100 text-green-800"}`}>
+              {r.status === "FECHADA" ? `Fechada em ${r.fechadaEm}${r.fechadaPor ? ` por ${r.fechadaPor}` : ""}` : "Em elaboração"}
+            </span>
+            {r.descricao && <span className="text-slate-500">— {r.descricao}</span>}
+          </p>
+        </div>
+        {podeEditar && (
+          <div className="flex flex-wrap gap-2 text-sm">
+            {aberta && <button disabled={pendente} onClick={() => setConfig(!config)} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Configurações</button>}
+            {aberta && <button disabled={pendente} onClick={() => { if (window.confirm("Fechar a revisão? Os valores ficarão registrados e não poderão mais ser alterados.")) rodar(() => acaoFechar(r.id, versao)); }} className="rounded-md bg-slate-800 px-3 py-1.5 text-white">Fechar revisão</button>}
+            {r.status === "FECHADA" && !estado.revisoes.some((x) => x.status === "EM_ELABORACAO") && <NovaRevisao origem={r.id} bases={bases} padrao={estado.basesPadrao} aoCriar={(id) => router.push(`/orcamentos/revisao/${id}`)} setErro={setErro} />}
+            <button disabled={pendente} onClick={() => { const t = window.prompt("Título do novo orçamento (cópia desta revisão):", `${estado.orcamento.titulo} — cópia`); if (t) rodar(() => acaoDuplicar(r.id, t), (d) => router.push(`/orcamentos/revisao/${d.revisaoId}`)); }} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Duplicar</button>
+            {estado.revisoes.length > 1 && (
+              <select aria-label="Comparar com" className="rounded-md border border-slate-300 px-2 py-1.5" value="" onChange={(e) => e.target.value && router.push(`/orcamentos/comparar?a=${e.target.value}&b=${r.id}`)}>
+                <option value="">Comparar com…</option>
+                {estado.revisoes.filter((x) => x.id !== r.id).map((x) => <option key={x.id} value={x.id}>Revisão {x.numero}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+      </div>
+
+      {erro && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{erro}</p>}
+      {aviso && <p role="status" className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{aviso}</p>}
+      {pendente && <p className="text-xs text-slate-500" aria-live="polite">Salvando…</p>}
+
+      <section className="grid gap-3 sm:grid-cols-4">
+        <Total rotulo="Custo direto" valor={formatarMoeda(estado.totais.custoDireto)} />
+        <Total rotulo="BDI" valor={formatarMoeda(estado.totais.bdi)} />
+        <Total rotulo="Total do orçamento" valor={formatarMoeda(estado.totais.total)} destaque />
+        <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600">
+          <p>Bases: {estado.basesPadrao.map((b) => `${b.fonte} ${b.competencia.split("-").reverse().join("/")}${b.numeroBase ? ` ret.${b.numeroBase}` : ""} (${b.regimeNome})`).join("; ") || "—"}</p>
+          <p>BDI global: {pct(r.bdiPercentual)} · {r.arredondamento === "TRUNCAR" ? "truncamento" : "arredondamento"} a 2 casas</p>
+          {estado.totais.pendencias > 0 && <p className="text-amber-800">⚠ {estado.totais.pendencias} item(ns) com pendência</p>}
+        </div>
+      </section>
+
+      {config && aberta && <Configuracoes estado={estado} versao={versao} perfis={perfis} bases={bases} rodar={rodar} aoFechar={() => setConfig(false)} />}
+
+      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-slate-500">
+            <tr><th className="py-2 pl-2">Item</th><th>Fonte</th><th>Código</th><th>Descrição</th><th>Unid.</th><th className="text-right">Quant.</th><th className="text-right">Custo unit.</th><th>BDI</th><th className="text-right">Preço unit.</th><th className="text-right">Total</th><th /></tr>
+          </thead>
+          <tbody>
+            {filhas(null).map((e) => linhaEtapa(e, 0))}
+            {estado.etapas.length === 0 && <tr><td colSpan={11} className="p-4 text-slate-500">Nenhuma etapa. {aberta ? "Comece criando a primeira etapa." : ""}</td></tr>}
+          </tbody>
+        </table>
+        {aberta && <div className="border-t border-slate-100 p-3"><button onClick={() => novaEtapa(null)} className="text-sm text-marca-700 underline">+ Nova etapa</button></div>}
+      </section>
+    </div>
+  );
+}
+
+function Total({ rotulo, valor, destaque }: { rotulo: string; valor: string; destaque?: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="text-xs text-slate-500">{rotulo}</p>
+      <p className={`mt-1 font-semibold ${destaque ? "text-xl text-marca-900" : "text-lg"}`}>{valor}</p>
+    </div>
+  );
+}
+
+function CampoQuantidade({ valor, rotulo, aoSalvar }: { valor: string; rotulo: string; aoSalvar: (q: string) => void }) {
+  const original = qtd(valor);
+  const [texto, setTexto] = useState(original);
+  useEffect(() => setTexto(original), [original]);
+  const salvar = () => { if (texto.trim() && texto !== original) aoSalvar(texto); };
+  return (
+    <input value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={salvar} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setTexto(original); }}
+      inputMode="decimal" aria-label={rotulo} className="w-24 rounded border border-slate-300 px-1 py-0.5 text-right" />
+  );
+}
+
+function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoId: string; bases: EstadoRevisao["basesPadrao"]; aoAdicionar: (a: Achado, q: string) => void; aoCancelar: () => void }) {
+  const [busca, setBusca] = useState("");
+  const [achados, setAchados] = useState<Achado[]>([]);
+  const [escolhido, setEscolhido] = useState<Achado | null>(null);
+  const [quantidade, setQuantidade] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (t.current) clearTimeout(t.current);
+    if (busca.trim().length < 2) { setAchados([]); return; }
+    t.current = setTimeout(async () => {
+      setCarregando(true);
+      const r = await acaoBuscarParaOrcamento(revisaoId, busca);
+      setCarregando(false);
+      if (r.ok) setAchados(r.dados);
+    }, 300);
+  }, [busca, revisaoId]);
+  const nomeRegime = (fonte: string) => bases.find((b) => b.fonte === fonte)?.regimeNome ?? "";
+  return (
+    <div className="space-y-2">
+      {!escolhido ? (
+        <>
+          <div className="flex gap-2">
+            <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar serviço ou insumo por código ou descrição (bases do orçamento + próprios)"
+              aria-label="Buscar serviço" className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <button onClick={aoCancelar} className="rounded-md border border-slate-300 px-3 text-sm">Cancelar</button>
+          </div>
+          {carregando && <p className="text-xs text-slate-500">Buscando…</p>}
+          {achados.length > 0 && (
+            <ul className="max-h-72 overflow-auto rounded-md border border-slate-200 bg-white" role="listbox">
+              {achados.map((a) => (
+                <li key={a.itemId}>
+                  <button role="option" aria-selected="false" onClick={() => setEscolhido(a)} className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-marca-50">
+                    <SeloFonte fonte={a.fonte} />
+                    <span className="font-mono">{a.codigo}</span>
+                    <span className="flex-1">{a.descricao} <span className="text-slate-500">({a.unidade ?? "s/ unid."})</span></span>
+                    <span className="whitespace-nowrap text-xs">
+                      {a.fonte === "PROPRIA" ? "calculado" : a.preco ? formatarMoeda(a.preco) : a.outroRegime ? <span className="text-amber-700">{formatarMoeda(a.outroPreco!)} (outro regime)</span> : <span className="text-amber-700">sem preço</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <SeloFonte fonte={escolhido.fonte} /><span className="font-mono">{escolhido.codigo}</span><span>{escolhido.descricao}</span>
+          {escolhido.outroRegime && <span className="text-xs text-amber-800">Este código só tem preço no regime do próprio código (diferente de “{nomeRegime(escolhido.fonte)}”); será usado esse regime.</span>}
+          <label className="flex items-center gap-1">Quantidade ({escolhido.unidade ?? "s/ unid."})
+            <input autoFocus value={quantidade} onChange={(e) => setQuantidade(e.target.value)} inputMode="decimal" aria-label="Quantidade do novo item"
+              onKeyDown={(e) => { if (e.key === "Enter" && quantidade.trim()) aoAdicionar(escolhido, quantidade); }}
+              className="w-28 rounded border border-slate-300 px-2 py-1 text-right" />
+          </label>
+          <button disabled={!quantidade.trim()} onClick={() => aoAdicionar(escolhido, quantidade)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50">Adicionar</button>
+          <button onClick={() => setEscolhido(null)} className="rounded-md border border-slate-300 px-3 py-1.5">Voltar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrocarBase({ item, bases, aoTrocar }: { item: LinhaItem; bases: BaseOpcao[]; aoTrocar: (b: { baseRevisaoId: string; regime: string | null }) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [base, setBase] = useState(item.baseRevisaoId ?? bases[0]?.revisaoId ?? "");
+  const [regime, setRegime] = useState(item.regime ?? "");
+  if (!aberto) return <button title="Base/regime deste item" aria-label={`Base do item ${item.numero}`} onClick={() => setAberto(true)}>⇄</button>;
+  return (
+    <span className="ml-1 inline-flex items-center gap-1">
+      <select value={base} onChange={(e) => setBase(e.target.value)} className="rounded border border-slate-300" aria-label="Base do item">
+        {bases.map((b) => <option key={b.revisaoId} value={b.revisaoId}>{b.rotulo}</option>)}
+      </select>
+      <select value={regime} onChange={(e) => setRegime(e.target.value)} className="rounded border border-slate-300" aria-label="Regime do item">
+        {bases.find((b) => b.revisaoId === base)?.regimes.map((g) => <option key={g.codigo} value={g.codigo}>{g.nome}</option>)}
+      </select>
+      <button className="text-marca-700 underline" onClick={() => { setAberto(false); aoTrocar({ baseRevisaoId: base, regime }); }}>aplicar</button>
+      <button onClick={() => setAberto(false)}>✕</button>
+    </span>
+  );
+}
+
+function Configuracoes({ estado, versao, perfis, bases, rodar, aoFechar }: {
+  estado: EstadoRevisao; versao: number; perfis: Perfil[]; bases: BaseOpcao[];
+  rodar: <T>(f: () => Promise<Resultado<T>>, depois?: (d: T) => void) => void; aoFechar: () => void;
+}) {
+  const fontes = [...new Set(bases.map((b) => b.fonte))];
+  const [sel, setSel] = useState<Record<string, { usar: boolean; base: string; regime: string }>>(() =>
+    Object.fromEntries(fontes.map((f) => {
+      const atual = estado.basesPadrao.find((b) => b.fonte === f);
+      const b = bases.find((x) => x.revisaoId === atual?.baseRevisaoId) ?? bases.find((x) => x.fonte === f)!;
+      return [f, { usar: !!atual, base: b.revisaoId, regime: atual?.regime ?? b.regimes[0]?.codigo ?? "" }];
+    })),
+  );
+  const [bdi, setBdi] = useState(estado.revisao.bdiPerfilId ?? "");
+  const [modo, setModo] = useState(estado.revisao.arredondamento);
+  const [data, setData] = useState(estado.revisao.dataReferencia);
+  const [descricao, setDescricao] = useState(estado.revisao.descricao ?? "");
+  return (
+    <section className="space-y-3 rounded-xl border border-marca-600 bg-white p-5 text-sm">
+      <h2 className="font-medium">Configurações da revisão {estado.revisao.numero}</h2>
+      <label className="block">Descrição<input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" /></label>
+      {fontes.map((f) => (
+        <div key={f} className="flex flex-wrap items-center gap-2">
+          <label className="flex w-28 items-center gap-1 font-medium"><input type="checkbox" checked={sel[f].usar} onChange={(e) => setSel({ ...sel, [f]: { ...sel[f], usar: e.target.checked } })} /> {f}</label>
+          <select value={sel[f].base} aria-label={`Base padrão ${f}`} onChange={(e) => setSel({ ...sel, [f]: { ...sel[f], base: e.target.value } })} className="rounded border border-slate-300 px-2 py-1">
+            {bases.filter((b) => b.fonte === f).map((b) => <option key={b.revisaoId} value={b.revisaoId}>{b.rotulo}</option>)}
+          </select>
+          <select value={sel[f].regime} aria-label={`Regime padrão ${f}`} onChange={(e) => setSel({ ...sel, [f]: { ...sel[f], regime: e.target.value } })} className="rounded border border-slate-300 px-2 py-1">
+            {bases.find((b) => b.revisaoId === sel[f].base)?.regimes.map((g) => <option key={g.codigo} value={g.codigo}>{g.nome}</option>)}
+          </select>
+        </div>
+      ))}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label>BDI global
+          <select value={bdi} onChange={(e) => setBdi(e.target.value)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" aria-label="BDI global da revisão">
+            <option value="">Sem BDI</option>
+            {perfis.map((p) => <option key={p.id} value={p.id}>{p.nome} ({pct(p.bdi)})</option>)}
+          </select>
+        </label>
+        <label>Arredondamento
+          <select value={modo} onChange={(e) => setModo(e.target.value as typeof modo)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1">
+            <option value="ARREDONDAR">Arredondar</option><option value="TRUNCAR">Truncar</option>
+          </select>
+        </label>
+        <label>Data de referência (cotações próprias)<input type="date" value={data} onChange={(e) => setData(e.target.value)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" /></label>
+      </div>
+      <p className="text-xs text-slate-500">Mudar as bases padrão não altera os itens já lançados; use “Reprecificar itens” para aplicá-las. BDI e arredondamento recalculam os itens na hora.</p>
+      <div className="flex flex-wrap gap-2">
+        <button className="rounded-md bg-marca-600 px-3 py-1.5 text-white" onClick={() => rodar(() => acaoConfigurar(estado.revisao.id, versao, {
+          descricao, dataReferencia: data, arredondamento: modo, bdiPerfilId: bdi || null,
+          bases: fontes.filter((f) => sel[f].usar).map((f) => ({ baseRevisaoId: sel[f].base, regime: sel[f].regime })),
+        }), aoFechar)}>Salvar configurações</button>
+        <button className="rounded-md border border-slate-300 px-3 py-1.5" onClick={() => { if (window.confirm("Reprecificar todos os itens com as bases padrão salvas?")) rodar(() => acaoReprecificar(estado.revisao.id, versao), aoFechar); }}>Reprecificar itens com as bases padrão</button>
+        <button className="rounded-md border border-slate-300 px-3 py-1.5" onClick={aoFechar}>Fechar painel</button>
+      </div>
+    </section>
+  );
+}
+
+function NovaRevisao({ origem, bases, padrao, aoCriar, setErro }: { origem: string; bases: BaseOpcao[]; padrao: EstadoRevisao["basesPadrao"]; aoCriar: (id: string) => void; setErro: (e: string | null) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [descricao, setDescricao] = useState("");
+  const [atualizar, setAtualizar] = useState(false);
+  const fontes = [...new Set(padrao.map((b) => b.fonte))];
+  const [sel, setSel] = useState<Record<string, { base: string; regime: string }>>(() =>
+    Object.fromEntries(fontes.map((f) => [f, { base: padrao.find((b) => b.fonte === f)!.baseRevisaoId, regime: padrao.find((b) => b.fonte === f)!.regime ?? "" }])),
+  );
+  const [pendente, iniciar] = useTransition();
+  if (!aberto) return <button onClick={() => setAberto(true)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white">Nova revisão</button>;
+  return (
+    <div className="w-full space-y-2 rounded-xl border border-marca-600 bg-white p-4 text-sm sm:w-[32rem]">
+      <label className="block">Descrição da nova revisão<input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" aria-label="Descrição da nova revisão" /></label>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={atualizar} onChange={(e) => setAtualizar(e.target.checked)} /> Atualizar preços para outra competência/regime</label>
+      {atualizar && fontes.map((f) => (
+        <div key={f} className="flex flex-wrap items-center gap-2">
+          <span className="w-16 font-medium">{f}</span>
+          <select value={sel[f].base} aria-label={`Nova base ${f}`} onChange={(e) => setSel({ ...sel, [f]: { ...sel[f], base: e.target.value } })} className="rounded border border-slate-300 px-2 py-1">
+            {bases.filter((b) => b.fonte === f).map((b) => <option key={b.revisaoId} value={b.revisaoId}>{b.rotulo}</option>)}
+          </select>
+          <select value={sel[f].regime} aria-label={`Novo regime ${f}`} onChange={(e) => setSel({ ...sel, [f]: { ...sel[f], regime: e.target.value } })} className="rounded border border-slate-300 px-2 py-1">
+            {bases.find((b) => b.revisaoId === sel[f].base)?.regimes.map((g) => <option key={g.codigo} value={g.codigo}>{g.nome}</option>)}
+          </select>
+        </div>
+      ))}
+      <p className="text-xs text-slate-500">A revisão atual permanece fechada e inalterada. Itens sem preço na nova base mantêm o preço anterior e ficam marcados como pendência.</p>
+      <div className="flex gap-2">
+        <button disabled={pendente} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50" onClick={() => iniciar(async () => {
+          setErro(null);
+          const r = await acaoNovaRevisao(origem, descricao, atualizar ? fontes.map((f) => ({ baseRevisaoId: sel[f].base, regime: sel[f].regime })) : null);
+          if (!r.ok) return setErro(r.erro);
+          aoCriar(r.dados.revisaoId);
+        })}>{pendente ? "Criando…" : "Criar revisão"}</button>
+        <button className="rounded-md border border-slate-300 px-3 py-1.5" onClick={() => setAberto(false)}>Cancelar</button>
+      </div>
+    </div>
+  );
+}

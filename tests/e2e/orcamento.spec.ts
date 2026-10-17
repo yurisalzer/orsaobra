@@ -1,0 +1,121 @@
+import { expect, test, type Page } from "@playwright/test";
+import { execSync } from "node:child_process";
+
+const EMAIL = "orcamento.e2e@exemplo.com.br";
+const SENHA = "SenhaForte2026";
+
+test.describe.configure({ mode: "serial" });
+test.setTimeout(120_000);
+
+test.beforeAll(() => {
+  execSync("npx dotenv -e .env.test -- tsx tests/e2e/preparar-referencia.ts", { stdio: "inherit" });
+  execSync(`npx dotenv -e .env.test -- tsx scripts/criar-admin.ts ${EMAIL} "Orçamentista"`, { env: { ...process.env, ADMIN_SENHA: SENHA }, stdio: "inherit" });
+});
+
+/** Respostas para window.prompt (na ordem) e aceite automático de confirmações. */
+function dialogos(page: Page) {
+  const respostas: string[] = [];
+  page.on("dialog", (d) => (d.type() === "prompt" ? d.accept(respostas.shift() ?? "") : d.accept()));
+  return respostas;
+}
+
+async function entrar(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(EMAIL);
+  await page.getByLabel("Senha").fill(SENHA);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+}
+
+async function adicionar(page: Page, etapa: string, busca: string, opcao: RegExp, quantidade: string) {
+  await page.getByRole("row", { name: new RegExp(etapa) }).getByRole("button", { name: "+ item" }).click();
+  await page.getByLabel("Buscar serviço").fill(busca);
+  await page.getByRole("option", { name: opcao }).click();
+  await page.getByLabel("Quantidade do novo item").fill(quantidade);
+  await page.getByRole("button", { name: "Adicionar" }).click();
+  await expect(page.getByRole("status")).toContainText("adicionado");
+}
+
+test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação", async ({ page }) => {
+  const respostas = dialogos(page);
+  await entrar(page);
+
+  // perfil de BDI informado
+  await page.goto("/bdi");
+  await page.getByRole("button", { name: "Novo perfil de BDI" }).click();
+  await page.getByLabel("Nome do perfil").fill("BDI do edital");
+  await page.getByLabel("Percentual informado (ex.: fixado em edital)").check();
+  await page.getByLabel("BDI informado (%)").fill("25");
+  await page.getByRole("button", { name: "Salvar perfil" }).click();
+  await expect(page.getByRole("heading", { name: /BDI do edital — BDI 25,00%/ })).toBeVisible();
+
+  // novo orçamento
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption("");
+  await page.getByLabel("Nome da obra").fill("Creche Municipal");
+  await page.getByLabel("Cliente / contratante").fill("Prefeitura");
+  await page.getByLabel("Título").fill("Reforma da cobertura");
+  await page.getByLabel("BDI global").selectOption({ label: "BDI do edital — 25,00%" });
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Reforma da cobertura" })).toBeVisible();
+
+  // etapas e itens
+  respostas.push("Serviços preliminares");
+  await page.getByRole("button", { name: "+ Nova etapa" }).click();
+  await expect(page.getByRole("row", { name: /Serviços preliminares/ })).toBeVisible();
+  await adicionar(page, "Serviços preliminares", "01.001.0001", /01\.001\.0001-0/, "10");
+  // 211,97 × 1,25 = 264,9625 → 264,96; × 10 = 2.649,60
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 2.649,60");
+  await page.getByLabel("Quantidade 1.1").fill("2,5");
+  await page.getByLabel("Quantidade 1.1").press("Enter");
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 662,40");
+  respostas.push("Acessibilidade");
+  await page.getByRole("button", { name: "+ Nova etapa" }).click();
+  await adicionar(page, "Acessibilidade", "104658", /104658/, "1");
+  // 194,45 × 1,25 = 243,0625 → 243,06; total geral 662,40 + 243,06 = 905,46
+  await expect(page.getByText("R$ 905,46")).toBeVisible();
+  await page.getByLabel("Memória 1.1").click();
+  await expect(page.getByText(/211,97 × \(1 \+ 25,00% de BDI\) = R\$ 264,96/)).toBeVisible();
+  await page.screenshot({ path: "test-results/orcamento-editor.png", fullPage: true });
+
+  // fechar: fica imutável
+  await page.getByRole("button", { name: "Fechar revisão" }).click();
+  await expect(page.getByText(/Fechada em/)).toBeVisible();
+  await expect(page.getByLabel("Quantidade 1.1")).toHaveCount(0);
+
+  // nova revisão e alteração
+  await page.getByRole("button", { name: "Nova revisão" }).click();
+  await page.getByLabel("Descrição da nova revisão").fill("Ajuste de quantitativos");
+  await page.getByRole("button", { name: "Criar revisão" }).click();
+  await expect(page.getByText("Em elaboração")).toBeVisible();
+  await page.getByLabel("Quantidade 1.1").fill("3");
+  await page.getByLabel("Quantidade 1.1").press("Enter");
+  // 3 × 264,96 = 794,88; total 794,88 + 243,06 = 1.037,94
+  await expect(page.getByText("R$ 1.037,94")).toBeVisible();
+
+  // comparação com a revisão 1
+  await page.getByLabel("Comparar com").selectOption({ label: "Revisão 1" });
+  await expect(page.getByRole("heading", { name: "Comparação: revisão 1 × revisão 2" })).toBeVisible();
+  const linha = page.getByRole("row", { name: /01\.001\.0001-0/ });
+  await expect(linha).toContainText("Alterado");
+  await expect(linha).toContainText("R$ 132,48");
+  await page.screenshot({ path: "test-results/orcamento-comparacao.png", fullPage: true });
+});
+
+test("conflito de edição entre duas abas é detectado", async ({ page, browser }) => {
+  const respostas = dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  // segunda aba editando a mesma revisão
+  const outra = await (await browser.newContext({ storageState: await page.context().storageState() })).newPage();
+  dialogos(outra);
+  await outra.goto(page.url());
+  await page.getByLabel("Quantidade 1.1").fill("4");
+  await page.getByLabel("Quantidade 1.1").press("Enter");
+  await expect(page.getByText("R$ 1.302,90")).toBeVisible(); // 4 × 264,96 = 1.059,84 + 243,06
+  await outra.getByLabel("Quantidade 1.1").fill("5");
+  await outra.getByLabel("Quantidade 1.1").press("Enter");
+  await expect(outra.locator("main").getByRole("alert")).toContainText(/alterado por outra pessoa/);
+  void respostas;
+});
