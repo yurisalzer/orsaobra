@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
         return typeof original === "function" ? original(dados) : original;
       };
     }
+    // O PDF dos relatórios é gerado só no navegador: o pdfmake e as fontes
+    // (~2 MB) não precisam entrar no código do servidor (worker).
+    if (isServer) {
+      config.resolve.alias = { ...config.resolve.alias, "pdfmake/build/pdfmake": false, "pdfmake/build/vfs_fonts": false };
+    }
     return config;
   },
   async headers() {
