@@ -46,6 +46,18 @@ test("busca sem acento, troca de regime e analítica SINAPI com subcomposição"
   await page.screenshot({ path: "test-results/consulta-analitica.png", fullPage: true });
 });
 
+test("buscar com o campo vazio lista todos os itens", async ({ page }) => {
+  await entrar(page);
+  await page.goto("/consulta");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page.getByText(/\d+ resultado\(s\)/)).toBeVisible();
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toBeVisible();
+  await page.getByLabel("Fonte").selectOption("SINAPI");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page.getByRole("row", { name: /104658/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toHaveCount(0);
+});
+
 test("composição sem custo publicada não vira zero", async ({ page }) => {
   await entrar(page);
   await page.goto("/consulta?q=105006");

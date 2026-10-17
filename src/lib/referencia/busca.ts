@@ -36,20 +36,26 @@ const pareceCodigo = (t: string) => /^[\d.\-A-Za-z]*\d[\d.\-A-Za-z]*$/.test(t) &
 /**
  * Busca por código (prefixo, preservando zeros à esquerda) ou por palavras da
  * descrição (todas devem aparecer, sem diferenciar acentos/maiúsculas).
+ * Texto vazio = lista todos os itens das bases selecionadas (paginado).
  */
 export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens: ResultadoBusca[]; total: number }> {
   const texto = f.texto.trim();
-  if (texto.length < 2) return { itens: [], total: 0 };
+  const todos = texto.length === 0;
+  if (!todos && texto.length < 2) return { itens: [], total: 0 };
   const limite = Math.min(f.limite ?? 50, 200);
   const deslocamento = Math.max(0, ((f.pagina ?? 1) - 1) * limite);
-  const porCodigo = pareceCodigo(texto);
-  const palavras = porCodigo ? [] : termos(texto);
-  if (!porCodigo && palavras.length === 0) return { itens: [], total: 0 };
+  const porCodigo = !todos && pareceCodigo(texto);
+  const palavras = porCodigo || todos ? [] : termos(texto);
+  if (!todos && !porCodigo && palavras.length === 0) return { itens: [], total: 0 };
 
   // 1º filtra pelo texto/código (índices trigram), depois restringe às revisões escolhidas.
   const params: unknown[] = [f.revisoes, f.incluirProprios, f.tipo ?? null, limite, deslocamento];
   let alvo: string;
-  if (porCodigo) {
+  if (todos) {
+    // todos os itens presentes nas revisões escolhidas (consulta por conjuntos, sem verificação item a item)
+    alvo = `SELECT item_id FROM base_item WHERE base_revisao_id = ANY($1::uuid[])
+            UNION SELECT item_id FROM item_proprio WHERE $2 AND ativo`;
+  } else if (porCodigo) {
     params.push(texto.toUpperCase().replace(/[%_\\]/g, "") + "%");
     alvo = `SELECT ir.id AS item_id FROM item_referencia ir WHERE ir.codigo LIKE $${params.length}`;
   } else {
@@ -72,11 +78,8 @@ export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens
          AND ($3::text IS NULL OR ir.tipo::text = $3)),
     presentes AS (
       SELECT c.* FROM candidatos c
-       WHERE c.revisao_id IS NULL
-          OR EXISTS (SELECT 1 FROM preco p WHERE p.base_revisao_id = c.revisao_id AND p.item_id = c.id)
-          OR EXISTS (SELECT 1 FROM base_composicao bc WHERE bc.base_revisao_id = c.revisao_id AND bc.item_id = c.id)
-          OR EXISTS (SELECT 1 FROM composicao_componente cc JOIN base_composicao bc ON bc.composicao_versao_id = cc.composicao_versao_id
-                      WHERE bc.base_revisao_id = c.revisao_id AND cc.componente_item_id = c.id)),
+       WHERE ${todos ? "true OR " : ""}c.revisao_id IS NULL
+          OR EXISTS (SELECT 1 FROM base_item bi WHERE bi.base_revisao_id = c.revisao_id AND bi.item_id = c.id)),
     pagina AS (
       SELECT p.*, fo.codigo AS fonte, count(*) OVER () AS total FROM presentes p JOIN fonte fo ON fo.id = p.fonte_id
        ORDER BY fo.codigo, p.codigo LIMIT $4 OFFSET $5)

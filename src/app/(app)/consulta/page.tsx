@@ -24,11 +24,14 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
   const incluirProprios = !fonte || fonte === "PROPRIA";
   const revisoes = sel.filter((s) => !fonte || s.fonte === fonte).map((s) => s.base.revisaoId);
   const LIMITE = 50;
-  const r = q.trim().length >= 2 ? await buscarItens(ex, { texto: q, revisoes, incluirProprios, tipo, limite: LIMITE, pagina }) : { itens: [], total: 0 };
+  // "Buscar" com o campo vazio lista todos os itens das bases selecionadas
+  const buscou = typeof sp.q === "string";
+  const valida = buscou && (q.trim().length === 0 || q.trim().length >= 2);
+  const r = valida ? await buscarItens(ex, { texto: q, revisoes, incluirProprios, tipo, limite: LIMITE, pagina }) : { itens: [], total: 0 };
   const ctxUrl = parametrosSelecao(sel);
   const urlPagina = (n: number) => {
     const p = new URLSearchParams(ctxUrl);
-    if (q) p.set("q", q);
+    p.set("q", q);
     if (tipo) p.set("tipo", tipo);
     if (fonte) p.set("fonte", fonte);
     p.set("pag", String(n));
@@ -40,7 +43,7 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
       <h1 className="text-2xl font-semibold">Consulta de preços e composições</h1>
       <form className="space-y-3 rounded-xl border border-slate-200 bg-white p-5" role="search">
         <div className="flex flex-wrap gap-3">
-          <input name="q" defaultValue={q} placeholder="Código (ex.: 01.001.0001, 104658, 00001) ou palavras da descrição" aria-label="Buscar"
+          <input name="q" defaultValue={q} placeholder="Código (ex.: 01.001.0001, 104658, 00001) ou palavras da descrição — vazio lista todos" aria-label="Buscar"
             className="min-w-[18rem] flex-1 rounded-md border border-slate-300 px-3 py-2" autoFocus />
           <select name="fonte" defaultValue={fonte} aria-label="Fonte" className="rounded-md border border-slate-300 px-2 py-2 text-sm">
             <option value="">Todas as fontes</option>
@@ -74,7 +77,8 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
         )}
       </form>
 
-      {q.trim().length >= 2 && (
+      {buscou && !valida && <p className="text-sm text-amber-800">Digite ao menos 2 caracteres, ou deixe o campo vazio para listar todos os itens.</p>}
+      {valida && (
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
           <p className="mb-3 text-sm text-slate-500">{r.total.toLocaleString("pt-BR")} resultado(s){r.total > LIMITE ? ` — página ${pagina} de ${Math.ceil(r.total / LIMITE)}` : ""}</p>
           {r.itens.length > 0 && (
@@ -113,9 +117,19 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
             </table>
           )}
           {r.total > LIMITE && (
-            <nav className="mt-3 flex gap-3 text-sm" aria-label="Páginas">
+            <nav className="mt-3 flex flex-wrap items-center gap-3 text-sm" aria-label="Páginas">
+              {pagina > 1 && <Link className="text-marca-700 underline" href={urlPagina(1)}>« Primeira</Link>}
               {pagina > 1 && <Link className="text-marca-700 underline" href={urlPagina(pagina - 1)}>← Anterior</Link>}
+              <span className="text-slate-500">Página {pagina} de {Math.ceil(r.total / LIMITE)}</span>
               {pagina * LIMITE < r.total && <Link className="text-marca-700 underline" href={urlPagina(pagina + 1)}>Próxima →</Link>}
+              {pagina * LIMITE < r.total && <Link className="text-marca-700 underline" href={urlPagina(Math.ceil(r.total / LIMITE))}>Última »</Link>}
+              <form className="flex items-center gap-1">
+                {[...new URL(`http://x${urlPagina(1)}`).searchParams.entries()].filter(([k]) => k !== "pag").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+                <label className="text-slate-500">Ir para
+                  <input name="pag" type="number" min={1} max={Math.ceil(r.total / LIMITE)} defaultValue={pagina} aria-label="Número da página" className="ml-1 w-20 rounded border border-slate-300 px-2 py-0.5" />
+                </label>
+                <button className="rounded border border-slate-300 px-2 py-0.5">ir</button>
+              </form>
             </nav>
           )}
         </section>

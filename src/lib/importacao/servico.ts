@@ -432,6 +432,8 @@ export async function confirmarImportacao(
             ON CONFLICT (item_id, hash) DO NOTHING`,
       params: [imp.base_revisao_id],
     },
+    // itens que constam desta revisão (inclusive os publicados sem preço na UF)
+    { sql: `INSERT INTO base_item (base_revisao_id, item_id) SELECT $1, item_id FROM tmp_item ON CONFLICT DO NOTHING`, params: [imp.base_revisao_id] },
     // preços publicados (ausentes não geram linha)
     {
       sql: `INSERT INTO preco (base_revisao_id, item_id, item_versao_id, regime_id, valor, origem_preco, atributos)
@@ -580,6 +582,7 @@ export async function descartarBase(ex: Executor, baseRevisaoId: string, usuario
     { sql: `SELECT imp_exigir(NOT EXISTS (SELECT 1 FROM item_orcamento WHERE base_revisao_id = $1), 'Base usada em orçamento não pode ser descartada.')`, params: [baseRevisaoId] },
     { sql: `DELETE FROM base_composicao WHERE base_revisao_id = $1`, params: [baseRevisaoId] },
     { sql: `DELETE FROM preco WHERE base_revisao_id = $1`, params: [baseRevisaoId] },
+    { sql: `DELETE FROM base_item WHERE base_revisao_id = $1`, params: [baseRevisaoId] },
     { sql: `UPDATE item_versao SET primeira_base_revisao_id = NULL WHERE primeira_base_revisao_id = $1`, params: [baseRevisaoId] },
     { sql: `UPDATE base_revisao SET status = 'DESCARTADA', motivo = coalesce(motivo || ' | ', '') || 'Descartada: ' || $2 WHERE id = $1`, params: [baseRevisaoId, motivo] },
     { sql: `INSERT INTO auditoria (usuario_id, acao, entidade, entidade_id, depois) VALUES ($1, 'BASE_DESCARTADA', 'base_revisao', $2, jsonb_build_object('motivo', $3::text))`, params: [usuarioId, baseRevisaoId, motivo] },

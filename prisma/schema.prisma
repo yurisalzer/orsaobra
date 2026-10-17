@@ -164,6 +164,7 @@ model BaseRevisao {
   base        BaseMensal          @relation(fields: [baseId], references: [id])
   importacoes Importacao[]
   precos      Preco[]
+  itens       BaseItem[]
   composicoes BaseComposicao[]
   versoesItem ItemVersao[]
   padroes     RevisaoBasePadrao[]
@@ -280,6 +281,7 @@ model ItemReferencia {
   baseComposicoes BaseComposicao[]
   itensOrc        ItemOrcamento[]
   proprio         ItemProprio?
+  bases           BaseItem[]
 
   @@unique([fonteId, tipo, codigo])
   @@index([codigo])
@@ -306,6 +308,20 @@ model ItemVersao {
 
   @@unique([itemId, hash])
   @@map("item_versao")
+}
+
+/// Itens que constam de uma revisão de base (com ou sem preço publicado).
+/// Permite listar/buscar também itens publicados sem preço na UF.
+model BaseItem {
+  baseRevisaoId String @map("base_revisao_id") @db.Uuid
+  itemId        String @map("item_id") @db.Uuid
+
+  baseRevisao BaseRevisao    @relation(fields: [baseRevisaoId], references: [id])
+  item        ItemReferencia @relation(fields: [itemId], references: [id])
+
+  @@id([baseRevisaoId, itemId])
+  @@index([itemId])
+  @@map("base_item")
 }
 
 /// Preço publicado: (revisão da base, item, regime) → valor.

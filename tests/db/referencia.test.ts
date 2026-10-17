@@ -57,6 +57,21 @@ describe("bases e busca", () => {
     expect(zero.every((i) => i.codigo.startsWith("019"))).toBe(true);
     expect((await buscarItens(ex, { texto: "a", revisoes: Object.values(revs), incluirProprios: false })).total).toBe(0);
   });
+  it("busca vazia lista todos os itens das bases selecionadas (com filtros e paginação)", async () => {
+    const todos = await buscarItens(ex, { texto: "", revisoes: Object.values(revs), incluirProprios: true, limite: 5 });
+    const esperado = await prisma.itemReferencia.count({ where: { fonte: { codigo: { in: ["SINAPI", "EMOP"] } } } });
+    expect(todos.total).toBe(esperado);
+    expect(todos.itens).toHaveLength(5);
+    const pag2 = await buscarItens(ex, { texto: "", revisoes: Object.values(revs), incluirProprios: true, limite: 5, pagina: 2 });
+    expect(pag2.itens[0].codigo).not.toBe(todos.itens[0].codigo);
+    const so = await buscarItens(ex, { texto: "   ", revisoes: [revs.EMOP], incluirProprios: false, tipo: "COMPOSICAO", limite: 200 });
+    expect(so.itens.every((i) => i.fonte === "EMOP" && i.tipo === "COMPOSICAO")).toBe(true);
+    expect(so.total).toBe(await prisma.itemReferencia.count({ where: { fonte: { codigo: "EMOP" }, tipo: "COMPOSICAO" } }));
+    // insumo publicado sem preço no RJ (e não usado em composição) também aparece — por código e na listagem
+    const semPreco = await buscarItens(ex, { texto: "37600", revisoes: Object.values(revs), incluirProprios: false });
+    expect(semPreco.itens.map((i) => [i.codigo, JSON.stringify(i.precos)])).toEqual([["37600", "{}"]]);
+  });
+
   it("busca só nas revisões selecionadas", async () => {
     const r = await buscarItens(ex, { texto: "104658", revisoes: [revs.EMOP], incluirProprios: false });
     expect(r.total).toBe(0);
