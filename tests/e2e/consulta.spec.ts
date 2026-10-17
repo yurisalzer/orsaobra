@@ -52,10 +52,46 @@ test("buscar com o campo vazio lista todos os itens", async ({ page }) => {
   await page.getByRole("button", { name: "Buscar" }).click();
   await expect(page.getByText(/\d+ resultado\(s\)/)).toBeVisible();
   await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toBeVisible();
-  await page.getByLabel("Fonte").selectOption("SINAPI");
+  await page.getByLabel("Pesquisar na base EMOP").uncheck();
+  await page.getByLabel("Pesquisar nos itens próprios").uncheck();
   await page.getByRole("button", { name: "Buscar" }).click();
   await expect(page.getByRole("row", { name: /104658/ })).toBeVisible();
   await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toHaveCount(0);
+});
+
+test("caixas de seleção das bases: escolher, marcar e desmarcar todas", async ({ page }) => {
+  await entrar(page);
+  await page.goto("/consulta");
+  const todas = page.getByLabel("Marcar ou desmarcar todas as bases");
+  const emop = page.getByLabel("Pesquisar na base EMOP");
+  const sinapi = page.getByLabel("Pesquisar na base SINAPI");
+  await expect(todas).toBeChecked();
+  await expect(emop).toBeChecked();
+  // só SINAPI: desmarca todas e marca uma
+  await todas.uncheck();
+  await expect(emop).not.toBeChecked();
+  await expect(page.getByLabel("Pesquisar nos itens próprios")).not.toBeChecked();
+  await sinapi.check();
+  expect(await todas.evaluate((e: HTMLInputElement) => e.indeterminate)).toBe(true);
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page.getByText(/resultado\(s\)/)).toBeVisible();
+  const fontes = await page.locator("tbody tr td:first-child").allInnerTexts();
+  expect(fontes.length).toBeGreaterThan(0);
+  expect(new Set(fontes)).toEqual(new Set(["SINAPI"]));
+  // a escolha permanece após buscar
+  await expect(sinapi).toBeChecked();
+  await expect(emop).not.toBeChecked();
+  // nenhuma marcada: aviso
+  await todas.check();
+  await todas.uncheck();
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("Marque ao menos uma base");
+  // todas
+  await todas.check();
+  await page.getByRole("button", { name: "Buscar" }).click();
+  const todasFontes = new Set(await page.locator("tbody tr td:first-child").allInnerTexts());
+  expect(todasFontes.has("EMOP")).toBe(true);
+  await page.screenshot({ path: "test-results/consulta-bases.png", fullPage: false });
 });
 
 test("composição sem custo publicada não vira zero", async ({ page }) => {

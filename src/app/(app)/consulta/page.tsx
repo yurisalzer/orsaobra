@@ -6,6 +6,7 @@ import { buscarItens } from "@/lib/referencia/busca";
 import { parametrosSelecao, selecaoDeBases } from "@/lib/referencia/contexto-tela";
 import { formatarPreco, nomeRegime } from "@/lib/formato/precos";
 import { SeloFonte } from "@/components/SeloFonte";
+import { MarcarTodas } from "./MarcarTodas";
 
 export const dynamic = "force-dynamic";
 
@@ -19,21 +20,26 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
   const sel = await selecaoDeBases(ex, u, sp);
   const q = str(sp.q).slice(0, 120);
   const tipo = str(sp.tipo) === "INSUMO" || str(sp.tipo) === "COMPOSICAO" ? (str(sp.tipo) as "INSUMO" | "COMPOSICAO") : null;
-  const fonte = str(sp.fonte);
+  // bases marcadas (caixas "f"); sem o formulário enviado ainda = todas. "fonte" = endereço antigo (uma só).
+  const todasFontes = [...sel.map((s) => s.fonte), "PROPRIA"];
+  const pedidas = sp.f === undefined ? null : ([] as string[]).concat(sp.f);
+  const marcadas = new Set(pedidas ?? (str(sp.fonte) ? [str(sp.fonte)] : sp.fsel ? [] : todasFontes));
   const pagina = Math.max(1, Number(str(sp.pag)) || 1);
-  const incluirProprios = !fonte || fonte === "PROPRIA";
-  const revisoes = sel.filter((s) => !fonte || s.fonte === fonte).map((s) => s.base.revisaoId);
+  const incluirProprios = marcadas.has("PROPRIA");
+  const revisoes = sel.filter((s) => marcadas.has(s.fonte)).map((s) => s.base.revisaoId);
+  const nenhuma = marcadas.size === 0;
   const LIMITE = 50;
   // "Buscar" com o campo vazio lista todos os itens das bases selecionadas
   const buscou = typeof sp.q === "string";
-  const valida = buscou && (q.trim().length === 0 || q.trim().length >= 2);
+  const valida = buscou && !nenhuma && (q.trim().length === 0 || q.trim().length >= 2);
   const r = valida ? await buscarItens(ex, { texto: q, revisoes, incluirProprios, tipo, limite: LIMITE, pagina }) : { itens: [], total: 0 };
   const ctxUrl = parametrosSelecao(sel);
   const urlPagina = (n: number) => {
     const p = new URLSearchParams(ctxUrl);
     p.set("q", q);
     if (tipo) p.set("tipo", tipo);
-    if (fonte) p.set("fonte", fonte);
+    p.set("fsel", "1");
+    for (const f of marcadas) p.append("f", f);
     p.set("pag", String(n));
     return `/consulta?${p}`;
   };
@@ -45,11 +51,6 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
         <div className="flex flex-wrap gap-3">
           <input name="q" defaultValue={q} placeholder="Código (ex.: 01.001.0001, 104658, 00001) ou palavras da descrição — vazio lista todos" aria-label="Buscar"
             className="min-w-[18rem] flex-1 rounded-md border border-slate-300 px-3 py-2" autoFocus />
-          <select name="fonte" defaultValue={fonte} aria-label="Fonte" className="rounded-md border border-slate-300 px-2 py-2 text-sm">
-            <option value="">Todas as fontes</option>
-            {sel.map((s) => <option key={s.fonte} value={s.fonte}>{s.fonte}</option>)}
-            <option value="PROPRIA">Próprias</option>
-          </select>
           <select name="tipo" defaultValue={tipo ?? ""} aria-label="Tipo" className="rounded-md border border-slate-300 px-2 py-2 text-sm">
             <option value="">Insumos e composições</option>
             <option value="INSUMO">Somente insumos</option>
@@ -57,11 +58,19 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
           </select>
           <button className="rounded-md bg-marca-600 px-4 py-2 text-sm font-medium text-white hover:bg-marca-700">Buscar</button>
         </div>
+        <input type="hidden" name="fsel" value="1" />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-100 pb-2">
+          <span className="text-sm text-slate-500">Pesquisar em:</span>
+          <MarcarTodas />
+        </div>
         <div className="flex flex-wrap gap-4 text-sm">
           {sel.map((s) => (
             <fieldset key={s.fonte} className="flex flex-wrap items-center gap-2">
               <legend className="sr-only">Base {s.fonte}</legend>
-              <span className="font-medium">{s.fonte}:</span>
+              <label className="flex items-center gap-1.5 font-medium">
+                <input type="checkbox" name="f" value={s.fonte} defaultChecked={marcadas.has(s.fonte)} aria-label={`Pesquisar na base ${s.fonte}`} />
+                {s.fonte}:
+              </label>
               <select name={`b_${s.fonte}`} defaultValue={s.base.revisaoId} aria-label={`Competência ${s.fonte}`} className="rounded border border-slate-300 px-2 py-1">
                 {s.opcoes.map((b) => <option key={b.revisaoId} value={b.revisaoId}>{rotuloBase(b)}{b.status === "SUBSTITUIDA" ? " (substituída)" : ""}</option>)}
               </select>
@@ -70,6 +79,10 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
               </select>
             </fieldset>
           ))}
+          <label className="flex items-center gap-1.5 font-medium">
+            <input type="checkbox" name="f" value="PROPRIA" defaultChecked={marcadas.has("PROPRIA")} aria-label="Pesquisar nos itens próprios" />
+            Próprios
+          </label>
           {sel.length === 0 && <span className="text-slate-500">Nenhuma base publicada. Somente itens próprios podem ser consultados.</span>}
         </div>
         {sel.some((s) => !s.base.publicada) && (
@@ -77,7 +90,8 @@ export default async function Consulta({ searchParams }: { searchParams: Promise
         )}
       </form>
 
-      {buscou && !valida && <p className="text-sm text-amber-800">Digite ao menos 2 caracteres, ou deixe o campo vazio para listar todos os itens.</p>}
+      {buscou && nenhuma && <p role="alert" className="text-sm text-amber-800">Marque ao menos uma base para pesquisar.</p>}
+      {buscou && !nenhuma && !valida && <p className="text-sm text-amber-800">Digite ao menos 2 caracteres, ou deixe o campo vazio para listar todos os itens.</p>}
       {valida && (
         <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
           <p className="mb-3 text-sm text-slate-500">{r.total.toLocaleString("pt-BR")} resultado(s){r.total > LIMITE ? ` — página ${pagina} de ${Math.ceil(r.total / LIMITE)}` : ""}</p>
