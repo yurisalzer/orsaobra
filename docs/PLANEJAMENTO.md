@@ -22,7 +22,7 @@ dos layouts estão em [`LAYOUTS.md`](LAYOUTS.md).
  ├─ Server Actions / rotas /api  ── validação (zod), permissões, auditoria
  ├─ Núcleo de cálculo (decimal.js)  ── BDI, composições, arredondamento, ABC
  ├─ Adaptadores de importação  ── um por fonte+layout, versionados
- ├─ Relatórios  ── XLSX (exceljs) e PDF (pdfmake), gerados sob demanda
+ ├─ Relatórios  ── XLSX (exceljs) e PDF (pdfmake), gerados no navegador
  └─ Prisma (CRUD)  +  SQL direto (staging, cargas em lote)
         │  conexão TLS, credenciais só no servidor
         ▼
@@ -43,7 +43,7 @@ Decisões e justificativas:
 | Leitura XLSX | Leitor em fluxo (exceljs streaming) | O arquivo SINAPI tem 13,6 MB e ~67 mil linhas na aba Analítico |
 | ZIP / RAR | `fflate`/leitor ZIP em fluxo e `node-unrar-js` (WebAssembly) | SINAPI vem em ZIP; EMOP vem em **RAR** |
 | Autenticação | Própria: sessões no banco, cookie `httpOnly`, bcrypt | Simples, auditável, revogável, sem serviço externo |
-| Relatórios | `exceljs` (XLSX) e `pdfmake` (PDF) | Rodam em funções serverless sem navegador embutido |
+| Relatórios | `exceljs` (XLSX) e `pdfmake` (PDF) | Gerados no navegador (carregados só quando pedidos): sem custo de CPU no servidor |
 
 ## 2. Modelo do banco PostgreSQL
 
@@ -253,7 +253,7 @@ Casos obrigatórios (do pedido) e situação:
 | Login seguro, sessão forjada | ✅ feito (E2E) |
 | Importação válida/inválida, falha e rollback | ✅ feito |
 | Diferentes regimes | ✅ feito (3 SINAPI, 2 EMOP) |
-| Exportação PDF/XLSX | Etapa 5 |
+| Exportação PDF/XLSX | ✅ PDF (pdfmake) e XLSX (exceljs) gerados no navegador a partir do mesmo documento; testes conferem os valores |
 | Confronto com registros oficiais | ✅ 140/140 valores no Neon iguais aos oficiais (PDFs EMOP e planilha SINAPI lida por ferramenta independente); recálculo EMOP 22.013/22.238 idênticos |
 
 ## 7. Cronograma por módulos
@@ -265,6 +265,6 @@ Cada etapa termina com testes passando e uma demonstração para sua validação
 | 1 — Fundação | Projeto, banco, migrações, gatilhos, login, permissões, auditoria, tela inicial, núcleo de cálculo | **Concluída** |
 | 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga 09/2026 no Neon | **Concluída** |
 | 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias, precificação multi-fonte | **Concluída** |
-| 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | **Concluída** (aguarda validação) — no ar |
-| 5 — Relatórios | 10 relatórios em PDF e XLSX | |
+| 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | **Concluída** — no ar |
+| 5 — Relatórios | 10 relatórios (sintético, analítico, CPU, ABC de serviços e de insumos, BDI, cronograma físico-financeiro, comparativo, histórico de preços, memória de cálculo) em PDF e XLSX, gerados no navegador; cronograma; dados da obra e do BDI gravados no fechamento | **Concluída** (aguarda validação) — no ar |
 | 6 — Produção | Neon + hospedagem, domínio, backups automáticos com teste de restauração, revisão de segurança | |

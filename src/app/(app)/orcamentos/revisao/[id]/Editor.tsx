@@ -197,8 +197,11 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
             {r.descricao && <span className="text-slate-500">— {r.descricao}</span>}
           </p>
         </div>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Link href={`/orcamentos/revisao/${r.id}/relatorios`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Relatórios</Link>
+          <Link href={`/orcamentos/revisao/${r.id}/cronograma`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Cronograma</Link>
         {podeEditar && (
-          <div className="flex flex-wrap gap-2 text-sm">
+          <>
             {aberta && <button disabled={pendente} onClick={() => setConfig(!config)} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Configurações</button>}
             {aberta && <button disabled={pendente} onClick={() => { if (window.confirm("Fechar a revisão? Os valores ficarão registrados e não poderão mais ser alterados.")) rodar(() => acaoFechar(r.id, versao)); }} className="rounded-md bg-slate-800 px-3 py-1.5 text-white">Fechar revisão</button>}
             {r.status === "FECHADA" && !estado.revisoes.some((x) => x.status === "EM_ELABORACAO") && <NovaRevisao origem={r.id} bases={bases} padrao={estado.basesPadrao} aoCriar={(id) => router.push(`/orcamentos/revisao/${id}`)} setErro={setErro} />}
@@ -209,8 +212,9 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
                 {estado.revisoes.filter((x) => x.id !== r.id).map((x) => <option key={x.id} value={x.id}>Revisão {x.numero}</option>)}
               </select>
             )}
-          </div>
+          </>
         )}
+        </div>
       </div>
 
       {erro && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{erro}</p>}

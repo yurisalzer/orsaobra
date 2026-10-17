@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  duplicarOrcamento, excluirItem, fecharRevisao, moverEtapa, novaRevisao, trocarItem,
+  duplicarOrcamento, excluirItem, fecharRevisao, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { prisma } from "./ajuda";
@@ -189,6 +189,23 @@ describe("orçamento completo", () => {
     v = await configurarRevisao(ex, r1, v, { bdiPerfilId: edif.id }, u);
   });
 
+  it("cronograma físico-financeiro: validações e gravação", async () => {
+    const e = await carregarRevisao(ex, r1);
+    const [p1, p2] = e.etapas.filter((x) => x.paiId === null).sort((a, b) => a.ordem - b.ordem);
+    const sub = e.etapas.find((x) => x.paiId !== null)!;
+    await expect(salvarCronograma(ex, r1, v, { meses: 2, parcelas: [{ etapaId: p1.id, periodo: 1, percentual: "60" }, { etapaId: p1.id, periodo: 2, percentual: "50" }] }, u)).rejects.toThrow(/passa de 100%/);
+    await expect(salvarCronograma(ex, r1, v, { meses: 2, parcelas: [{ etapaId: p1.id, periodo: 3, percentual: "10" }] }, u)).rejects.toThrow(/fora do prazo/);
+    await expect(salvarCronograma(ex, r1, v, { meses: 2, parcelas: [{ etapaId: sub.id, periodo: 1, percentual: "10" }] }, u)).rejects.toThrow(/etapas principais/);
+    await expect(salvarCronograma(ex, r1, v, { meses: 0, parcelas: [] }, u)).rejects.toThrow(/1 a 120/);
+    v = await salvarCronograma(ex, r1, v, { meses: 3, parcelas: [
+      { etapaId: p1.id, periodo: 1, percentual: "100" },
+      { etapaId: p2.id, periodo: 2, percentual: "33,3333" }, { etapaId: p2.id, periodo: 3, percentual: "66,6667" }, { etapaId: p2.id, periodo: 1, percentual: "" },
+    ] }, u);
+    const c = await lerCronograma(ex, r1);
+    expect(c.meses).toBe(3);
+    expect(c.parcelas.map((x) => `${x.etapaId === p1.id ? "p1" : "p2"}:${x.periodo}:${x.percentual}`).sort()).toEqual(["p1:1:100.000000", "p2:2:33.333300", "p2:3:66.666700"]);
+  });
+
   it("fechamento: totais, snapshot analítico e imutabilidade", async () => {
     const antes = await carregarRevisao(ex, r1);
     await fecharRevisao(ex, r1, v, u);
@@ -200,6 +217,10 @@ describe("orçamento completo", () => {
     const an = e.itens.find((i) => i.id === itens.sinapi)!.analitico as { tipo: string; linhas: { codigo: string; coeficiente: string }[] };
     expect(an.tipo).toBe("OFICIAL");
     expect(an.linhas.map((l) => l.codigo)).toEqual(["88316", "88309", "36178", "34357", "34353"]);
+    // dados da obra e perfis de BDI guardados no fechamento
+    expect(r.obraSnapshot).toMatchObject({ nome: "Escola Municipal X", codigo: "OB-001", orgao_solicitante: "Secretaria de Educação" });
+    expect((r.bdiSnapshot as { nome: string; bdiAplicado: string; parcelas: unknown[] }[]).map((p) => p.nome)).toEqual(expect.arrayContaining([expect.stringMatching(/^Edificações/)]));
+    await expect(salvarCronograma(ex, r1, v + 1, { meses: 1, parcelas: [] }, u)).rejects.toThrow(/fechada/);
     await expect(alterarItem(ex, r1, v + 1, itens.emop, { quantidade: "1" }, u)).rejects.toThrow(/fechada/);
     await expect(alterarItem(ex, r1, v + 1, itens.emop, { memoriaQuantitativo: "mudança após fechar" }, u)).rejects.toThrow(/fechada/);
     await expect(prisma.itemOrcamento.update({ where: { id: itens.emop }, data: { memoriaQuantitativo: "x" } })).rejects.toThrow(/fechada/);
@@ -219,6 +240,9 @@ describe("orçamento completo", () => {
     const n = await novaRevisao(ex, r1, { descricao: "Atualização para a retificação", novasBases: [{ baseRevisaoId: ret.baseRevisaoId, regime: "SEM_DESONERACAO" }] }, u);
     expect(n).toMatchObject({ numero: 2, pendentes: 1 });
     const e2 = await carregarRevisao(ex, n.revisaoId);
+    const c2 = await lerCronograma(ex, n.revisaoId);
+    expect(c2.meses).toBe(3);
+    expect(c2.parcelas).toHaveLength(3);
     const sin = e2.itens.find((i) => i.codigo === "104658")!;
     expect(sin.custoUnitario).toBe("213.9000"); // 194,45 × 1,1 = 213,895 → 213,90
     expect(sin.baseRotulo).toMatch(/ret\.1/);

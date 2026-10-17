@@ -15,7 +15,7 @@ import { comandoAuditoria } from "../auditoria";
 import { arredondar, dec, formatarNumero, lerNumero, type Dec, type ModoArredondamento } from "../calculo/decimal";
 import { calcularItem } from "../calculo/item";
 import { numerarEtapas } from "../calculo/numeracao";
-import { analiticaOficial, cabecalhoItem, linhasDaVersao } from "../referencia/item";
+import { cabecalhoItem, type LinhaAnalitica } from "../referencia/item";
 import { precificar, type ContextoPreco } from "../referencia/precificacao";
 import { listarPerfis } from "./bdi";
 
@@ -154,7 +154,7 @@ export async function basesDaRevisao(ex: Executor, revisaoId: string): Promise<B
   );
 }
 
-async function contextoDaRevisao(ex: Executor, revisaoId: string, sobrescrever?: { fonte: string; baseRevisaoId: string; regime: string | null }): Promise<ContextoPreco> {
+export async function contextoDaRevisao(ex: Executor, revisaoId: string, sobrescrever?: { fonte: string; baseRevisaoId: string; regime: string | null }): Promise<ContextoPreco> {
   const [bases, r] = await Promise.all([basesDaRevisao(ex, revisaoId), dadosRevisao(ex, revisaoId)]);
   const lista = bases.map((b) => ({ fonte: b.fonte, baseRevisaoId: b.baseRevisaoId, regime: b.regime }));
   if (sobrescrever) {
@@ -756,49 +756,140 @@ export async function reprecificarRevisao(ex: Executor, revisaoId: string, versa
 // Fechamento
 // ---------------------------------------------------------------------------
 
+export interface LinhaAnaliticoItem {
+  ordem: number; itemId?: string; fonte: string; natureza?: "INSUMO" | "COMPOSICAO"; tipo: string; codigo: string; descricao: string; unidade: string | null;
+  coeficiente: string; percentual: string | null; precoUnitario: string | null; referenciaPreco: string | null; custo: string | null;
+}
+export interface AnaliticoItem { tipo: "INSUMO" | "OFICIAL" | "PROPRIA" | "SEM_ANALITICA"; referencia: string | null; linhas?: LinhaAnaliticoItem[] }
+
+/**
+ * Composição analítica de cada item, com os preços da base do item:
+ * oficiais (só quando publicadas) ou próprias. Gravada no fechamento.
+ */
+export async function montarAnaliticos(ex: Executor, revisaoId: string, itens: LinhaItem[]): Promise<{ id: string; analitico: AnaliticoItem }[]> {
+  const ctx = await contextoDaRevisao(ex, revisaoId);
+  const comps = itens.filter((it) => it.tipo === "COMPOSICAO");
+  // versão da composição de cada item (consultas em lote: oficiais na base/regime do item; próprias vigentes)
+  const versoes = await versoesDasComposicoes(ex, comps.map((it) => ({ chave: it.id, itemId: it.itemReferenciaId, fonte: it.fonte, baseRevisaoId: it.baseRevisaoId, regime: it.regime })));
+  const linhasPorVersao = await linhasDasVersoes(ex, [...new Set([...versoes.values()].map((v) => v.versaoId))]);
+  // preços dos componentes, agrupados pelo contexto de preço (base/regime) de cada item
+  const grupos = new Map<string, { ctx: ContextoPreco; ids: Set<string> }>();
+  const ctxDoItem = (it: LinhaItem): ContextoPreco =>
+    it.fonte !== "PROPRIA" && it.baseRevisaoId
+      ? { ...ctx, bases: [...ctx.bases.filter((b) => b.fonte !== it.fonte), { fonte: it.fonte, baseRevisaoId: it.baseRevisaoId, regime: it.regime }] }
+      : ctx;
+  const chaveCtx = (c: ContextoPreco) => c.bases.map((b) => `${b.fonte}:${b.baseRevisaoId}:${b.regime}`).sort().join("|");
+  for (const it of comps) {
+    const v = versoes.get(it.id);
+    if (!v) continue;
+    const c = ctxDoItem(it);
+    const g = grupos.get(chaveCtx(c)) ?? { ctx: c, ids: new Set<string>() };
+    for (const l of linhasPorVersao.get(v.versaoId) ?? []) g.ids.add(l.itemId);
+    grupos.set(chaveCtx(c), g);
+  }
+  const precosPorCtx = new Map<string, Awaited<ReturnType<typeof precificar>>>();
+  for (const [k, g] of grupos) precosPorCtx.set(k, await precificar(ex, [...g.ids], g.ctx));
+
+  return itens.map((it) => {
+    if (it.tipo !== "COMPOSICAO") return { id: it.id, analitico: { tipo: "INSUMO", referencia: it.referenciaPreco } };
+    const v = versoes.get(it.id);
+    if (!v) return { id: it.id, analitico: { tipo: "SEM_ANALITICA", referencia: it.referenciaPreco } };
+    const precos = precosPorCtx.get(chaveCtx(ctxDoItem(it)))!;
+    return {
+      id: it.id,
+      analitico: {
+        tipo: v.tipo, referencia: it.referenciaPreco,
+        linhas: (linhasPorVersao.get(v.versaoId) ?? []).map((l) => {
+          const p = precos.get(l.itemId);
+          const custo = p?.valor ? dec(l.coeficiente).times(p.valor).times(dec(1).plus(dec(l.percentual ?? 0).div(100))) : null;
+          return {
+            ordem: l.ordem, itemId: l.itemId, fonte: l.fonte, natureza: l.tipo, tipo: l.tipoOriginal ?? l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade,
+            coeficiente: l.coeficiente, percentual: l.percentual, precoUnitario: p?.valor?.toString() ?? null, referenciaPreco: p?.referencia ?? null, custo: custo?.toString() ?? null,
+          };
+        }),
+      },
+    };
+  });
+}
+
+/**
+ * Versão da composição de cada pedido: oficial (publicada na base/regime) ou
+ * própria vigente. Pedidos sem analítica ficam de fora — nunca inventada.
+ */
+export async function versoesDasComposicoes(
+  ex: Executor, pedidos: { chave: string; itemId: string; fonte: string; baseRevisaoId: string | null; regime: string | null }[],
+): Promise<Map<string, { versaoId: string; tipo: "OFICIAL" | "PROPRIA" }>> {
+  const r = new Map<string, { versaoId: string; tipo: "OFICIAL" | "PROPRIA" }>();
+  if (!pedidos.length) return r;
+  const linhas = await ex.consulta<{ chave: string; versao_id: string; tipo: "OFICIAL" | "PROPRIA" }>(
+    `SELECT x.chave, v.versao_id, v.tipo
+       FROM jsonb_to_recordset($1::jsonb) AS x(chave text, item uuid, fonte text, base uuid, regime text)
+       JOIN LATERAL (
+         SELECT bc.composicao_versao_id AS versao_id, 'OFICIAL' AS tipo FROM base_composicao bc LEFT JOIN regime g ON g.id = bc.regime_id
+          WHERE x.fonte <> 'PROPRIA' AND bc.base_revisao_id = x.base AND bc.item_id = x.item AND (bc.regime_id IS NULL OR g.codigo = x.regime)
+         UNION ALL
+         SELECT ip.composicao_versao_id, 'PROPRIA' FROM item_proprio ip WHERE x.fonte = 'PROPRIA' AND ip.item_id = x.item AND ip.composicao_versao_id IS NOT NULL
+         ORDER BY 1 LIMIT 1) v ON true`,
+    [json(pedidos.map((p) => ({ chave: p.chave, item: p.itemId, fonte: p.fonte, base: p.baseRevisaoId, regime: p.regime })))],
+  );
+  for (const l of linhas) r.set(l.chave, { versaoId: l.versao_id, tipo: l.tipo });
+  return r;
+}
+
+/** Componentes de várias versões de composição (uma consulta). */
+export async function linhasDasVersoes(ex: Executor, versoes: string[]) {
+  const r = new Map<string, LinhaAnalitica[]>();
+  if (!versoes.length) return r;
+  const linhas = await ex.consulta<LinhaAnalitica & { versao: string }>(
+    `SELECT cc.composicao_versao_id AS versao, cc.ordem, ir.id AS "itemId", f.codigo AS fonte, ir.tipo::text AS tipo, cc.tipo_original AS "tipoOriginal", ir.codigo,
+            v.descricao, v.unidade, cc.coeficiente::text AS coeficiente, cc.percentual::text AS percentual, cc.situacao
+       FROM composicao_componente cc JOIN item_referencia ir ON ir.id = cc.componente_item_id JOIN fonte f ON f.id = ir.fonte_id
+       LEFT JOIN item_proprio ip ON ip.item_id = ir.id
+       JOIN LATERAL (
+         SELECT iv.descricao, iv.unidade FROM item_versao iv WHERE iv.item_id = ir.id
+          ORDER BY (iv.id = ip.item_versao_id) DESC NULLS LAST,
+                   (SELECT b.competencia FROM base_revisao br JOIN base_mensal b ON b.id = br.base_id WHERE br.id = iv.primeira_base_revisao_id) DESC NULLS LAST
+          LIMIT 1) v ON true
+      WHERE cc.composicao_versao_id = ANY($1::uuid[])
+      ORDER BY cc.composicao_versao_id, cc.ordem`,
+    [versoes],
+  );
+  for (const { versao, ...l } of linhas) {
+    const lista = r.get(versao) ?? [];
+    lista.push(l);
+    r.set(versao, lista);
+  }
+  return r;
+}
+
+/** Perfis de BDI usados na revisão (global e individuais), com as parcelas atuais. */
+export async function perfisDaRevisao(ex: Executor, revisaoId: string) {
+  const ids = await ex.consulta<{ id: string }>(
+    `SELECT bdi_perfil_id AS id FROM orcamento_revisao WHERE id = $1 AND bdi_perfil_id IS NOT NULL
+      UNION SELECT DISTINCT bdi_perfil_id FROM item_orcamento WHERE revisao_id = $1 AND bdi_perfil_id IS NOT NULL`,
+    [revisaoId],
+  );
+  const todos = await listarPerfis(ex);
+  return todos.filter((p) => ids.some((i) => i.id === p.id))
+    .map((p) => ({ id: p.id, nome: p.nome, descricao: p.descricao, percentualInformado: p.percentualInformado, parcelas: p.parcelas, bdiCalculado: p.bdiCalculado, bdiAplicado: p.bdiAplicado }));
+}
+
 export async function fecharRevisao(ex: Executor, revisaoId: string, versao: number, usuarioId: string) {
   const estado = await carregarRevisao(ex, revisaoId);
   if (estado.revisao.status !== "EM_ELABORACAO") throw new ErroOrcamento("Revisão já fechada.");
   if (estado.itens.length === 0) throw new ErroOrcamento("Não é possível fechar um orçamento sem itens.");
-  // snapshot analítico de cada item (composições oficiais publicadas ou próprias)
-  const ctx = await contextoDaRevisao(ex, revisaoId);
-  const analiticos: { id: string; analitico: unknown }[] = [];
-  for (const it of estado.itens) {
-    if (it.tipo !== "COMPOSICAO") { analiticos.push({ id: it.id, analitico: { tipo: "INSUMO", referencia: it.referenciaPreco } }); continue; }
-    let linhas = null as Awaited<ReturnType<typeof linhasDaVersao>> | null;
-    let tipo = "SEM_ANALITICA";
-    let ctxItem = ctx;
-    if (it.fonte !== "PROPRIA" && it.baseRevisaoId) {
-      ctxItem = { ...ctx, bases: [...ctx.bases.filter((b) => b.fonte !== it.fonte), { fonte: it.fonte, baseRevisaoId: it.baseRevisaoId, regime: it.regime }] };
-      const a = await analiticaOficial(ex, it.itemReferenciaId, it.baseRevisaoId, it.regime);
-      if (a) { linhas = a.linhas; tipo = "OFICIAL"; }
-    } else if (it.fonte === "PROPRIA") {
-      const [p] = await ex.consulta<{ cv: string | null }>(`SELECT composicao_versao_id AS cv FROM item_proprio WHERE item_id = $1`, [it.itemReferenciaId]);
-      if (p?.cv) { linhas = await linhasDaVersao(ex, p.cv, null); tipo = "PROPRIA"; }
-    }
-    if (!linhas) { analiticos.push({ id: it.id, analitico: { tipo, referencia: it.referenciaPreco } }); continue; }
-    const precos = await precificar(ex, linhas.map((l) => l.itemId), ctxItem);
-    analiticos.push({
-      id: it.id,
-      analitico: {
-        tipo, referencia: it.referenciaPreco,
-        linhas: linhas.map((l) => {
-          const p = precos.get(l.itemId);
-          const custo = p?.valor ? dec(l.coeficiente).times(p.valor).times(dec(1).plus(dec(l.percentual ?? 0).div(100))) : null;
-          return { ordem: l.ordem, fonte: l.fonte, tipo: l.tipoOriginal ?? l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade, coeficiente: l.coeficiente, percentual: l.percentual, precoUnitario: p?.valor?.toString() ?? null, referenciaPreco: p?.referencia ?? null, custo: custo?.toString() ?? null };
-        }),
-      },
-    });
-  }
+  const analiticos = await montarAnaliticos(ex, revisaoId, estado.itens);
   await ex.transacao([
     ...travarEdicao(revisaoId, versao),
     { sql: `UPDATE item_orcamento i SET analitico = x.analitico FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, analitico jsonb) WHERE i.id = x.id`, params: [json(analiticos)] },
     {
       sql: `UPDATE orcamento_revisao SET status = 'FECHADA', fechada_em = now(), fechada_por_id = $2,
                    total_custo_direto = (SELECT coalesce(sum(custo_total), 0) FROM item_orcamento WHERE revisao_id = $1),
-                   total_geral = (SELECT coalesce(sum(preco_total), 0) FROM item_orcamento WHERE revisao_id = $1)
+                   total_geral = (SELECT coalesce(sum(preco_total), 0) FROM item_orcamento WHERE revisao_id = $1),
+                   obra_snapshot = (SELECT to_jsonb(o) - 'id' - 'criado_em' FROM obra o JOIN orcamento oc ON oc.obra_id = o.id WHERE oc.id = orcamento_id),
+                   bdi_snapshot = $3::jsonb
              WHERE id = $1`,
-      params: [revisaoId, usuarioId],
+      params: [revisaoId, usuarioId, json(await perfisDaRevisao(ex, revisaoId))],
     },
     comandoAuditoria({ usuarioId, acao: "REVISAO_FECHADA", entidade: "orcamento_revisao", entidadeId: revisaoId, depois: { total: estado.totais.total, custoDireto: estado.totais.custoDireto, itens: estado.itens.length } }),
   ]);
@@ -836,6 +927,7 @@ function comandosCopiar(origemId: string, destinoId: string): Comando[] {
             SELECT $2, m.novo, c.periodo, c.percentual FROM cronograma_parcela c JOIN tmp_mapa_etapa m ON m.antigo = c.etapa_id WHERE c.revisao_id = $1`,
       params: [origemId, destinoId],
     },
+    { sql: `UPDATE orcamento_revisao SET cronograma_meses = (SELECT cronograma_meses FROM orcamento_revisao WHERE id = $1) WHERE id = $2`, params: [origemId, destinoId] },
   ];
 }
 
@@ -910,6 +1002,64 @@ export async function duplicarOrcamento(ex: Executor, revisaoId: string, d: { ti
     comandoAuditoria({ usuarioId, acao: "ORCAMENTO_DUPLICADO", entidade: "orcamento", entidadeId: orcamentoId, depois: { origem: revisaoId } }),
   ]);
   return { orcamentoId, revisaoId: novaId };
+}
+
+// ---------------------------------------------------------------------------
+// Cronograma físico-financeiro (percentual de cada etapa principal por mês)
+// ---------------------------------------------------------------------------
+
+export interface Cronograma {
+  meses: number | null;
+  parcelas: { etapaId: string; periodo: number; percentual: string }[];
+}
+
+export async function lerCronograma(ex: Executor, revisaoId: string): Promise<Cronograma> {
+  const [[r], parcelas] = await Promise.all([
+    ex.consulta<{ meses: number | null }>(`SELECT cronograma_meses AS meses FROM orcamento_revisao WHERE id = $1`, [revisaoId]),
+    ex.consulta<Cronograma["parcelas"][number]>(
+      `SELECT etapa_id AS "etapaId", periodo, percentual::text AS percentual FROM cronograma_parcela WHERE revisao_id = $1 ORDER BY periodo`, [revisaoId],
+    ),
+  ]);
+  if (!r) throw new ErroOrcamento("Revisão não encontrada.");
+  return { meses: r.meses, parcelas };
+}
+
+/**
+ * Grava o cronograma inteiro. Percentuais de 0 a 100 com até 4 casas; a soma
+ * de cada etapa não pode passar de 100% (menos de 100% = cronograma incompleto,
+ * apontado no relatório).
+ */
+export async function salvarCronograma(ex: Executor, revisaoId: string, versao: number, d: { meses: number; parcelas: { etapaId: string; periodo: number; percentual: string }[] }, usuarioId: string) {
+  if (!Number.isInteger(d.meses) || d.meses < 1 || d.meses > 120) throw new ErroOrcamento("Informe de 1 a 120 meses.");
+  const principais = await ex.consulta<{ id: string; titulo: string }>(`SELECT id, titulo FROM etapa WHERE revisao_id = $1 AND pai_id IS NULL`, [revisaoId]);
+  const somas = new Map<string, Dec>();
+  const linhas: { etapaId: string; periodo: number; percentual: string }[] = [];
+  for (const p of d.parcelas) {
+    if (!principais.some((e) => e.id === p.etapaId)) throw new ErroOrcamento("O cronograma usa as etapas principais desta revisão.");
+    if (!Number.isInteger(p.periodo) || p.periodo < 1 || p.periodo > d.meses) throw new ErroOrcamento(`Mês ${p.periodo} fora do prazo de ${d.meses} meses.`);
+    if (!p.percentual.trim()) continue;
+    const v = lerNumero(p.percentual);
+    if (!v || v.isNegative() || v.gt(100)) throw new ErroOrcamento("Percentual inválido no cronograma (use de 0 a 100).");
+    if (v.decimalPlaces() > 4) throw new ErroOrcamento("Percentual do cronograma com no máximo 4 casas decimais.");
+    if (v.isZero()) continue;
+    if (linhas.some((x) => x.etapaId === p.etapaId && x.periodo === p.periodo)) throw new ErroOrcamento("Mês repetido no cronograma.");
+    const soma = (somas.get(p.etapaId) ?? dec(0)).plus(v);
+    if (soma.gt(100)) throw new ErroOrcamento(`A etapa "${principais.find((e) => e.id === p.etapaId)!.titulo}" passa de 100% no cronograma.`);
+    somas.set(p.etapaId, soma);
+    linhas.push({ etapaId: p.etapaId, periodo: p.periodo, percentual: v.toString() });
+  }
+  await ex.transacao([
+    ...travarEdicao(revisaoId, versao),
+    { sql: `UPDATE orcamento_revisao SET cronograma_meses = $2 WHERE id = $1`, params: [revisaoId, d.meses] },
+    { sql: `DELETE FROM cronograma_parcela WHERE revisao_id = $1`, params: [revisaoId] },
+    {
+      sql: `INSERT INTO cronograma_parcela (revisao_id, etapa_id, periodo, percentual)
+            SELECT $1, x."etapaId", x.periodo, x.percentual::numeric FROM jsonb_to_recordset($2::jsonb) AS x("etapaId" uuid, periodo int, percentual text)`,
+      params: [revisaoId, json(linhas)],
+    },
+    comandoAuditoria({ usuarioId, acao: "CRONOGRAMA_SALVO", entidade: "orcamento_revisao", entidadeId: revisaoId, depois: { meses: d.meses, parcelas: linhas.length } }),
+  ]);
+  return versao + 1;
 }
 
 // ---------------------------------------------------------------------------

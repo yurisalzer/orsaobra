@@ -7,7 +7,7 @@ import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
-  excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, trocarItem,
+  excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
 
@@ -142,4 +142,10 @@ export async function acaoSalvarPerfil(d: { id: string | null; nome: string; des
 }
 export async function acaoArquivarPerfil(id: string, ativo: boolean) {
   return executar((u) => executor().then((ex) => arquivarPerfil(ex, uuid.parse(id), ativo, u)), "/bdi");
+}
+
+export async function acaoSalvarCronograma(revisaoId: string, versao: number, d: { meses: number; parcelas: { etapaId: string; periodo: number; percentual: string }[] }) {
+  return executar((u) => executor().then((ex) => salvarCronograma(ex, uuid.parse(revisaoId), versao, z.object({
+    meses: z.number().int(), parcelas: z.array(z.object({ etapaId: uuid, periodo: z.number().int(), percentual: z.string().max(20) })).max(5000),
+  }).parse(d), u)));
 }

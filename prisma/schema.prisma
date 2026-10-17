@@ -571,6 +571,9 @@ model OrcamentoRevisao {
   fechadaPorId     String?        @map("fechada_por_id") @db.Uuid
   totalCustoDireto Decimal?       @map("total_custo_direto") @db.Decimal(18, 2) // snapshot ao fechar
   totalGeral       Decimal?       @map("total_geral") @db.Decimal(18, 2)
+  obraSnapshot     Json?          @map("obra_snapshot") // dados da obra no fechamento
+  bdiSnapshot      Json?          @map("bdi_snapshot") // perfis de BDI usados, no fechamento
+  cronogramaMeses  Int?           @map("cronograma_meses")
   criadoEm         DateTime       @default(now()) @map("criado_em") @db.Timestamptz
   atualizadoEm     DateTime       @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz
 

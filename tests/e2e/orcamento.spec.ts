@@ -208,3 +208,56 @@ test("conflito de edição entre duas abas é detectado", async ({ page, browser
   await expect(outra.locator("main").getByRole("alert")).toContainText(/alterado por outra pessoa/);
   void respostas;
 });
+
+test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  await expect(page.getByLabel("Quantidade 1.1")).toBeVisible();
+  // cronograma
+  await page.getByRole("link", { name: "Cronograma" }).click();
+  await expect(page.getByRole("heading", { name: "Cronograma físico-financeiro" })).toBeVisible();
+  await page.getByLabel("Prazo em meses").fill("2");
+  await page.getByLabel("Percentual 1 mês 1").fill("100");
+  await page.getByLabel("Percentual 2 mês 1").fill("30");
+  await page.getByLabel("Percentual 2 mês 2").fill("70");
+  await page.getByRole("button", { name: "Salvar cronograma" }).click();
+  await expect(page.getByRole("status")).toContainText("Cronograma salvo");
+  await page.getByLabel("Percentual 2 mês 2").fill("80");
+  await page.getByRole("button", { name: "Salvar cronograma" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("passa de 100%");
+  await page.getByLabel("Percentual 2 mês 2").fill("70");
+
+  // relatórios
+  await page.getByRole("link", { name: /Reforma da cobertura/ }).click();
+  await page.getByRole("link", { name: "Relatórios" }).click();
+  await expect(page.getByRole("heading", { name: /Relatórios — revisão 2/ })).toBeVisible();
+  await page.getByRole("button", { name: "Visualizar — Orçamento sintético" }).click();
+  const vis = page.getByRole("region", { name: "Visualização — Orçamento sintético" });
+  await expect(vis.getByText("PRÉVIA", { exact: false })).toBeVisible();
+  await expect(vis.getByRole("row", { name: /TOTAL GERAL/ })).toBeVisible();
+  await expect(vis.getByText("OB-001 · Creche Municipal")).toBeVisible();
+  await page.screenshot({ path: "test-results/relatorio-sintetico.png", fullPage: true });
+
+  const [pdf] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar PDF — Orçamento analítico" }).click()]);
+  expect(pdf.suggestedFilename()).toMatch(/^Orcamento_analitico_.*rev2\.pdf$/);
+  const fs = await import("node:fs");
+  const caminhoPdf = await pdf.path();
+  expect(fs.readFileSync(caminhoPdf).subarray(0, 5).toString()).toBe("%PDF-");
+
+  const [xlsx] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar Excel — Cronograma físico-financeiro" }).click()]);
+  expect(xlsx.suggestedFilename()).toMatch(/\.xlsx$/);
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(await xlsx.path());
+  const ws = wb.worksheets[0];
+  expect(ws.getCell(1, 1).value).toBe("CRONOGRAMA FÍSICO-FINANCEIRO");
+  const valores: unknown[] = [];
+  ws.eachRow((r) => { if (r.getCell(1).value === "% acumulado do orçamento") valores.push(r.getCell(5).value); });
+  expect(valores).toEqual([100]);
+
+  // comparativo com a revisão 1
+  await page.getByRole("button", { name: "Visualizar — Comparativo entre revisões" }).click();
+  await expect(page.getByRole("region", { name: "Visualização — Comparativo entre revisões" }).getByText(/Rev\. 1 \(fechada\)/)).toBeVisible();
+});
