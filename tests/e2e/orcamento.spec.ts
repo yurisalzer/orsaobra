@@ -54,11 +54,17 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   await page.goto("/orcamentos/novo");
   await page.getByLabel("Obra", { exact: true }).selectOption("");
   await page.getByLabel("Nome da obra").fill("Creche Municipal");
-  await page.getByLabel("Cliente / contratante").fill("Prefeitura");
+  await page.getByLabel("Código da obra").fill("OB-001");
+  await page.getByLabel("Processo").fill("SEI-120001/000123/2026");
+  await page.getByLabel("Descrição").fill("Reforma geral da creche");
+  await page.getByLabel("Endereço").fill("Rua das Flores, 100");
+  await page.getByLabel("Cidade").fill("Niterói");
+  await page.getByLabel("Órgão solicitante").fill("Prefeitura");
   await page.getByLabel("Título").fill("Reforma da cobertura");
   await page.getByLabel("BDI global").selectOption({ label: "BDI do edital — 25,00%" });
   await page.getByRole("button", { name: "Criar orçamento" }).click();
   await expect(page.getByRole("heading", { name: "Reforma da cobertura" })).toBeVisible();
+  await expect(page.getByText(/OB-001 · Creche Municipal — Prefeitura · Processo SEI-120001\/000123\/2026/)).toBeVisible();
 
   // etapas e itens
   respostas.push("Serviços preliminares");

@@ -501,11 +501,14 @@ model BdiParcela {
 
 model Obra {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome      String
-  cliente   String?
-  endereco  String?
-  municipio String?
-  uf        String   @default("RJ") @db.Char(2)
+  nome             String
+  codigo           String?
+  processo         String?
+  descricao        String?
+  orgaoSolicitante String?  @map("orgao_solicitante")
+  endereco         String?
+  municipio        String? // cidade
+  uf               String   @default("RJ") @db.Char(2)
   criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
 
   orcamentos Orcamento[]

@@ -34,11 +34,16 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: strin
 const uuid = z.string().uuid();
 const base = z.object({ baseRevisaoId: uuid, regime: z.string().max(40).nullable() });
 const modo = z.enum(["ARREDONDAR", "TRUNCAR"]);
+const novaObra = z.object({
+  nome: z.string().max(200), codigo: z.string().max(60), processo: z.string().max(100), descricao: z.string().max(4000),
+  endereco: z.string().max(300), municipio: z.string().max(100), orgaoSolicitante: z.string().max(200),
+});
+export type DadosNovaObra = z.infer<typeof novaObra>;
 
-export async function acaoCriarOrcamento(d: { obraId: string | null; novaObra: { nome: string; cliente: string; municipio: string } | null; codigo: string; titulo: string; bases: { baseRevisaoId: string; regime: string | null }[]; bdiPerfilId: string | null; arredondamento: string }) {
+export async function acaoCriarOrcamento(d: { obraId: string | null; novaObra: DadosNovaObra | null; codigo: string; titulo: string; bases: { baseRevisaoId: string; regime: string | null }[]; bdiPerfilId: string | null; arredondamento: string }) {
   return executar(async (u) => {
     const ex = await executor();
-    const obraId = d.obraId ? uuid.parse(d.obraId) : await criarObra(ex, z.object({ nome: z.string().max(200), cliente: z.string().max(200), municipio: z.string().max(100) }).parse(d.novaObra), u);
+    const obraId = d.obraId ? uuid.parse(d.obraId) : await criarObra(ex, novaObra.parse(d.novaObra), u);
     return criarOrcamento(ex, {
       obraId, codigo: z.string().max(60).parse(d.codigo), titulo: z.string().max(200).parse(d.titulo), bases: z.array(base).min(1, "Escolha ao menos uma base de referência.").parse(d.bases),
       bdiPerfilId: d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null, arredondamento: modo.parse(d.arredondamento),

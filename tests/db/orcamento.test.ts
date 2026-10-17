@@ -55,13 +55,14 @@ describe("orçamento completo", () => {
 
   it("cria obra, orçamento com bases publicadas e BDI global", async () => {
     const perfis = await listarPerfis(ex);
-    const obra = await criarObra(ex, { nome: "Escola Municipal X", cliente: "Prefeitura", municipio: "Niterói" }, u);
+    const obra = await criarObra(ex, { nome: "Escola Municipal X", codigo: "OB-001", processo: "SEI-123/2026", descricao: "Reforma da escola", endereco: "Rua A, 1", municipio: "Niterói", orgaoSolicitante: "Secretaria de Educação" }, u);
     const r = await criarOrcamento(ex, { obraId: obra, titulo: "Reforma geral", bases: basesPadrao(), bdiPerfilId: perfis.find((x) => x.nome.startsWith("Edificações"))!.id }, u);
     orcamentoId = r.orcamentoId;
     r1 = r.revisaoId;
     const e = await carregarRevisao(ex, r1);
     expect(e.revisao).toMatchObject({ numero: 1, status: "EM_ELABORACAO", bdiPercentual: "22.230000" });
     expect(e.basesPadrao.map((b) => `${b.fonte}:${b.regime}`)).toEqual(["EMOP:SEM_DESONERACAO", "SINAPI:SEM_DESONERACAO"]);
+    expect(e.orcamento).toMatchObject({ obraCodigo: "OB-001", processo: "SEI-123/2026", endereco: "Rua A, 1", municipio: "Niterói", orgaoSolicitante: "Secretaria de Educação" });
   });
 
   it("não aceita base não publicada", async () => {

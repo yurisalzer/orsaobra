@@ -19,7 +19,7 @@ export default async function Orcamentos() {
       {obras.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Nenhuma obra cadastrada.</p>}
       {obras.map((o) => (
         <section key={o.obraId} className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="font-medium">{o.obra}{o.cliente ? <span className="text-slate-500"> — {o.cliente}</span> : null}</h2>
+          <h2 className="font-medium">{o.obraCodigo ? <span className="text-slate-500">{o.obraCodigo} · </span> : null}{o.obra}{o.orgaoSolicitante ? <span className="text-slate-500"> — {o.orgaoSolicitante}</span> : null}</h2>
           <table className="mt-2 w-full text-sm">
             <thead className="text-left text-slate-500"><tr><th className="py-1">Orçamento</th><th>Revisões</th><th>Última revisão</th><th className="text-right">Total</th><th>Atualizado</th></tr></thead>
             <tbody>

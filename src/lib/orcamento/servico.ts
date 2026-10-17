@@ -73,7 +73,7 @@ export interface EstadoRevisao {
     bdiPerfilId: string | null; bdiPercentual: string | null; arredondamento: ModoArredondamento; dataReferencia: string;
     fechadaEm: string | null; fechadaPor: string | null; revisaoOrigemId: string | null; criadoEm: string;
   };
-  orcamento: { id: string; codigo: string | null; titulo: string; obraId: string; obraNome: string; cliente: string | null; municipio: string | null; uf: string };
+  orcamento: { id: string; codigo: string | null; titulo: string; obraId: string; obraNome: string; obraCodigo: string | null; processo: string | null; orgaoSolicitante: string | null; endereco: string | null; municipio: string | null; uf: string };
   revisoes: { id: string; numero: number; status: string; descricao: string | null; fechadaEm: string | null; totalGeral: string | null }[];
   basesPadrao: BasePadrao[];
   etapas: EtapaLinha[];
@@ -207,12 +207,21 @@ function comandosBasesPadrao(revisaoId: string, bases: { baseRevisaoId: string; 
 // Obras e orçamentos
 // ---------------------------------------------------------------------------
 
-export async function criarObra(ex: Executor, d: { nome: string; cliente?: string | null; endereco?: string | null; municipio?: string | null; uf?: string }, usuarioId: string) {
+export interface DadosObra {
+  nome: string; codigo?: string | null; processo?: string | null; descricao?: string | null;
+  endereco?: string | null; municipio?: string | null; orgaoSolicitante?: string | null; uf?: string;
+}
+
+export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
   const nome = d.nome.trim();
   if (nome.length < 2) throw new ErroOrcamento("Informe o nome da obra.");
   const id = crypto.randomUUID();
   await ex.transacao([
-    { sql: `INSERT INTO obra (id, nome, cliente, endereco, municipio, uf) VALUES ($1, $2, $3, $4, $5, $6)`, params: [id, nome, d.cliente?.trim() || null, d.endereco?.trim() || null, d.municipio?.trim() || null, (d.uf ?? "RJ").toUpperCase()] },
+    {
+      sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      params: [id, nome, d.codigo?.trim() || null, d.processo?.trim() || null, d.descricao?.trim() || null, d.endereco?.trim() || null,
+        d.municipio?.trim() || null, d.orgaoSolicitante?.trim() || null, (d.uf ?? "RJ").toUpperCase()],
+    },
     comandoAuditoria({ usuarioId, acao: "OBRA_CRIADA", entidade: "obra", entidadeId: id, depois: d }),
   ]);
   return id;
@@ -243,8 +252,8 @@ export async function criarOrcamento(
 }
 
 export async function listarOrcamentos(ex: Executor) {
-  return ex.consulta<{ obraId: string; obra: string; cliente: string | null; orcamentoId: string; codigo: string | null; titulo: string | null; revisoes: number; ultimaRevisaoId: string | null; ultimaNumero: number | null; ultimaStatus: string | null; total: string | null; atualizado: string | null }>(
-    `SELECT o.id AS "obraId", o.nome AS obra, o.cliente, oc.id AS "orcamentoId", oc.codigo, oc.titulo,
+  return ex.consulta<{ obraId: string; obra: string; obraCodigo: string | null; orgaoSolicitante: string | null; orcamentoId: string; codigo: string | null; titulo: string | null; revisoes: number; ultimaRevisaoId: string | null; ultimaNumero: number | null; ultimaStatus: string | null; total: string | null; atualizado: string | null }>(
+    `SELECT o.id AS "obraId", o.nome AS obra, o.codigo AS "obraCodigo", o.orgao_solicitante AS "orgaoSolicitante", oc.id AS "orcamentoId", oc.codigo, oc.titulo,
             (SELECT count(*)::int FROM orcamento_revisao r WHERE r.orcamento_id = oc.id) AS revisoes,
             u.id AS "ultimaRevisaoId", u.numero AS "ultimaNumero", u.status::text AS "ultimaStatus",
             coalesce(u.total_geral, (SELECT sum(i.preco_total) FROM item_orcamento i WHERE i.revisao_id = u.id))::text AS total,
@@ -270,7 +279,7 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
   );
   if (!r) throw new ErroOrcamento("Revisão não encontrada.");
   const [orc] = await ex.consulta<EstadoRevisao["orcamento"]>(
-    `SELECT oc.id, oc.codigo, oc.titulo, o.id AS "obraId", o.nome AS "obraNome", o.cliente, o.municipio, o.uf
+    `SELECT oc.id, oc.codigo, oc.titulo, o.id AS "obraId", o.nome AS "obraNome", o.codigo AS "obraCodigo", o.processo, o.orgao_solicitante AS "orgaoSolicitante", o.endereco, o.municipio, o.uf
        FROM orcamento oc JOIN obra o ON o.id = oc.obra_id WHERE oc.id = $1`,
     [r.orcamentoId],
   );
