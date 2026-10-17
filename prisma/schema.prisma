@@ -450,11 +450,13 @@ enum TipoParcelaBdi {
 }
 
 model BdiPerfil {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nome      String   @unique
-  descricao String?
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                String   @unique
+  descricao           String?
+  /// BDI informado diretamente (ex.: fixado em edital), em vez de calculado pelas parcelas
+  percentualInformado Decimal? @map("percentual_informado") @db.Decimal(9, 6)
+  ativo               Boolean  @default(true)
+  criadoEm            DateTime @default(now()) @map("criado_em") @db.Timestamptz
 
   parcelas BdiParcela[]
   revisoes OrcamentoRevisao[]
@@ -542,13 +544,16 @@ model OrcamentoRevisao {
   bdiPerfilId      String?        @map("bdi_perfil_id") @db.Uuid
   bdiPercentual    Decimal?       @map("bdi_percentual") @db.Decimal(9, 6) // snapshot do BDI global
   arredondamento   Arredondamento @default(ARREDONDAR)
+  /// data de referência para cotações de insumos próprios
+  dataReferencia   DateTime       @default(now()) @map("data_referencia") @db.Date
+  criadoPorId      String?        @map("criado_por_id") @db.Uuid
   revisaoOrigemId  String?        @map("revisao_origem_id") @db.Uuid
   fechadaEm        DateTime?      @map("fechada_em") @db.Timestamptz
   fechadaPorId     String?        @map("fechada_por_id") @db.Uuid
   totalCustoDireto Decimal?       @map("total_custo_direto") @db.Decimal(18, 2) // snapshot ao fechar
   totalGeral       Decimal?       @map("total_geral") @db.Decimal(18, 2)
   criadoEm         DateTime       @default(now()) @map("criado_em") @db.Timestamptz
-  atualizadoEm     DateTime       @updatedAt @map("atualizado_em") @db.Timestamptz
+  atualizadoEm     DateTime       @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz
 
   orcamento     Orcamento           @relation(fields: [orcamentoId], references: [id])
   bdiPerfil     BdiPerfil?          @relation(fields: [bdiPerfilId], references: [id])
@@ -618,6 +623,10 @@ model ItemOrcamento {
   bdiPercentual    Decimal @map("bdi_percentual") @db.Decimal(9, 6) // BDI efetivamente aplicado
   precoUnitario    Decimal @map("preco_unitario") @db.Decimal(18, 2)
   precoTotal       Decimal @map("preco_total") @db.Decimal(18, 2)
+  custoTotal       Decimal @default(0) @map("custo_total") @db.Decimal(18, 2) // quantidade × custo unitário (sem BDI)
+  origemPreco      String? @map("origem_preco") // PUBLICADO | COTACAO | CALCULADO
+  referenciaPreco  String? @map("referencia_preco") // ex.: "SINAPI RJ 09/2026 — Sem desoneração"
+  pendencia        String? // ex.: preço mantido da base anterior
   memoriaCalculo   String? @map("memoria_calculo")
   analitico        Json? // snapshot dos componentes (coeficientes e preços) ao fechar
 
