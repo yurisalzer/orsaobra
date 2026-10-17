@@ -144,6 +144,26 @@ test("a conta da memória de cálculo preenche a quantidade (exemplo do usuário
   await page.screenshot({ path: "test-results/orcamento-memoria.png", fullPage: true });
 });
 
+test("edição dos dados da obra", async ({ page }) => {
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Editar obra Creche Municipal" }).click();
+  await expect(page.getByRole("heading", { name: "Editar obra" })).toBeVisible();
+  await expect(page.getByLabel("Processo")).toHaveValue("SEI-120001/000123/2026");
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await page.getByLabel("Código da obra").fill("OB-002");
+  await page.getByLabel("Órgão solicitante").fill("Secretaria Municipal de Educação");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("heading", { name: "Obras e orçamentos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OB-002 · Creche Municipal — Secretaria Municipal de Educação" })).toBeVisible();
+  // volta ao código original (os demais testes conferem o cabeçalho)
+  await page.getByRole("link", { name: "Editar obra Creche Municipal" }).click();
+  await page.getByLabel("Código da obra").fill("OB-001");
+  await page.getByLabel("Órgão solicitante").fill("Prefeitura");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("heading", { name: "OB-001 · Creche Municipal — Prefeitura" })).toBeVisible();
+});
+
 test("conflito de edição entre duas abas é detectado", async ({ page, browser }) => {
   const respostas = dialogos(page);
   await entrar(page);

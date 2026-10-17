@@ -212,19 +212,65 @@ export interface DadosObra {
   endereco?: string | null; municipio?: string | null; orgaoSolicitante?: string | null; uf?: string;
 }
 
-export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
+const CAMPOS_OBRA = ["codigo", "processo", "descricao", "endereco", "municipio", "orgaoSolicitante"] as const;
+
+/** Textos aparados; campos vazios viram null. */
+function normalizarObra(d: DadosObra) {
   const nome = d.nome.trim();
   if (nome.length < 2) throw new ErroOrcamento("Informe o nome da obra.");
+  const r = { nome, uf: (d.uf ?? "RJ").toUpperCase() } as Record<(typeof CAMPOS_OBRA)[number], string | null> & { nome: string; uf: string };
+  for (const k of CAMPOS_OBRA) r[k] = d[k]?.trim() || null;
+  return r;
+}
+
+export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
+  const o = normalizarObra(d);
   const id = crypto.randomUUID();
   await ex.transacao([
     {
       sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      params: [id, nome, d.codigo?.trim() || null, d.processo?.trim() || null, d.descricao?.trim() || null, d.endereco?.trim() || null,
-        d.municipio?.trim() || null, d.orgaoSolicitante?.trim() || null, (d.uf ?? "RJ").toUpperCase()],
+      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.uf],
     },
-    comandoAuditoria({ usuarioId, acao: "OBRA_CRIADA", entidade: "obra", entidadeId: id, depois: d }),
+    comandoAuditoria({ usuarioId, acao: "OBRA_CRIADA", entidade: "obra", entidadeId: id, depois: o }),
   ]);
   return id;
+}
+
+export async function lerObra(ex: Executor, id: string) {
+  const [o] = await ex.consulta<{ [K in keyof DadosObra]-?: K extends "nome" | "uf" ? string : string | null } & { id: string; orcamentos: number }>(
+    `SELECT id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante AS "orgaoSolicitante", uf,
+            (SELECT count(*)::int FROM orcamento oc WHERE oc.obra_id = o.id) AS orcamentos
+       FROM obra o WHERE id = $1`,
+    [id],
+  );
+  if (!o) throw new ErroOrcamento("Obra não encontrada.");
+  return o;
+}
+
+/**
+ * Altera os dados cadastrais da obra. `antes` são os dados que o usuário abriu
+ * para editar: se outra pessoa alterou a obra nesse meio-tempo, nada é gravado.
+ */
+export async function alterarObra(ex: Executor, id: string, antes: DadosObra, depois: DadosObra, usuarioId: string) {
+  const a = normalizarObra(antes);
+  const o = normalizarObra(depois);
+  await ex.transacao([
+    {
+      sql: `SELECT imp_exigir(EXISTS (SELECT 1 FROM obra WHERE id = $1 FOR UPDATE), 'Obra não encontrada.')`,
+      params: [id],
+    },
+    {
+      sql: `SELECT imp_exigir((SELECT (nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante) IS NOT DISTINCT FROM ($2, $3, $4, $5, $6, $7, $8)
+                                 FROM obra WHERE id = $1),
+                              'A obra foi alterada por outra pessoa (ou em outra aba) enquanto você editava. Recarregue a página.')`,
+      params: [id, a.nome, a.codigo, a.processo, a.descricao, a.endereco, a.municipio, a.orgaoSolicitante],
+    },
+    {
+      sql: `UPDATE obra SET nome = $2, codigo = $3, processo = $4, descricao = $5, endereco = $6, municipio = $7, orgao_solicitante = $8 WHERE id = $1`,
+      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante],
+    },
+    comandoAuditoria({ usuarioId, acao: "OBRA_ALTERADA", entidade: "obra", entidadeId: id, antes: a, depois: o }),
+  ]);
 }
 
 export async function criarOrcamento(

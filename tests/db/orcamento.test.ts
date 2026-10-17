@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
-  adicionarItem, alterarItem, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
+  adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
   duplicarOrcamento, excluirItem, fecharRevisao, moverEtapa, novaRevisao,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
@@ -63,6 +63,20 @@ describe("orçamento completo", () => {
     expect(e.revisao).toMatchObject({ numero: 1, status: "EM_ELABORACAO", bdiPercentual: "22.230000" });
     expect(e.basesPadrao.map((b) => `${b.fonte}:${b.regime}`)).toEqual(["EMOP:SEM_DESONERACAO", "SINAPI:SEM_DESONERACAO"]);
     expect(e.orcamento).toMatchObject({ obraCodigo: "OB-001", processo: "SEI-123/2026", endereco: "Rua A, 1", municipio: "Niterói", orgaoSolicitante: "Secretaria de Educação" });
+  });
+
+  it("edita os dados da obra, com auditoria e detecção de edição simultânea", async () => {
+    const obra = await criarObra(ex, { nome: "Obra Z", municipio: "Rio de Janeiro" }, u);
+    const aberto = { nome: "Obra Z", municipio: "Rio de Janeiro" };
+    await alterarObra(ex, obra, aberto, { nome: " Obra Z - Bloco A ", codigo: "OB-9", processo: "SEI-9/2026", orgaoSolicitante: "Secretaria de Obras", municipio: "" }, u);
+    const o = await prisma.obra.findUniqueOrThrow({ where: { id: obra } });
+    expect(o).toMatchObject({ nome: "Obra Z - Bloco A", codigo: "OB-9", processo: "SEI-9/2026", orgaoSolicitante: "Secretaria de Obras", municipio: null });
+    const aud = await prisma.auditoria.findFirstOrThrow({ where: { entidadeId: obra, acao: "OBRA_ALTERADA" } });
+    expect(aud.antes).toMatchObject({ nome: "Obra Z", municipio: "Rio de Janeiro" });
+    // outra aba ainda com os dados antigos: não grava
+    await expect(alterarObra(ex, obra, aberto, { nome: "Outro nome" }, u)).rejects.toThrow(/alterada por outra pessoa/);
+    await expect(alterarObra(ex, obra, { nome: "Obra Z - Bloco A", codigo: "OB-9", processo: "SEI-9/2026", orgaoSolicitante: "Secretaria de Obras" }, { nome: "x" }, u)).rejects.toThrow(/nome da obra/);
+    expect((await prisma.obra.findUniqueOrThrow({ where: { id: obra } })).nome).toBe("Obra Z - Bloco A");
   });
 
   it("não aceita base não publicada", async () => {

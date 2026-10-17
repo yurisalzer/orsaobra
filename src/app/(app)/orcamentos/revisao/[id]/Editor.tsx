@@ -172,7 +172,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-500"><Link href="/orcamentos" className="underline">Orçamentos</Link> · {estado.orcamento.obraCodigo ? `${estado.orcamento.obraCodigo} · ` : ""}{estado.orcamento.obraNome}{estado.orcamento.orgaoSolicitante ? ` — ${estado.orcamento.orgaoSolicitante}` : ""}{estado.orcamento.processo ? ` · Processo ${estado.orcamento.processo}` : ""}</p>
+          <p className="text-sm text-slate-500"><Link href="/orcamentos" className="underline">Orçamentos</Link> · <Link href={`/orcamentos/obra/${estado.orcamento.obraId}`} className="hover:underline" title="Editar dados da obra">{estado.orcamento.obraCodigo ? `${estado.orcamento.obraCodigo} · ` : ""}{estado.orcamento.obraNome}</Link>{estado.orcamento.orgaoSolicitante ? ` — ${estado.orcamento.orgaoSolicitante}` : ""}{estado.orcamento.processo ? ` · Processo ${estado.orcamento.processo}` : ""}</p>
           <h1 className="text-2xl font-semibold">{estado.orcamento.codigo ? `${estado.orcamento.codigo} — ` : ""}{estado.orcamento.titulo}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
             <span>Revisão</span>

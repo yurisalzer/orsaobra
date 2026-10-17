@@ -6,7 +6,7 @@ import { exigirUsuario } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
-  adicionarItem, alterarItem, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
+  adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
   excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
@@ -49,6 +49,10 @@ export async function acaoCriarOrcamento(d: { obraId: string | null; novaObra: D
       bdiPerfilId: d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null, arredondamento: modo.parse(d.arredondamento),
     }, u);
   }, "/orcamentos");
+}
+
+export async function acaoAlterarObra(obraId: string, antes: DadosNovaObra, depois: DadosNovaObra) {
+  return executar((u) => executor().then((ex) => alterarObra(ex, uuid.parse(obraId), novaObra.parse(antes), novaObra.parse(depois), u)), "/orcamentos");
 }
 
 export async function acaoConfigurar(revisaoId: string, versao: number, d: { descricao?: string | null; bases?: { baseRevisaoId: string; regime: string | null }[]; bdiPerfilId?: string | null; arredondamento?: string; dataReferencia?: string }) {

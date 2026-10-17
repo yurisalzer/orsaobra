@@ -19,7 +19,12 @@ export default async function Orcamentos() {
       {obras.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Nenhuma obra cadastrada.</p>}
       {obras.map((o) => (
         <section key={o.obraId} className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="font-medium">{o.obraCodigo ? <span className="text-slate-500">{o.obraCodigo} · </span> : null}{o.obra}{o.orgaoSolicitante ? <span className="text-slate-500"> — {o.orgaoSolicitante}</span> : null}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="font-medium">{o.obraCodigo ? <span className="text-slate-500">{o.obraCodigo} · </span> : null}{o.obra}{o.orgaoSolicitante ? <span className="text-slate-500"> — {o.orgaoSolicitante}</span> : null}</h2>
+            {temPapel(u, "ORCAMENTISTA") && (
+              <Link href={`/orcamentos/obra/${o.obraId}`} aria-label={`Editar obra ${o.obra}`} className="shrink-0 text-sm text-marca-700 hover:underline">Editar obra</Link>
+            )}
+          </div>
           <table className="mt-2 w-full text-sm">
             <thead className="text-left text-slate-500"><tr><th className="py-1">Orçamento</th><th>Revisões</th><th>Última revisão</th><th className="text-right">Total</th><th>Atualizado</th></tr></thead>
             <tbody>

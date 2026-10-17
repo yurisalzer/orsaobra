@@ -3,14 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { acaoCriarOrcamento, type DadosNovaObra } from "../acoes";
+import { CamposObra, OBRA_VAZIA } from "../CamposObra";
 
 interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
 
 export function FormNovo({ obras, bases, perfis }: { obras: { id: string; nome: string }[]; bases: BaseOpcao[]; perfis: { id: string; nome: string; bdi: string }[] }) {
   const fontes = [...new Set(bases.map((b) => b.fonte))];
   const [obraId, setObraId] = useState<string>(obras[0]?.id ?? "");
-  const [novaObra, setNovaObra] = useState<DadosNovaObra>({ nome: "", codigo: "", processo: "", descricao: "", endereco: "", municipio: "", orgaoSolicitante: "" });
-  const campoObra = (k: keyof DadosNovaObra) => ({ value: novaObra[k], onChange: (e: { target: { value: string } }) => setNovaObra({ ...novaObra, [k]: e.target.value }) });
+  const [novaObra, setNovaObra] = useState<DadosNovaObra>(OBRA_VAZIA);
   const [titulo, setTitulo] = useState("");
   const [codigo, setCodigo] = useState("");
   const [sel, setSel] = useState<Record<string, { usar: boolean; base: string; regime: string }>>(() =>
@@ -46,15 +46,7 @@ export function FormNovo({ obras, bases, perfis }: { obras: { id: string; nome: 
           <option value="">+ Nova obra</option>
         </select>
         {!obraId && (
-          <div className="grid gap-3 sm:grid-cols-[1fr_12rem_14rem]">
-            <label className="text-sm">Nome da obra<input {...campoObra("nome")} className={campo} /></label>
-            <label className="text-sm">Código da obra<input {...campoObra("codigo")} className={campo} /></label>
-            <label className="text-sm">Processo<input {...campoObra("processo")} className={campo} /></label>
-            <label className="text-sm sm:col-span-3">Descrição<textarea {...campoObra("descricao")} rows={2} className={campo} /></label>
-            <label className="text-sm">Endereço<input {...campoObra("endereco")} className={campo} /></label>
-            <label className="text-sm">Cidade<input {...campoObra("municipio")} className={campo} /></label>
-            <label className="text-sm">Órgão solicitante<input {...campoObra("orgaoSolicitante")} className={campo} /></label>
-          </div>
+          <CamposObra valor={novaObra} onChange={setNovaObra} />
         )}
       </section>
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
