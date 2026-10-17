@@ -85,7 +85,7 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   // memória de cálculo do quantitativo (exemplo do usuário)
   await page.getByLabel("Adicionar memória de cálculo 1.1").click();
   await page.getByLabel("Memória de cálculo do quantitativo — item 1.1").fill("2 x 1,25 (repetições)");
-  await expect(page.getByText("Resultado: 2,5")).toBeVisible();
+  await expect(page.getByText("Resultado: 2,50")).toBeVisible();
   await page.getByRole("button", { name: "Salvar memória" }).click();
   await expect(page.getByText("Memória de cálculo: 2 x 1,25 (repetições)")).toBeVisible();
   await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 662,40"); // quantidade mantida (2,5)
@@ -126,21 +126,29 @@ test("a conta da memória de cálculo preenche a quantidade (exemplo do usuário
   await page.getByRole("link", { name: "Reforma da cobertura" }).click();
   await page.getByLabel("Adicionar memória de cálculo 2.1").click();
   await page.getByLabel("Memória de cálculo do quantitativo — item 2.1").fill("(30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 100m²");
-  await expect(page.getByText("Resultado: 200")).toBeVisible();
+  await expect(page.getByText("Resultado: 200,00")).toBeVisible();
   await expect(page.getByText(/resultado escrito após "=" \(100\) difere do calculado/)).toBeVisible();
   await page.getByRole("button", { name: "Salvar memória" }).click();
   // quantidade 200 × 243,06 = 48.612,00
-  await expect(page.getByLabel("Quantidade 2.1")).toHaveValue("200");
+  await expect(page.getByLabel("Quantidade 2.1")).toHaveValue("200,00");
   await expect(page.getByRole("row", { name: /104658/ })).toContainText("R$ 48.612,00");
-  await expect(page.getByText(/→ 200/)).toBeVisible();
+  await expect(page.getByText(/→ 200,00/)).toBeVisible();
   // ao incluir um item, a memória preenche a quantidade
   await page.getByRole("row", { name: /Acessibilidade/ }).getByRole("button", { name: "+ item" }).click();
   await page.getByLabel("Buscar serviço").fill("01.001.0002");
   await page.getByRole("option", { name: /01\.001\.0002/ }).click();
   await page.getByLabel("Memória de cálculo do novo item").fill("3 x 4,5");
-  await expect(page.getByLabel("Quantidade do novo item")).toHaveValue("13,5");
+  await expect(page.getByLabel("Quantidade do novo item")).toHaveValue("13,50");
   await page.getByRole("button", { name: "Adicionar", exact: true }).click();
-  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,5");
+  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,50");
+  // quantidade sempre com 2 casas (ou mais, se informadas)
+  await expect(page.getByLabel("Quantidade 1.1")).toHaveValue("3,00");
+  await page.getByLabel("Quantidade 1.1").fill("3,125");
+  await page.getByLabel("Quantidade 1.1").press("Enter");
+  await expect(page.getByLabel("Quantidade 1.1")).toHaveValue("3,125");
+  await page.getByLabel("Quantidade 1.1").fill("3");
+  await page.getByLabel("Quantidade 1.1").press("Enter");
+  await expect(page.getByLabel("Quantidade 1.1")).toHaveValue("3,00");
   await page.screenshot({ path: "test-results/orcamento-memoria.png", fullPage: true });
 });
 
@@ -157,7 +165,7 @@ test("editar o código de um item mantém quantidade e memória; o código conti
   await page.getByRole("listbox", { name: "Códigos encontrados" }).getByRole("option", { name: /01\.001\.0001-0/ }).click();
   await expect(page.getByRole("status")).toContainText(/Item 2\.2: código 01\.001\.0002-\w trocado por 01\.001\.0001-0/);
   await expect(linha().getByRole("link", { name: "01.001.0001-0" })).toHaveAttribute("href", /\/consulta\/item\//);
-  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,5");
+  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,50");
   await expect(page.getByText(/Memória de cálculo:.*3 x 4,5/)).toBeVisible();
   await page.screenshot({ path: "test-results/orcamento-trocar-codigo.png", fullPage: true });
 });

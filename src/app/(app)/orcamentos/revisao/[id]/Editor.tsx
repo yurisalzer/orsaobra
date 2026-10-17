@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import { SeloFonte } from "@/components/SeloFonte";
-import { dec, formatarMoeda, formatarNumero } from "@/lib/calculo/decimal";
+import { dec, formatarMoeda, formatarNumero, lerNumero, type Dec } from "@/lib/calculo/decimal";
 import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
@@ -16,10 +16,10 @@ export interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; r
 interface Perfil { id: string; nome: string; bdi: string }
 type Achado = Extract<Awaited<ReturnType<typeof acaoBuscarParaOrcamento>>, { ok: true }>["dados"]["itens"][number];
 
-const qtd = (v: string) => {
-  const [i, f = ""] = v.split(".");
-  const frac = f.replace(/0+$/, "");
-  return formatarNumero(`${i}.${frac || "0"}`, frac.length);
+/** Quantidade com no mínimo 2 casas decimais (até 4, se houver: nada é escondido). */
+const qtd = (v: string | Dec) => {
+  const d = dec(v);
+  return formatarNumero(d, Math.min(Math.max(d.decimalPlaces(), 2), 4));
 };
 const pct = (v: string | null) => (v === null ? "—" : `${formatarNumero(v, 2)}%`);
 
@@ -33,7 +33,7 @@ export function quantidadeDaMemoria(texto: string): { quantidade: string | null;
     const avisos: string[] = [];
     if (!q.eq(r.valor)) avisos.push("resultado arredondado para 4 casas decimais");
     if (r.escrito && !r.escrito.eq(r.valor)) avisos.push(`o resultado escrito após "=" (${formatarNumero(r.escrito, Math.min(r.escrito.decimalPlaces(), 4))}) difere do calculado`);
-    const exibir = formatarNumero(q, Math.min(Math.max(q.decimalPlaces(), 0), 4));
+    const exibir = qtd(q);
     return { quantidade: exibir, exibir, aviso: avisos.length ? avisos.join("; ") : null, erro: null };
   } catch (e) {
     return { quantidade: null, exibir: null, aviso: null, erro: `Não foi possível calcular a conta: ${(e as Error).message}` };
@@ -259,7 +259,12 @@ function CampoQuantidade({ valor, rotulo, aoSalvar }: { valor: string; rotulo: s
   const original = qtd(valor);
   const [texto, setTexto] = useState(original);
   useEffect(() => setTexto(original), [original]);
-  const salvar = () => { if (texto.trim() && texto !== original) aoSalvar(texto); };
+  const salvar = () => {
+    if (!texto.trim() || texto === original) return;
+    const n = lerNumero(texto);
+    if (n && n.eq(valor)) return setTexto(original); // mesmo valor, só outra escrita: mostra com 2 casas
+    aoSalvar(texto);
+  };
   return (
     <input value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={salvar} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setTexto(original); }}
       inputMode="decimal" aria-label={rotulo} className="w-24 rounded border border-slate-300 px-1 py-0.5 text-right" />
@@ -449,7 +454,7 @@ function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; ed
       {calc.exibir && <span className="ml-1 font-medium text-green-800">→ {calc.exibir}</span>}
       {editavel && <> {" "}<button onClick={() => setEditando(true)} className="text-marca-700 underline" aria-label={`Editar memória de cálculo ${item.numero}`}>editar</button></>}
       {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
-      {divergente && <span className="block text-amber-800">⚠ A quantidade lançada ({formatarNumero(item.quantidade, 4).replace(/,?0+$/, "")}) difere do resultado da memória ({calc.exibir}).</span>}
+      {divergente && <span className="block text-amber-800">⚠ A quantidade lançada ({qtd(item.quantidade)}) difere do resultado da memória ({calc.exibir}).</span>}
       {calc.erro && <span className="block text-red-700">{calc.erro}</span>}
     </div>
   );
