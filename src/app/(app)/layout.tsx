@@ -8,6 +8,7 @@ const MENU = [
   { href: "/consulta", rotulo: "Consulta de preços" },
   { href: "/composicoes", rotulo: "Composições" },
   { href: "/bdi", rotulo: "BDI" },
+  { href: "/cabecalhos", rotulo: "Cabeçalhos" },
   { href: "/importacao", rotulo: "Importação", admin: true },
 ];
 

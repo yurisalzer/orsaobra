@@ -37,6 +37,7 @@ const modo = z.enum(["ARREDONDAR", "TRUNCAR"]);
 const novaObra = z.object({
   nome: z.string().max(200), codigo: z.string().max(60), processo: z.string().max(100), descricao: z.string().max(4000),
   endereco: z.string().max(300), municipio: z.string().max(100), orgaoSolicitante: z.string().max(200),
+  cabecalhoId: z.union([z.literal(""), z.string().uuid()]),
 });
 export type DadosNovaObra = z.infer<typeof novaObra>;
 

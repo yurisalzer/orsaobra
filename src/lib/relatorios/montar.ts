@@ -21,6 +21,7 @@ import {
 import { VERSAO_SISTEMA } from "../versao";
 import type { Celula, Coluna, Documento, Linha, Secao, TipoRelatorio } from "./documento";
 import { RELATORIOS } from "./documento";
+import { cabecalhoDaRevisao, type CabecalhoDocumento } from "./cabecalhos";
 import { explodirInsumos } from "./insumos";
 
 export class ErroRelatorio extends Error {}
@@ -43,6 +44,7 @@ interface Contexto {
   avisos: string[];
   rodape: string;
   nomeBase: string;
+  cabecalho: CabecalhoDocumento | null;
 }
 
 const dataHora = (d: Date) =>
@@ -95,7 +97,7 @@ async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tip
   if (estado.totais.pendencias > 0) avisos.push(`${estado.totais.pendencias} item(ns) com pendência de preço (ver orçamento).`);
   const nome = RELATORIOS.find((x) => x.tipo === tipo)!.nome;
   return {
-    ex, estado, obra, fechada, identificacao, avisos,
+    ex, estado, obra, fechada, identificacao, avisos, cabecalho: await cabecalhoDaRevisao(ex, revisaoId),
     rodape: `Emitido em ${dataHora(o.agora ?? new Date())} por ${o.emitidoPor} · Orçamento de Obras ${VERSAO_SISTEMA} · revisão ${r.numero}, versão de edição ${r.versao}`,
     nomeBase: arquivo(`${nome}_${oc.codigo ?? ""}_${oc.titulo}_rev${r.numero}`),
   };
@@ -103,7 +105,7 @@ async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tip
 
 function documento(c: Contexto, tipo: TipoRelatorio, orientacao: Documento["orientacao"], secoes: Secao[], avisosExtras: string[] = []): Documento {
   return {
-    tipo, titulo: RELATORIOS.find((x) => x.tipo === tipo)!.nome, orientacao, identificacao: c.identificacao,
+    tipo, cabecalho: c.cabecalho, titulo: RELATORIOS.find((x) => x.tipo === tipo)!.nome, orientacao, identificacao: c.identificacao,
     avisos: [...c.avisos, ...avisosExtras], secoes, rodape: c.rodape, nomeArquivo: c.nomeBase,
   };
 }

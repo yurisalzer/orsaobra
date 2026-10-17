@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { acaoAlterarObra, type DadosNovaObra } from "../../acoes";
 import { CamposObra } from "../../CamposObra";
 
-export function FormObra({ obraId, inicial }: { obraId: string; inicial: DadosNovaObra }) {
+export function FormObra({ obraId, inicial, cabecalhos }: { obraId: string; inicial: DadosNovaObra; cabecalhos: { id: string; nome: string; padrao: boolean }[] }) {
   const [valor, setValor] = useState(inicial);
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, iniciar] = useTransition();
@@ -22,7 +22,7 @@ export function FormObra({ obraId, inicial }: { obraId: string; inicial: DadosNo
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <CamposObra valor={valor} onChange={setValor} />
+        <CamposObra valor={valor} onChange={setValor} cabecalhos={cabecalhos} />
       </section>
       {erro && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <div className="flex gap-2">

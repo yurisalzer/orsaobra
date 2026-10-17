@@ -500,21 +500,40 @@ model BdiParcela {
 // -----------------------------------------------------------------------------
 
 model Obra {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nome             String
   codigo           String?
   processo         String?
   descricao        String?
   orgaoSolicitante String?  @map("orgao_solicitante")
+  cabecalhoId      String?  @map("cabecalho_id") @db.Uuid // cabeçalho dos relatórios (null = padrão)
   endereco         String?
   municipio        String? // cidade
   uf               String   @default("RJ") @db.Char(2)
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz
 
   orcamentos Orcamento[]
   membros    ObraMembro[]
+  cabecalho  CabecalhoRelatorio? @relation(fields: [cabecalhoId], references: [id], onDelete: SetNull)
 
   @@map("obra")
+}
+
+/// Cabeçalho (timbre) dos relatórios: logo e linhas de texto.
+model CabecalhoRelatorio {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome         String
+  linhas       String[] @default([])
+  logoTipo     String?  @map("logo_tipo")
+  logoBase64   String?  @map("logo_base64")
+  padrao       Boolean  @default(false)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm DateTime @default(now()) @map("atualizado_em") @db.Timestamptz
+
+  obras Obra[]
+
+  @@map("cabecalho_relatorio")
 }
 
 model ObraMembro {
@@ -554,28 +573,29 @@ enum Arredondamento {
 }
 
 model OrcamentoRevisao {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orcamentoId      String         @map("orcamento_id") @db.Uuid
-  numero           Int
-  descricao        String?
-  status           StatusRevisao  @default(EM_ELABORACAO)
-  versao           Int            @default(1) // controle otimista de concorrência
-  bdiPerfilId      String?        @map("bdi_perfil_id") @db.Uuid
-  bdiPercentual    Decimal?       @map("bdi_percentual") @db.Decimal(9, 6) // snapshot do BDI global
-  arredondamento   Arredondamento @default(ARREDONDAR)
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orcamentoId       String         @map("orcamento_id") @db.Uuid
+  numero            Int
+  descricao         String?
+  status            StatusRevisao  @default(EM_ELABORACAO)
+  versao            Int            @default(1) // controle otimista de concorrência
+  bdiPerfilId       String?        @map("bdi_perfil_id") @db.Uuid
+  bdiPercentual     Decimal?       @map("bdi_percentual") @db.Decimal(9, 6) // snapshot do BDI global
+  arredondamento    Arredondamento @default(ARREDONDAR)
   /// data de referência para cotações de insumos próprios
-  dataReferencia   DateTime       @default(now()) @map("data_referencia") @db.Date
-  criadoPorId      String?        @map("criado_por_id") @db.Uuid
-  revisaoOrigemId  String?        @map("revisao_origem_id") @db.Uuid
-  fechadaEm        DateTime?      @map("fechada_em") @db.Timestamptz
-  fechadaPorId     String?        @map("fechada_por_id") @db.Uuid
-  totalCustoDireto Decimal?       @map("total_custo_direto") @db.Decimal(18, 2) // snapshot ao fechar
-  totalGeral       Decimal?       @map("total_geral") @db.Decimal(18, 2)
-  obraSnapshot     Json?          @map("obra_snapshot") // dados da obra no fechamento
-  bdiSnapshot      Json?          @map("bdi_snapshot") // perfis de BDI usados, no fechamento
-  cronogramaMeses  Int?           @map("cronograma_meses")
-  criadoEm         DateTime       @default(now()) @map("criado_em") @db.Timestamptz
-  atualizadoEm     DateTime       @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz
+  dataReferencia    DateTime       @default(now()) @map("data_referencia") @db.Date
+  criadoPorId       String?        @map("criado_por_id") @db.Uuid
+  revisaoOrigemId   String?        @map("revisao_origem_id") @db.Uuid
+  fechadaEm         DateTime?      @map("fechada_em") @db.Timestamptz
+  fechadaPorId      String?        @map("fechada_por_id") @db.Uuid
+  totalCustoDireto  Decimal?       @map("total_custo_direto") @db.Decimal(18, 2) // snapshot ao fechar
+  totalGeral        Decimal?       @map("total_geral") @db.Decimal(18, 2)
+  obraSnapshot      Json?          @map("obra_snapshot") // dados da obra no fechamento
+  bdiSnapshot       Json?          @map("bdi_snapshot") // perfis de BDI usados, no fechamento
+  cronogramaMeses   Int?           @map("cronograma_meses")
+  cabecalhoSnapshot Json?          @map("cabecalho_snapshot") // cabeçalho dos relatórios no fechamento
+  criadoEm          DateTime       @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm      DateTime       @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz
 
   orcamento     Orcamento           @relation(fields: [orcamentoId], references: [id])
   bdiPerfil     BdiPerfil?          @relation(fields: [bdiPerfilId], references: [id])

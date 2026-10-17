@@ -103,6 +103,13 @@ const FUNDO: Record<string, string> = { grupo1: "bg-slate-200 font-semibold", gr
 function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void }) {
   return (
     <section aria-label={`Visualização — ${doc.titulo}`} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+      {doc.cabecalho && (doc.cabecalho.linhas.length > 0 || doc.cabecalho.logo) && (
+        <div className="flex items-center gap-3 border-b border-marca-700 pb-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- imagem em data URL vinda do cadastro */}
+          {doc.cabecalho.logo && <img src={doc.cabecalho.logo} alt="Logo" className="h-16 w-16 object-contain" />}
+          <div className="text-sm font-semibold leading-snug">{doc.cabecalho.linhas.map((l) => <p key={l}>{l}</p>)}</div>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-lg font-semibold uppercase text-marca-700">{doc.titulo}</h2>
         <button onClick={aoFechar} className="rounded-md border border-slate-300 px-3 py-1 text-sm">Fechar</button>

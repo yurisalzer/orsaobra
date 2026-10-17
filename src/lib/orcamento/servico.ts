@@ -17,6 +17,7 @@ import { calcularItem } from "../calculo/item";
 import { numerarEtapas } from "../calculo/numeracao";
 import { cabecalhoItem, type LinhaAnalitica } from "../referencia/item";
 import { precificar, type ContextoPreco } from "../referencia/precificacao";
+import { cabecalhoDaObra } from "../relatorios/cabecalhos";
 import { listarPerfis } from "./bdi";
 
 export class ErroOrcamento extends Error {}
@@ -210,9 +211,11 @@ function comandosBasesPadrao(revisaoId: string, bases: { baseRevisaoId: string; 
 export interface DadosObra {
   nome: string; codigo?: string | null; processo?: string | null; descricao?: string | null;
   endereco?: string | null; municipio?: string | null; orgaoSolicitante?: string | null; uf?: string;
+  /** cabeçalho dos relatórios (vazio = padrão) */
+  cabecalhoId?: string | null;
 }
 
-const CAMPOS_OBRA = ["codigo", "processo", "descricao", "endereco", "municipio", "orgaoSolicitante"] as const;
+const CAMPOS_OBRA = ["codigo", "processo", "descricao", "endereco", "municipio", "orgaoSolicitante", "cabecalhoId"] as const;
 
 /** Textos aparados; campos vazios viram null. */
 function normalizarObra(d: DadosObra) {
@@ -228,8 +231,8 @@ export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
   const id = crypto.randomUUID();
   await ex.transacao([
     {
-      sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.uf],
+      sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf, cabecalho_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)`,
+      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.uf, o.cabecalhoId],
     },
     comandoAuditoria({ usuarioId, acao: "OBRA_CRIADA", entidade: "obra", entidadeId: id, depois: o }),
   ]);
@@ -238,7 +241,7 @@ export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
 
 export async function lerObra(ex: Executor, id: string) {
   const [o] = await ex.consulta<{ [K in keyof DadosObra]-?: K extends "nome" | "uf" ? string : string | null } & { id: string; orcamentos: number }>(
-    `SELECT id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante AS "orgaoSolicitante", uf,
+    `SELECT id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante AS "orgaoSolicitante", uf, cabecalho_id AS "cabecalhoId",
             (SELECT count(*)::int FROM orcamento oc WHERE oc.obra_id = o.id) AS orcamentos
        FROM obra o WHERE id = $1`,
     [id],
@@ -260,14 +263,14 @@ export async function alterarObra(ex: Executor, id: string, antes: DadosObra, de
       params: [id],
     },
     {
-      sql: `SELECT imp_exigir((SELECT (nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante) IS NOT DISTINCT FROM ($2, $3, $4, $5, $6, $7, $8)
+      sql: `SELECT imp_exigir((SELECT (nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, cabecalho_id::text) IS NOT DISTINCT FROM ($2, $3, $4, $5, $6, $7, $8, $9)
                                  FROM obra WHERE id = $1),
                               'A obra foi alterada por outra pessoa (ou em outra aba) enquanto você editava. Recarregue a página.')`,
-      params: [id, a.nome, a.codigo, a.processo, a.descricao, a.endereco, a.municipio, a.orgaoSolicitante],
+      params: [id, a.nome, a.codigo, a.processo, a.descricao, a.endereco, a.municipio, a.orgaoSolicitante, a.cabecalhoId],
     },
     {
-      sql: `UPDATE obra SET nome = $2, codigo = $3, processo = $4, descricao = $5, endereco = $6, municipio = $7, orgao_solicitante = $8 WHERE id = $1`,
-      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante],
+      sql: `UPDATE obra SET nome = $2, codigo = $3, processo = $4, descricao = $5, endereco = $6, municipio = $7, orgao_solicitante = $8, cabecalho_id = $9::uuid WHERE id = $1`,
+      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.cabecalhoId],
     },
     comandoAuditoria({ usuarioId, acao: "OBRA_ALTERADA", entidade: "obra", entidadeId: id, antes: a, depois: o }),
   ]);
@@ -887,9 +890,9 @@ export async function fecharRevisao(ex: Executor, revisaoId: string, versao: num
                    total_custo_direto = (SELECT coalesce(sum(custo_total), 0) FROM item_orcamento WHERE revisao_id = $1),
                    total_geral = (SELECT coalesce(sum(preco_total), 0) FROM item_orcamento WHERE revisao_id = $1),
                    obra_snapshot = (SELECT to_jsonb(o) - 'id' - 'criado_em' FROM obra o JOIN orcamento oc ON oc.obra_id = o.id WHERE oc.id = orcamento_id),
-                   bdi_snapshot = $3::jsonb
+                   bdi_snapshot = $3::jsonb, cabecalho_snapshot = $4::jsonb
              WHERE id = $1`,
-      params: [revisaoId, usuarioId, json(await perfisDaRevisao(ex, revisaoId))],
+      params: [revisaoId, usuarioId, json(await perfisDaRevisao(ex, revisaoId)), json((await cabecalhoDaObra(ex, estado.orcamento.obraId)) ?? { linhas: [], logo: null })],
     },
     comandoAuditoria({ usuarioId, acao: "REVISAO_FECHADA", entidade: "orcamento_revisao", entidadeId: revisaoId, depois: { total: estado.totais.total, custoDireto: estado.totais.custoDireto, itens: estado.itens.length } }),
   ]);

@@ -60,6 +60,8 @@ export interface Secao {
 
 export interface Documento {
   tipo: TipoRelatorio;
+  /** timbre: logo (data URL PNG/JPEG) e linhas de texto (ex.: órgão, secretaria) */
+  cabecalho: { linhas: string[]; logo: string | null } | null;
   titulo: string;
   orientacao: "retrato" | "paisagem";
   /** identificação: obra, orçamento, revisão, bases, datas */

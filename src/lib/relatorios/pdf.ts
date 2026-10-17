@@ -67,8 +67,19 @@ function secaoPdf(s: Secao, primeira: boolean): Content[] {
 }
 
 export function definicaoPdf(d: Documento): TDocumentDefinitions {
+  const timbre: Content[] = d.cabecalho && (d.cabecalho.linhas.length || d.cabecalho.logo)
+    ? [{
+        columns: [
+          ...(d.cabecalho.logo ? [{ image: d.cabecalho.logo, fit: [62, 62] as [number, number], width: 70 }] : []),
+          { stack: d.cabecalho.linhas.map((l) => ({ text: l, bold: true, fontSize: 9.5, lineHeight: 1.15 })), margin: [4, 4, 0, 0] as [number, number, number, number], width: "*" },
+        ],
+        columnGap: 6,
+        margin: [0, 0, 0, 4],
+      }, { canvas: [{ type: "line", x1: 0, y1: 0, x2: d.orientacao === "paisagem" ? 794 : 547, y2: 0, lineWidth: 0.6, lineColor: COR.cabecalho }], margin: [0, 0, 0, 6] }]
+    : [];
   const cabecalho: Content[] = [
-    { text: d.titulo.toUpperCase(), style: "titulo" },
+    ...timbre,
+    { text: d.titulo.toUpperCase(), style: "titulo", alignment: timbre.length ? "center" : "left" },
     {
       table: { widths: ["auto", "*"], body: d.identificacao.map((i) => [{ text: i.rotulo, bold: true }, { text: i.valor }]) },
       layout: "noBorders", margin: [0, 2, 0, 4],

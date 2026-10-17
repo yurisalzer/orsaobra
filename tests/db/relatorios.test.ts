@@ -7,6 +7,8 @@ import {
 } from "@/lib/orcamento/servico";
 import { celula, type Documento, type Linha } from "@/lib/relatorios/documento";
 import { montarRelatorio } from "@/lib/relatorios/montar";
+import { arquivarCabecalho, listarCabecalhos, salvarCabecalho, validarLogo } from "@/lib/relatorios/cabecalhos";
+import { readFileSync } from "node:fs";
 import { prisma } from "./ajuda";
 import { carregarAmostras } from "./carga";
 
@@ -172,9 +174,60 @@ describe("relatórios (revisão em elaboração)", () => {
   });
 });
 
+describe("cabeçalhos dos relatórios", () => {
+  const png = readFileSync("tests/fixtures/logo.png").toString("base64");
+  let macae: string;
+  let outro: string;
+
+  it("valida o logo (PNG/JPEG pelo conteúdo, até 512 KB) e as linhas", async () => {
+    expect(validarLogo("image/png", `data:image/png;base64,${png}`)).toEqual({ tipo: "image/png", base64: png });
+    expect(() => validarLogo("image/png", Buffer.from("GIF89a....").toString("base64"))).toThrow(/PNG ou JPEG/);
+    expect(() => validarLogo("image/jpeg", png)).toThrow(/não corresponde/);
+    expect(() => validarLogo("image/png", Buffer.concat([readFileSync("tests/fixtures/logo.png"), Buffer.alloc(600 * 1024)]).toString("base64"))).toThrow(/512 KB/);
+    await expect(salvarCabecalho(ex, { nome: "x", linhas: [], padrao: false }, u)).rejects.toThrow(/nome/);
+    await expect(salvarCabecalho(ex, { nome: "Vazio", linhas: [" "], padrao: false }, u)).rejects.toThrow(/ao menos uma linha/);
+    await expect(salvarCabecalho(ex, { nome: "Muitas", linhas: ["1", "2", "3", "4", "5", "6", "7"], padrao: false }, u)).rejects.toThrow(/no máximo 6/);
+  });
+
+  it("padrão único; a obra usa o padrão ou o escolhido; aparece no relatório", async () => {
+    macae = await salvarCabecalho(ex, { nome: "Macaé SEMINF", linhas: ["Estado do Rio de Janeiro", "Prefeitura Municipal de Macaé", "Secretaria Municipal de Infraestrutura", "Secretaria Executiva de Obras"], logo: { tipo: "image/png", base64: png }, padrao: true }, u);
+    outro = await salvarCabecalho(ex, { nome: "Outro órgão", linhas: ["Governo do Estado"], padrao: true }, u);
+    await expect(salvarCabecalho(ex, { nome: "macaé seminf", linhas: ["x"], padrao: false }, u)).rejects.toThrow(/Já existe/);
+    let l = await listarCabecalhos(ex);
+    expect(l.filter((c) => c.padrao).map((c) => c.nome)).toEqual(["Outro órgão"]);
+    // sem escolha na obra: padrão
+    let d = await montarRelatorio(ex, r1, "sintetico", opc);
+    expect(d.cabecalho).toEqual({ linhas: ["Governo do Estado"], logo: null });
+    // obra escolhe Macaé
+    const obra = (await carregarRevisao(ex, r1)).orcamento.obraId;
+    const base = { nome: "Creche Modelo", codigo: "OB-77", processo: "SEI-77/2026", endereco: "Rua B, 2", municipio: "Niterói", orgaoSolicitante: "SME" };
+    await alterarObra(ex, obra, base, { ...base, cabecalhoId: macae }, u);
+    d = await montarRelatorio(ex, r1, "sintetico", opc);
+    expect(d.cabecalho!.linhas[1]).toBe("Prefeitura Municipal de Macaé");
+    expect(d.cabecalho!.logo).toBe(`data:image/png;base64,${png}`);
+    // editar sem mandar o logo mantém o logo
+    await salvarCabecalho(ex, { id: macae, nome: "Macaé SEMINF", linhas: ["Estado do Rio de Janeiro", "Prefeitura Municipal de Macaé"], padrao: false }, u);
+    l = await listarCabecalhos(ex);
+    expect(l.find((c) => c.id === macae)).toMatchObject({ logoTipo: "image/png", obras: 1, linhas: ["Estado do Rio de Janeiro", "Prefeitura Municipal de Macaé"] });
+    // arquivado: volta ao padrão
+    await arquivarCabecalho(ex, macae, false, u);
+    expect((await montarRelatorio(ex, r1, "bdi", opc)).cabecalho!.linhas).toEqual(["Governo do Estado"]);
+    await arquivarCabecalho(ex, macae, true, u);
+    expect((await montarRelatorio(ex, r1, "bdi", opc)).cabecalho!.linhas[1]).toBe("Prefeitura Municipal de Macaé");
+    await alterarObra(ex, obra, { ...base, cabecalhoId: macae }, base, u);
+    void outro;
+  });
+});
+
 describe("relatórios (revisão fechada)", () => {
   it("usa os dados gravados no fechamento, mesmo após alterar a obra; comparativo", async () => {
     await fecharRevisao(ex, r1, v, u);
+    // o cabeçalho usado fica gravado no fechamento
+    const cabAntes = (await montarRelatorio(ex, r1, "sintetico", opc)).cabecalho;
+    expect(cabAntes).toEqual({ linhas: ["Governo do Estado"], logo: null });
+    const padrao = (await listarCabecalhos(ex)).find((c) => c.padrao)!;
+    await salvarCabecalho(ex, { id: padrao.id, nome: padrao.nome, linhas: ["Governo do Estado — novo texto"], padrao: true }, u);
+    expect((await montarRelatorio(ex, r1, "sintetico", opc)).cabecalho).toEqual(cabAntes);
     const obra = (await carregarRevisao(ex, r1)).orcamento.obraId;
     await alterarObra(ex, obra, { nome: "Creche Modelo", codigo: "OB-77", processo: "SEI-77/2026", endereco: "Rua B, 2", municipio: "Niterói", orgaoSolicitante: "SME" }, { nome: "Creche Modelo (novo nome)", codigo: "OB-77" }, u);
     const d = await montarRelatorio(ex, r1, "sintetico", opc);
@@ -232,14 +285,31 @@ describe("arquivos PDF e XLSX", () => {
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(buf);
       const ws = wb.worksheets[0];
-      expect(ws.getCell(1, 1).value).toBe(d.titulo.toUpperCase());
+      const textos: unknown[] = [];
+      ws.eachRow((row) => row.eachCell((cell) => { textos.push(cell.value); }));
+      expect(textos).toContain(d.titulo.toUpperCase());
+      if (d.cabecalho) for (const l of d.cabecalho.linhas) expect(textos).toContain(l);
       if (r.tipo === "sintetico") {
+        // com logo: imagem no PDF e na planilha
+        const logo = `data:image/png;base64,${readFileSync("tests/fixtures/logo.png").toString("base64")}`;
+        const comLogo = { ...d, cabecalho: { linhas: ["Estado do Rio de Janeiro", "Prefeitura Municipal de Macaé"], logo } };
+        const pdfLogo = await pdfmake.createPdf({ ...definicaoPdf(comLogo), compress: false }).getBuffer();
+        expect(pdfLogo.toString("latin1")).toMatch(/\/Subtype \/Image/);
+        const wbl = new ExcelJS.Workbook();
+        await wbl.xlsx.load(await gerarXlsx(ExcelJS, comLogo));
+        expect(wbl.worksheets[0].getImages()).toHaveLength(1);
+        expect(wbl.worksheets[0].getCell(2, 3).value).toBe("Prefeitura Municipal de Macaé");
+        if (process.env.RELATORIOS_SAIDA) {
+          const fs = await import("node:fs");
+          fs.writeFileSync(`${process.env.RELATORIOS_SAIDA}/com-logo.pdf`, await pdfmake.createPdf(definicaoPdf(comLogo)).getBuffer());
+          fs.writeFileSync(`${process.env.RELATORIOS_SAIDA}/com-logo.xlsx`, Buffer.from(await gerarXlsx(ExcelJS, comLogo)));
+        }
         // total geral como número, igual ao do documento
         let total: unknown = null;
         ws.eachRow((row) => { if (row.getCell(1).value === "TOTAL GERAL") total = row.getCell(10).value; });
         const doc = valores(linhas(d).at(-1)!);
         expect(total).toBe(Number(doc[1]));
-        expect(ws.getCell(1, 1).font?.bold).toBe(true);
+
       }
     }
   }, 60_000);

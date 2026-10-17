@@ -261,3 +261,51 @@ test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
   await page.getByRole("button", { name: "Visualizar — Comparativo entre revisões" }).click();
   await expect(page.getByRole("region", { name: "Visualização — Comparativo entre revisões" }).getByText(/Rev\. 1 \(fechada\)/)).toBeVisible();
 });
+
+test("cabeçalho dos relatórios: cadastro com logo, escolha na obra e uso no relatório", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.getByRole("link", { name: "Cabeçalhos" }).click();
+  await expect(page.getByRole("heading", { name: "Cabeçalhos dos relatórios" })).toBeVisible();
+  // padrão sem logo
+  await page.getByRole("button", { name: "Novo cabeçalho" }).click();
+  await page.getByLabel("Nome (para identificar)").fill("Padrão do escritório");
+  await page.getByLabel("Linha 1", { exact: true }).fill("Escritório de Engenharia");
+  await page.getByRole("button", { name: "Salvar cabeçalho" }).click();
+  await expect(page.getByRole("heading", { name: /Padrão do escritório/ })).toContainText("padrão");
+  // Macaé com logo
+  await page.getByRole("button", { name: "Novo cabeçalho" }).click();
+  await page.getByLabel("Nome (para identificar)").fill("Macaé SEMINF");
+  await page.getByLabel("Linha 1", { exact: true }).fill("Estado do Rio de Janeiro");
+  await page.getByLabel("Linha 2", { exact: true }).fill("Prefeitura Municipal de Macaé");
+  await page.getByLabel("Linha 3", { exact: true }).fill("Secretaria Municipal de Infraestrutura");
+  await page.getByLabel("Linha 4", { exact: true }).fill("Secretaria Executiva de Obras");
+  await page.getByLabel("Arquivo do logo").setInputFiles("tests/fixtures/logo.png");
+  await expect(page.getByLabel("Prévia do cabeçalho").getByRole("img", { name: "Logo" })).toBeVisible();
+  await page.getByRole("button", { name: "Salvar cabeçalho" }).click();
+  await expect(page.getByRole("heading", { name: "Macaé SEMINF" })).toBeVisible();
+  await page.screenshot({ path: "test-results/cabecalhos.png", fullPage: true });
+
+  // a obra escolhe o cabeçalho de Macaé
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Editar obra Creche Municipal" }).click();
+  await page.getByLabel("Cabeçalho dos relatórios").selectOption({ label: "Macaé SEMINF" });
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("heading", { name: "Obras e orçamentos" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  await page.getByRole("link", { name: "Relatórios" }).click();
+  await page.getByRole("button", { name: "Visualizar — Orçamento sintético" }).click();
+  const vis = page.getByRole("region", { name: "Visualização — Orçamento sintético" });
+  await expect(vis.getByText("Prefeitura Municipal de Macaé")).toBeVisible();
+  await expect(vis.getByRole("img", { name: "Logo" })).toBeVisible();
+  const [pdf] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar PDF — Orçamento sintético" }).click()]);
+  const fs = await import("node:fs");
+  expect(fs.readFileSync(await pdf.path()).subarray(0, 5).toString()).toBe("%PDF-");
+  const [xlsx] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar Excel — Orçamento sintético" }).click()]);
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(await xlsx.path());
+  expect(wb.worksheets[0].getImages()).toHaveLength(1);
+  expect(wb.worksheets[0].getCell(2, 3).value).toBe("Prefeitura Municipal de Macaé");
+});

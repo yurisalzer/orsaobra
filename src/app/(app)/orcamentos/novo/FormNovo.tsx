@@ -7,7 +7,7 @@ import { CamposObra, OBRA_VAZIA } from "../CamposObra";
 
 interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
 
-export function FormNovo({ obras, bases, perfis }: { obras: { id: string; nome: string }[]; bases: BaseOpcao[]; perfis: { id: string; nome: string; bdi: string }[] }) {
+export function FormNovo({ obras, bases, perfis, cabecalhos }: { obras: { id: string; nome: string }[]; bases: BaseOpcao[]; perfis: { id: string; nome: string; bdi: string }[]; cabecalhos: { id: string; nome: string; padrao: boolean }[] }) {
   const fontes = [...new Set(bases.map((b) => b.fonte))];
   const [obraId, setObraId] = useState<string>(obras[0]?.id ?? "");
   const [novaObra, setNovaObra] = useState<DadosNovaObra>(OBRA_VAZIA);
@@ -46,7 +46,7 @@ export function FormNovo({ obras, bases, perfis }: { obras: { id: string; nome: 
           <option value="">+ Nova obra</option>
         </select>
         {!obraId && (
-          <CamposObra valor={novaObra} onChange={setNovaObra} />
+          <CamposObra valor={novaObra} onChange={setNovaObra} cabecalhos={cabecalhos} />
         )}
       </section>
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">

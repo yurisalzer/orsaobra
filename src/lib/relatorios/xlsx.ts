@@ -43,6 +43,26 @@ export async function gerarXlsx(Excel: ExcelJS, d: Documento): Promise<ArrayBuff
     return r;
   };
 
+  // timbre: logo nas primeiras colunas e as linhas de texto ao lado
+  if (d.cabecalho && (d.cabecalho.linhas.length || d.cabecalho.logo)) {
+    const comLogo = !!d.cabecalho.logo;
+    const n = Math.max(d.cabecalho.linhas.length, comLogo ? 4 : 0);
+    const inicio = comLogo ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const r = ws.addRow([]);
+      r.height = 17;
+      const cell = r.getCell(inicio);
+      cell.value = d.cabecalho.linhas[i] ?? "";
+      cell.font = { bold: true, size: 11 };
+      mesclar(r.number, inicio, nCols);
+    }
+    if (comLogo) {
+      const tipo = d.cabecalho.logo!.startsWith("data:image/png") ? "png" : "jpeg";
+      const img = wb.addImage({ base64: d.cabecalho.logo!, extension: tipo });
+      ws.addImage(img, { tl: { col: 0.15, row: 0.15 }, ext: { width: 80, height: 80 }, editAs: "oneCell" });
+    }
+    ws.addRow([]);
+  }
   texto(d.titulo.toUpperCase(), { negrito: true, tamanho: 13, cor: "FF1E3A5F" });
   for (const i of d.identificacao) {
     const r = ws.addRow([i.rotulo, i.valor]);
