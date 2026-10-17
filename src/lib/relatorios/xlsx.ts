@@ -64,12 +64,17 @@ export async function gerarXlsx(Excel: ExcelJS, d: Documento): Promise<ArrayBuff
     ws.addRow([]);
   }
   texto(d.titulo.toUpperCase(), { negrito: true, tamanho: 13, cor: "FF1E3A5F" });
-  for (const i of d.identificacao) {
-    const r = ws.addRow([i.rotulo, i.valor]);
-    mesclar(r.number, 2, nCols);
-    r.getCell(1).font = { bold: true, size: 9 };
-    r.getCell(2).font = { size: 9 };
-    r.getCell(2).alignment = { wrapText: true, vertical: "top" };
+  // identificação compacta: cada linha com os seus pares lado a lado
+  for (const linha of d.identificacao) {
+    const r = ws.addRow([]);
+    r.getCell(1).value = {
+      richText: linha.flatMap((p, i) => [
+        { text: `${i ? "      " : ""}${p.rotulo}: `, font: { bold: true, size: 9 } },
+        { text: p.valor, font: { size: 9 } },
+      ]),
+    };
+    r.getCell(1).alignment = { wrapText: true, vertical: "top" };
+    mesclar(r.number, 1, nCols);
   }
   for (const a of d.avisos) texto(`Atenção: ${a}`, { negrito: true, cor: "FF92400E" });
   ws.addRow([]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { celula, ehNumerica, formatarCelula, RELATORIOS, type Documento, type TipoRelatorio } from "@/lib/relatorios/documento";
+import { celula, colunasDaLinha, ehNumerica, formatarCelula, RELATORIOS, type Documento, type TipoRelatorio } from "@/lib/relatorios/documento";
 
 type Formato = "tela" | "pdf" | "xlsx";
 
@@ -114,9 +114,14 @@ function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void 
         <h2 className="text-lg font-semibold uppercase text-marca-700">{doc.titulo}</h2>
         <button onClick={aoFechar} className="rounded-md border border-slate-300 px-3 py-1 text-sm">Fechar</button>
       </div>
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-sm">
-        {doc.identificacao.map((i) => <Fragment key={i.rotulo}><dt className="font-medium">{i.rotulo}</dt><dd>{i.valor}</dd></Fragment>)}
-      </dl>
+      <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-sm">
+        {doc.identificacao.map((linha) => {
+          const spans = colunasDaLinha(linha);
+          return linha.map((p, i) => (
+            <p key={p.rotulo} className={spans[i] === 3 ? "col-span-3" : spans[i] === 2 ? "col-span-2" : ""}><span className="font-medium">{p.rotulo}:</span> {p.valor}</p>
+          ));
+        })}
+      </div>
       {doc.avisos.map((a) => <p key={a} className="text-sm font-medium text-amber-800">Atenção: {a}</p>)}
       {doc.secoes.map((s, i) => (
         <div key={i} className="space-y-1">

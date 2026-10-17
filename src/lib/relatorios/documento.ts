@@ -64,8 +64,8 @@ export interface Documento {
   cabecalho: { linhas: string[]; logo: string | null } | null;
   titulo: string;
   orientacao: "retrato" | "paisagem";
-  /** identificação: obra, orçamento, revisão, bases, datas */
-  identificacao: { rotulo: string; valor: string }[];
+  /** identificação: obra, orçamento, revisão, bases, datas — linhas com um ou mais pares rótulo/valor */
+  identificacao: { rotulo: string; valor: string }[][];
   avisos: string[];
   secoes: Secao[];
   /** ex.: "Emitido em 17/10/2026 14:32 por Fulano · Orçamento de Obras 0.1.0" */
@@ -98,4 +98,17 @@ export function formatarCelula(valor: string | null, tipo: TipoColuna): string {
   if (!/^-?\d+(\.\d+)?$/.test(valor)) return valor; // ex.: "—", "vários"
   const t = formatarNumero(valor, casasDoValor(tipo, valor));
   return tipo === "percentual" ? `${t}%` : t;
+}
+
+/**
+ * Distribuição de uma linha de identificação numa grade de 3 colunas:
+ * 1 par ocupa a linha toda; 2 pares: o mais longo ocupa 2 colunas; 3 pares: 1 coluna cada.
+ */
+export function colunasDaLinha(linha: { rotulo: string; valor: string }[]): number[] {
+  if (linha.length === 1) return [3];
+  if (linha.length === 2) {
+    const [a, b] = linha.map((p) => p.rotulo.length + p.valor.length);
+    return a >= b ? [2, 1] : [1, 2];
+  }
+  return linha.map(() => 1);
 }

@@ -40,7 +40,7 @@ interface Contexto {
   estado: EstadoRevisao;
   obra: ObraDados;
   fechada: boolean;
-  identificacao: { rotulo: string; valor: string }[];
+  identificacao: { rotulo: string; valor: string }[][];
   avisos: string[];
   rodape: string;
   nomeBase: string;
@@ -74,24 +74,33 @@ async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tip
     obra.descricao = d?.descricao ?? null;
   }
   const local = [obra.endereco, [obra.municipio, obra.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
+  // BDIs usados na planilha: global (nos itens sem BDI próprio) e os diferenciados
+  const [snapBdi] = await ex.consulta<{ bdi: { id: string; nome: string }[] | null }>(`SELECT bdi_snapshot AS bdi FROM orcamento_revisao WHERE id = $1`, [revisaoId]);
+  const idsPerfis = [...new Set([r.bdiPerfilId, ...estado.itens.map((i) => i.bdiPerfilId)].filter((x): x is string => !!x))];
+  const nomesPerfis = new Map((snapBdi?.bdi ?? (idsPerfis.length ? await ex.consulta<{ id: string; nome: string }>(`SELECT id, nome FROM bdi_perfil WHERE id = ANY($1::uuid[])`, [idsPerfis]) : [])).map((p) => [p.id, p.nome]));
+  const bdis: string[] = [];
+  if (!estado.itens.length || estado.itens.some((i) => !i.bdiPerfilId)) {
+    bdis.push(r.bdiPercentual ? `${fmtPct(r.bdiPercentual)}${r.bdiPerfilId && nomesPerfis.get(r.bdiPerfilId) ? ` (${nomesPerfis.get(r.bdiPerfilId)})` : ""}${idsPerfis.some((id) => id !== r.bdiPerfilId) ? " global" : ""}` : "sem BDI");
+  }
+  for (const id of idsPerfis) {
+    const pcts = [...new Set(estado.itens.filter((i) => i.bdiPerfilId === id).map((i) => fmtPct(i.bdiPercentual)))];
+    if (pcts.length) bdis.push(`${pcts.join(" / ")} (${nomesPerfis.get(id) ?? "perfil"})`);
+  }
+  const par = (rotulo: string, valor: string | null | undefined) => (valor ? [{ rotulo, valor }] : []);
   const identificacao = [
-    { rotulo: "Obra", valor: `${obra.codigo ? `${obra.codigo} · ` : ""}${obra.nome}` },
-    ...(obra.orgaoSolicitante ? [{ rotulo: "Órgão solicitante", valor: obra.orgaoSolicitante }] : []),
-    ...(obra.processo ? [{ rotulo: "Processo", valor: obra.processo }] : []),
-    ...(local ? [{ rotulo: "Local", valor: local }] : []),
-    ...(obra.descricao ? [{ rotulo: "Descrição", valor: obra.descricao }] : []),
-    { rotulo: "Orçamento", valor: `${oc.codigo ? `${oc.codigo} — ` : ""}${oc.titulo}` },
-    {
-      rotulo: "Revisão",
-      valor: `nº ${r.numero}${r.descricao ? ` (${r.descricao})` : ""} — ${fechada ? `fechada em ${r.fechadaEm}${r.fechadaPor ? ` por ${r.fechadaPor}` : ""}` : "EM ELABORAÇÃO"}`,
-    },
-    {
-      rotulo: "Bases de referência",
-      valor: estado.basesPadrao.map((b) => `${b.fonte} RJ ${competencia(b.competencia)}${b.numeroBase > 0 ? ` (retificação ${b.numeroBase})` : ""} — ${b.regimeNome ?? "preço único"}`).join("; ") || "—",
-    },
-    { rotulo: "Data de referência", valor: dataBr(r.dataReferencia) },
-    { rotulo: "BDI global", valor: `${r.bdiPercentual ? fmtPct(r.bdiPercentual) : "sem BDI"} · preços ${r.arredondamento === "TRUNCAR" ? "truncados" : "arredondados"} a 2 casas` },
-  ];
+    [...par("Obra", obra.codigo ?? obra.nome), ...par("Processo", obra.processo), ...par("Órgão solicitante", obra.orgaoSolicitante)],
+    par("Orçamento", `${oc.codigo ? `${oc.codigo} — ` : ""}${oc.titulo}`),
+    par("Local", local),
+    par("Descrição", obra.descricao),
+    [
+      ...par("Bases de referência", estado.basesPadrao.map((b) => `${b.fonte} RJ ${competencia(b.competencia)}${b.numeroBase > 0 ? ` (retificação ${b.numeroBase})` : ""} — ${b.regimeNome ?? "preço único"}`).join("; ") || "—"),
+      ...par(bdis.length > 1 ? "BDIs" : "BDI", `${bdis.join("; ")} · preços ${r.arredondamento === "TRUNCAR" ? "truncados" : "arredondados"} a 2 casas`),
+    ],
+    [
+      ...par("Data de referência", dataBr(r.dataReferencia)),
+      ...par("Revisão", `nº ${r.numero}${r.descricao ? ` (${r.descricao})` : ""} — ${fechada ? `fechada em ${r.fechadaEm}${r.fechadaPor ? ` por ${r.fechadaPor}` : ""}` : "EM ELABORAÇÃO"}`),
+    ],
+  ].filter((linha) => linha.length);
   const avisos: string[] = [];
   if (!fechada) avisos.push("PRÉVIA — revisão em elaboração: os valores podem mudar até o fechamento da revisão.");
   if (estado.totais.pendencias > 0) avisos.push(`${estado.totais.pendencias} item(ns) com pendência de preço (ver orçamento).`);

@@ -3,7 +3,7 @@
  * a geração do arquivo fica com quem chama (navegador ou testes).
  */
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import { celula, ehNumerica, formatarCelula, type Documento, type Linha, type Secao } from "./documento";
+import { celula, colunasDaLinha, ehNumerica, formatarCelula, type Documento, type Linha, type Secao } from "./documento";
 
 const COR = { borda: "#cbd5e1", grupo1: "#e2e8f0", grupo2: "#f1f5f9", grupo3: "#f8fafc", total: "#cbd5e1", subtotal: "#f1f5f9", destaque: "#fffbeb", cabecalho: "#1e3a5f" };
 
@@ -81,8 +81,19 @@ export function definicaoPdf(d: Documento): TDocumentDefinitions {
     ...timbre,
     { text: d.titulo.toUpperCase(), style: "titulo", alignment: timbre.length ? "center" : "left" },
     {
-      table: { widths: ["auto", "*"], body: d.identificacao.map((i) => [{ text: i.rotulo, bold: true }, { text: i.valor }]) },
-      layout: "noBorders", margin: [0, 2, 0, 4],
+      // identificação compacta: grade de 3 colunas, pares rótulo/valor lado a lado
+      table: {
+        widths: ["*", "*", "*"],
+        body: d.identificacao.map((linha) => {
+          const spans = colunasDaLinha(linha);
+          return linha.flatMap((p, i): TableCell[] => [
+            { text: [{ text: `${p.rotulo}: `, bold: true }, { text: p.valor }], colSpan: spans[i] > 1 ? spans[i] : undefined },
+            ...Array.from({ length: spans[i] - 1 }, (): TableCell => ({ text: "" })),
+          ]);
+        }),
+      },
+      layout: { defaultBorder: false, paddingLeft: () => 0, paddingRight: () => 8, paddingTop: () => 0.5, paddingBottom: () => 0.5 },
+      margin: [0, 2, 0, 3],
     },
     ...d.avisos.map((a): Content => ({ text: `Atenção: ${a}`, style: "aviso" })),
   ];
@@ -90,7 +101,7 @@ export function definicaoPdf(d: Documento): TDocumentDefinitions {
     pageSize: "A4",
     pageOrientation: d.orientacao === "paisagem" ? "landscape" : "portrait",
     pageMargins: [24, 28, 24, 30],
-    info: { title: d.titulo, creator: "Orçamento de Obras", subject: d.identificacao.map((i) => `${i.rotulo}: ${i.valor}`).join(" | ") },
+    info: { title: d.titulo, creator: "Orçamento de Obras", subject: d.identificacao.flat().map((i) => `${i.rotulo}: ${i.valor}`).join(" | ") },
     defaultStyle: { font: "Roboto", fontSize: 7.5, lineHeight: 1.1 },
     styles: {
       titulo: { fontSize: 12, bold: true, color: COR.cabecalho, margin: [0, 0, 0, 4] },

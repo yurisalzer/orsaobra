@@ -58,15 +58,20 @@ describe("relatórios (revisão em elaboração)", () => {
     const d = await montarRelatorio(ex, r1, "sintetico", opc);
     const e = await carregarRevisao(ex, r1);
     expect(d.titulo).toBe("Orçamento sintético");
-    expect(d.identificacao).toEqual(expect.arrayContaining([
-      { rotulo: "Obra", valor: "OB-77 · Creche Modelo" },
+    // linhas compactas: vários pares por linha
+    expect(d.identificacao.map((l) => l.map((p) => p.rotulo))).toEqual([
+      ["Obra", "Processo", "Órgão solicitante"], ["Orçamento"], ["Local"], ["Bases de referência", "BDI"], ["Data de referência", "Revisão"],
+    ]);
+    expect(d.identificacao.flat()).toEqual(expect.arrayContaining([
+      { rotulo: "Obra", valor: "OB-77" },
       { rotulo: "Órgão solicitante", valor: "SME" },
       { rotulo: "Processo", valor: "SEI-77/2026" },
       { rotulo: "Local", valor: "Rua B, 2 — Niterói/RJ" },
       { rotulo: "Orçamento", valor: "0007 — Reforma" },
       { rotulo: "Bases de referência", valor: "EMOP RJ 09/2026 — Sem desoneração; SINAPI RJ 09/2026 — Encargos sociais sem desoneração" },
+      { rotulo: "BDI", valor: "22,23% (BDI relatório) · preços arredondados a 2 casas" },
     ]));
-    expect(d.identificacao.find((x) => x.rotulo === "Revisão")!.valor).toMatch(/nº 1 .*EM ELABORAÇÃO/);
+    expect(d.identificacao.flat().find((x) => x.rotulo === "Revisão")!.valor).toMatch(/nº 1 .*EM ELABORAÇÃO/);
     expect(d.avisos[0]).toMatch(/PRÉVIA/);
     expect(d.rodape).toMatch(/^Emitido em 17\/10\/2026 12:30 por Teste · Orçamento de Obras/);
     // item EMOP: 211,97 × 1,2223 = 259,09; × 10 = 2.590,90
@@ -229,10 +234,10 @@ describe("relatórios (revisão fechada)", () => {
     await salvarCabecalho(ex, { id: padrao.id, nome: padrao.nome, linhas: ["Governo do Estado — novo texto"], padrao: true }, u);
     expect((await montarRelatorio(ex, r1, "sintetico", opc)).cabecalho).toEqual(cabAntes);
     const obra = (await carregarRevisao(ex, r1)).orcamento.obraId;
-    await alterarObra(ex, obra, { nome: "Creche Modelo", codigo: "OB-77", processo: "SEI-77/2026", endereco: "Rua B, 2", municipio: "Niterói", orgaoSolicitante: "SME" }, { nome: "Creche Modelo (novo nome)", codigo: "OB-77" }, u);
+    await alterarObra(ex, obra, { nome: "Creche Modelo", codigo: "OB-77", processo: "SEI-77/2026", endereco: "Rua B, 2", municipio: "Niterói", orgaoSolicitante: "SME" }, { nome: "Creche Modelo (novo nome)", codigo: "OB-78" }, u);
     const d = await montarRelatorio(ex, r1, "sintetico", opc);
-    expect(d.identificacao.find((x) => x.rotulo === "Obra")!.valor).toBe("OB-77 · Creche Modelo");
-    expect(d.identificacao.find((x) => x.rotulo === "Revisão")!.valor).toMatch(/fechada em/);
+    expect(d.identificacao.flat().find((x) => x.rotulo === "Obra")!.valor).toBe("OB-77");
+    expect(d.identificacao.flat().find((x) => x.rotulo === "Revisão")!.valor).toMatch(/fechada em/);
     expect(d.avisos.some((a) => /PRÉVIA/.test(a))).toBe(false);
     const a = await montarRelatorio(ex, r1, "analitico", opc);
     expect(linhas(a).filter((l) => l.estilo === "detalhe").length).toBeGreaterThan(5);
@@ -250,7 +255,7 @@ describe("relatórios (revisão fechada)", () => {
     await expect(montarRelatorio(ex, n.revisaoId, "comparativo", opc)).rejects.toThrow(/Escolha a revisão/);
     // a revisão nova (aberta) mostra o novo nome da obra
     const d2 = await montarRelatorio(ex, n.revisaoId, "sintetico", opc);
-    expect(d2.identificacao.find((x) => x.rotulo === "Obra")!.valor).toBe("OB-77 · Creche Modelo (novo nome)");
+    expect(d2.identificacao.flat().find((x) => x.rotulo === "Obra")!.valor).toBe("OB-78");
   });
 });
 

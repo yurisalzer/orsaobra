@@ -237,7 +237,8 @@ test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
   const vis = page.getByRole("region", { name: "Visualização — Orçamento sintético" });
   await expect(vis.getByText("PRÉVIA", { exact: false })).toBeVisible();
   await expect(vis.getByRole("row", { name: /TOTAL GERAL/ })).toBeVisible();
-  await expect(vis.getByText("OB-001 · Creche Municipal")).toBeVisible();
+  await expect(vis.getByText(/Obra:\s*OB-001/)).toBeVisible();
+  await expect(vis.getByText(/Processo:\s*SEI-120001/)).toBeVisible();
   await page.screenshot({ path: "test-results/relatorio-sintetico.png", fullPage: true });
 
   const [pdf] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar PDF — Orçamento analítico" }).click()]);
