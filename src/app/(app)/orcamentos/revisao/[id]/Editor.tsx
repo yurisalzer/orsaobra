@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import { SeloFonte } from "@/components/SeloFonte";
-import { formatarMoeda, formatarNumero } from "@/lib/calculo/decimal";
+import { dec, formatarMoeda, formatarNumero } from "@/lib/calculo/decimal";
+import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
   acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem,
@@ -13,7 +14,7 @@ import {
 
 export interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
 interface Perfil { id: string; nome: string; bdi: string }
-type Achado = Extract<Awaited<ReturnType<typeof acaoBuscarParaOrcamento>>, { ok: true }>["dados"][number];
+type Achado = Extract<Awaited<ReturnType<typeof acaoBuscarParaOrcamento>>, { ok: true }>["dados"]["itens"][number];
 
 const qtd = (v: string) => {
   const [i, f = ""] = v.split(".");
@@ -21,6 +22,23 @@ const qtd = (v: string) => {
   return formatarNumero(`${i}.${frac || "0"}`, frac.length);
 };
 const pct = (v: string | null) => (v === null ? "—" : `${formatarNumero(v, 2)}%`);
+
+/** Calcula a expressão da memória: quantidade (texto pt-BR, até 4 casas) ou motivo de não calcular. */
+export function quantidadeDaMemoria(texto: string): { quantidade: string | null; exibir: string | null; aviso: string | null; erro: string | null } {
+  try {
+    const r = avaliarMemoria(texto);
+    if (!r) return { quantidade: null, exibir: null, aviso: null, erro: null };
+    if (r.valor.isNegative()) return { quantidade: null, exibir: null, aviso: null, erro: "O resultado da conta é negativo." };
+    const q = r.valor.toDecimalPlaces(4);
+    const avisos: string[] = [];
+    if (!q.eq(r.valor)) avisos.push("resultado arredondado para 4 casas decimais");
+    if (r.escrito && !r.escrito.eq(r.valor)) avisos.push(`o resultado escrito após "=" (${formatarNumero(r.escrito, Math.min(r.escrito.decimalPlaces(), 4))}) difere do calculado`);
+    const exibir = formatarNumero(q, Math.min(Math.max(q.decimalPlaces(), 0), 4));
+    return { quantidade: exibir, exibir, aviso: avisos.length ? avisos.join("; ") : null, erro: null };
+  } catch (e) {
+    return { quantidade: null, exibir: null, aviso: null, erro: `Não foi possível calcular a conta: ${(e as Error).message}` };
+  }
+}
 
 export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean }) {
   const router = useRouter();
@@ -86,8 +104,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
           <tr><td colSpan={11} className="bg-marca-50 p-3">
             <AdicionarItem revisaoId={r.id} bases={estado.basesPadrao} aoCancelar={() => setAdicionandoEm(null)}
               aoAdicionar={(achado, quantidade, memoriaQtd) => rodar(() => acaoAdicionarItem(r.id, versao, {
-                etapaId: e.id, itemReferenciaId: achado.itemId, quantidade, memoriaQuantitativo: memoriaQtd || null,
-                base: achado.outroRegime && baseDaFonte(achado.fonte) ? { baseRevisaoId: baseDaFonte(achado.fonte)!.baseRevisaoId, regime: achado.outroRegime } : null,
+                etapaId: e.id, itemReferenciaId: achado.itemId, quantidade, memoriaQuantitativo: memoriaQtd || null, base: null,
               }), () => { setAviso(`${achado.codigo} adicionado.`); setAdicionandoEm(null); })} />
           </td></tr>
         )}
@@ -142,7 +159,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
           <tr>
             <td />
             <td colSpan={10} className="pb-2 pr-3">
-              <MemoriaQuantitativo item={i} editavel={aberta} aoSalvar={(texto) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { memoriaQuantitativo: texto }))} />
+              <MemoriaQuantitativo item={i} editavel={aberta} aoSalvar={(texto, quantidade) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { memoriaQuantitativo: texto, ...(quantidade ? { quantidade } : {}) }))} />
             </td>
           </tr>
         )}
@@ -243,6 +260,7 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
   const [busca, setBusca] = useState("");
   const [memoriaQtd, setMemoriaQtd] = useState("");
   const [achados, setAchados] = useState<Achado[]>([]);
+  const [total, setTotal] = useState(0);
   const [escolhido, setEscolhido] = useState<Achado | null>(null);
   const [quantidade, setQuantidade] = useState("");
   const [carregando, setCarregando] = useState(false);
@@ -254,10 +272,9 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
       setCarregando(true);
       const r = await acaoBuscarParaOrcamento(revisaoId, busca);
       setCarregando(false);
-      if (r.ok) setAchados(r.dados);
+      if (r.ok) { setAchados(r.dados.itens); setTotal(r.dados.total); }
     }, 300);
   }, [busca, revisaoId]);
-  const nomeRegime = (fonte: string) => bases.find((b) => b.fonte === fonte)?.regimeNome ?? "";
   return (
     <div className="space-y-2">
       {!escolhido ? (
@@ -267,7 +284,10 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
               aria-label="Buscar serviço" className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
             <button onClick={aoCancelar} className="rounded-md border border-slate-300 px-3 text-sm">Cancelar</button>
           </div>
-          {carregando && <p className="text-xs text-slate-500">Buscando…</p>}
+          <p className="text-xs text-slate-500">
+            Somente itens com preço no regime adotado: {bases.map((b) => `${b.fonte} — ${b.regimeNome}`).join("; ")}.
+            {carregando ? " Buscando…" : busca.trim().length >= 2 ? ` ${total} encontrado(s)${total > achados.length ? `, mostrando ${achados.length}; refine a busca` : ""}.` : ""}
+          </p>
           {achados.length > 0 && (
             <ul className="max-h-72 overflow-auto rounded-md border border-slate-200 bg-white" role="listbox">
               {achados.map((a) => (
@@ -277,7 +297,7 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
                     <span className="font-mono">{a.codigo}</span>
                     <span className="flex-1">{a.descricao} <span className="text-slate-500">({a.unidade ?? "s/ unid."})</span></span>
                     <span className="whitespace-nowrap text-xs">
-                      {a.fonte === "PROPRIA" ? "calculado" : a.preco ? formatarMoeda(a.preco) : a.outroRegime ? <span className="text-amber-700">{formatarMoeda(a.outroPreco!)} (outro regime)</span> : <span className="text-amber-700">sem preço</span>}
+                      {a.fonte === "PROPRIA" ? "calculado" : a.preco ? formatarMoeda(a.preco) : <span className="text-amber-700">sem preço</span>}
                     </span>
                   </button>
                 </li>
@@ -288,7 +308,6 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
       ) : (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <SeloFonte fonte={escolhido.fonte} /><span className="font-mono">{escolhido.codigo}</span><span>{escolhido.descricao}</span>
-          {escolhido.outroRegime && <span className="text-xs text-amber-800">Este código só tem preço no regime do próprio código (diferente de “{nomeRegime(escolhido.fonte)}”); será usado esse regime.</span>}
           <label className="flex items-center gap-1">Quantidade ({escolhido.unidade ?? "s/ unid."})
             <input autoFocus value={quantidade} onChange={(e) => setQuantidade(e.target.value)} inputMode="decimal" aria-label="Quantidade do novo item"
               onKeyDown={(e) => { if (e.key === "Enter" && quantidade.trim()) aoAdicionar(escolhido, quantidade, memoriaQtd); }}
@@ -296,8 +315,10 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
           </label>
           <label className="flex w-full flex-col gap-1">
             <span>Memória de cálculo do quantitativo <span className="text-slate-500">(opcional — como se chegou à quantidade)</span></span>
-            <textarea value={memoriaQtd} onChange={(e) => setMemoriaQtd(e.target.value)} rows={2} maxLength={4000} aria-label="Memória de cálculo do novo item"
+            <textarea value={memoriaQtd} rows={2} maxLength={4000} aria-label="Memória de cálculo do novo item"
+              onChange={(e) => { setMemoriaQtd(e.target.value); const c = quantidadeDaMemoria(e.target.value); if (c.quantidade) setQuantidade(c.quantidade); }}
               placeholder="Ex.: (30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²" className="rounded border border-slate-300 px-2 py-1" />
+            <ResultadoMemoria texto={memoriaQtd} />
           </label>
           <button disabled={!quantidade.trim()} onClick={() => aoAdicionar(escolhido, quantidade, memoriaQtd)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50">Adicionar</button>
           <button onClick={() => setEscolhido(null)} className="rounded-md border border-slate-300 px-3 py-1.5">Voltar</button>
@@ -307,14 +328,30 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
   );
 }
 
-function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; editavel: boolean; aoSalvar: (texto: string | null) => void }) {
+function ResultadoMemoria({ texto }: { texto: string }) {
+  const c = quantidadeDaMemoria(texto);
+  if (c.erro) return <span role="alert" className="text-xs text-red-700">{c.erro}</span>;
+  if (!c.exibir) return texto.trim() ? <span className="text-xs text-slate-500">Sem conta para calcular (apenas texto).</span> : null;
+  return (
+    <span className="text-xs">
+      <span className="font-medium text-green-800">Resultado: {c.exibir}</span> <span className="text-slate-500">(usado como quantidade)</span>
+      {c.aviso && <span className="block text-amber-800">⚠ {c.aviso}</span>}
+    </span>
+  );
+}
+
+function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; editavel: boolean; aoSalvar: (texto: string | null, quantidade: string | null) => void }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(item.memoriaQuantitativo ?? "");
   useEffect(() => setTexto(item.memoriaQuantitativo ?? ""), [item.memoriaQuantitativo]);
   if (editando) {
+    const calc = quantidadeDaMemoria(texto);
     const salvar = () => {
+      if (calc.erro) return;
       setEditando(false);
-      if (texto.trim() !== (item.memoriaQuantitativo ?? "")) aoSalvar(texto.trim() || null);
+      const mudouTexto = texto.trim() !== (item.memoriaQuantitativo ?? "");
+      const mudouQtd = calc.quantidade !== null && !dec(calc.quantidade.replace(/\./g, "").replace(",", ".")).eq(item.quantidade);
+      if (mudouTexto || mudouQtd) aoSalvar(texto.trim() || null, calc.quantidade);
     };
     return (
       <div className="flex flex-col gap-1 text-xs">
@@ -322,8 +359,10 @@ function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; ed
         <textarea id={`mem-${item.id}`} autoFocus value={texto} rows={3} maxLength={4000} onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); } if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salvar(); }}
           placeholder="Ex.: (30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²" className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+        <ResultadoMemoria texto={texto} />
+        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; use “x” ou “×” para multiplicar e vírgula para decimais.</p>
         <div className="flex gap-2">
-          <button onClick={salvar} className="rounded bg-marca-600 px-2 py-0.5 text-white">Salvar memória</button>
+          <button onClick={salvar} disabled={!!calc.erro} className="rounded bg-marca-600 px-2 py-0.5 text-white disabled:opacity-50">Salvar memória</button>
           <button onClick={() => { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); }} className="rounded border border-slate-300 px-2 py-0.5">Cancelar</button>
           <span className="text-slate-500">Ctrl+Enter salva · Esc cancela</span>
         </div>
@@ -331,13 +370,19 @@ function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; ed
     );
   }
   if (!item.memoriaQuantitativo) {
-    return <button onClick={() => setEditando(true)} className="text-xs text-marca-700 underline" aria-label={`Adicionar memória de cálculo ${item.numero}`}>+ memória de cálculo do quantitativo</button>;
+    return editavel ? <button onClick={() => setEditando(true)} className="text-xs text-marca-700 underline" aria-label={`Adicionar memória de cálculo ${item.numero}`}>+ memória de cálculo do quantitativo</button> : null;
   }
+  const calc = quantidadeDaMemoria(item.memoriaQuantitativo);
+  const divergente = calc.quantidade !== null && !dec(calc.quantidade.replace(/\./g, "").replace(",", ".")).eq(item.quantidade);
   return (
-    <p className="whitespace-pre-wrap rounded bg-amber-50/60 px-2 py-1 text-xs text-slate-700">
+    <div className="whitespace-pre-wrap rounded bg-amber-50/60 px-2 py-1 text-xs text-slate-700">
       <span className="font-medium">Memória de cálculo:</span> {item.memoriaQuantitativo}
+      {calc.exibir && <span className="ml-1 font-medium text-green-800">→ {calc.exibir}</span>}
       {editavel && <> {" "}<button onClick={() => setEditando(true)} className="text-marca-700 underline" aria-label={`Editar memória de cálculo ${item.numero}`}>editar</button></>}
-    </p>
+      {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
+      {divergente && <span className="block text-amber-800">⚠ A quantidade lançada ({formatarNumero(item.quantidade, 4).replace(/,?0+$/, "")}) difere do resultado da memória ({calc.exibir}).</span>}
+      {calc.erro && <span className="block text-red-700">{calc.erro}</span>}
+    </div>
   );
 }
 

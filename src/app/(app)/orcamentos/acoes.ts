@@ -71,14 +71,18 @@ export async function acaoBuscarParaOrcamento(revisaoId: string, texto: string) 
   return executar(async () => {
     const ex = await executor();
     const bases = await basesDaRevisao(ex, uuid.parse(revisaoId));
-    const r = await buscarItens(ex, { texto: z.string().max(120).parse(texto), revisoes: bases.map((b) => b.baseRevisaoId), incluirProprios: true, limite: 20 });
-    return r.itens.map((i) => {
-      const regime = bases.find((b) => b.fonte === i.fonte)?.regime ?? "";
-      const chaves = Object.keys(i.precos);
-      const preco = i.precos[regime] ?? i.precos[""] ?? null;
-      const outro = !preco && chaves.length === 1 ? chaves[0] : null;
-      return { itemId: i.itemId, fonte: i.fonte, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, preco, outroRegime: outro, outroPreco: outro ? i.precos[outro] : null };
+    // somente itens em conformidade com o regime adotado no orçamento (por fonte)
+    const r = await buscarItens(ex, {
+      texto: z.string().max(120).parse(texto), revisoes: bases.map((b) => b.baseRevisaoId), incluirProprios: true, limite: 20,
+      regimeAdotado: bases.map((b) => ({ revisaoId: b.baseRevisaoId, regime: b.regime })),
     });
+    return {
+      total: r.total,
+      itens: r.itens.map((i) => {
+        const regime = bases.find((b) => b.fonte === i.fonte)?.regime ?? "";
+        return { itemId: i.itemId, fonte: i.fonte, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, preco: i.precos[regime] ?? i.precos[""] ?? null };
+      }),
+    };
   });
 }
 

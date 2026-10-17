@@ -6,6 +6,12 @@ export interface FiltroBusca {
   revisoes: string[];
   incluirProprios: boolean;
   tipo?: "INSUMO" | "COMPOSICAO" | null;
+  /**
+   * Só itens com preço publicado no regime adotado em cada revisão (ou preço
+   * único, sem regime). Usado ao incluir itens no orçamento: para a EMOP, por
+   * exemplo, um orçamento "com desoneração" mostra só os códigos "-A…".
+   */
+  regimeAdotado?: { revisaoId: string; regime: string | null }[];
   limite?: number;
   pagina?: number;
 }
@@ -50,6 +56,14 @@ export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens
 
   // 1º filtra pelo texto/código (índices trigram), depois restringe às revisões escolhidas.
   const params: unknown[] = [f.revisoes, f.incluirProprios, f.tipo ?? null, limite, deslocamento];
+  let filtroRegime = "";
+  if (f.regimeAdotado) {
+    params.push(JSON.stringify(Object.fromEntries(f.regimeAdotado.map((r) => [r.revisaoId, r.regime]))));
+    filtroRegime = `AND (c.revisao_id IS NULL OR EXISTS (
+        SELECT 1 FROM preco pr LEFT JOIN regime g ON g.id = pr.regime_id
+         WHERE pr.base_revisao_id = c.revisao_id AND pr.item_id = c.id
+           AND (pr.regime_id IS NULL OR g.codigo = ($${params.length}::jsonb ->> c.revisao_id::text))))`;
+  }
   let alvo: string;
   if (todos) {
     // todos os itens presentes nas revisões escolhidas (consulta por conjuntos, sem verificação item a item)
@@ -78,8 +92,9 @@ export async function buscarItens(ex: Executor, f: FiltroBusca): Promise<{ itens
          AND ($3::text IS NULL OR ir.tipo::text = $3)),
     presentes AS (
       SELECT c.* FROM candidatos c
-       WHERE ${todos ? "true OR " : ""}c.revisao_id IS NULL
-          OR EXISTS (SELECT 1 FROM base_item bi WHERE bi.base_revisao_id = c.revisao_id AND bi.item_id = c.id)),
+       WHERE (${todos ? "true OR " : ""}c.revisao_id IS NULL
+          OR EXISTS (SELECT 1 FROM base_item bi WHERE bi.base_revisao_id = c.revisao_id AND bi.item_id = c.id))
+         ${filtroRegime}),
     pagina AS (
       SELECT p.*, fo.codigo AS fonte, count(*) OVER () AS total FROM presentes p JOIN fonte fo ON fo.id = p.fonte_id
        ORDER BY fo.codigo, p.codigo LIMIT $4 OFFSET $5)

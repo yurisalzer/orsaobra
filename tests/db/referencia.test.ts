@@ -72,6 +72,23 @@ describe("bases e busca", () => {
     expect(semPreco.itens.map((i) => [i.codigo, JSON.stringify(i.precos)])).toEqual([["37600", "{}"]]);
   });
 
+  it("inclusão no orçamento: só itens com preço no regime adotado", async () => {
+    const busca = (texto: string, emop: string, sinapi = "SEM_DESONERACAO") => buscarItens(ex, {
+      texto, revisoes: Object.values(revs), incluirProprios: false,
+      regimeAdotado: [{ revisaoId: revs.EMOP, regime: emop }, { revisaoId: revs.SINAPI, regime: sinapi }],
+    });
+    expect((await busca("01.001.0001", "COM_DESONERACAO")).itens.map((i) => i.codigo)).toEqual(["01.001.0001-A"]);
+    expect((await busca("01.001.0001", "SEM_DESONERACAO")).itens.map((i) => i.codigo)).toEqual(["01.001.0001-0"]);
+    // insumos EMOP têm preço único (sem regime): aparecem em qualquer regime
+    expect((await busca("02083", "COM_DESONERACAO")).total).toBe(1);
+    // sem preço publicado (custo zerado / em branco no RJ) não aparece para inclusão
+    expect((await busca("105006", "SEM_DESONERACAO")).total).toBe(0);
+    expect((await busca("37600", "SEM_DESONERACAO")).total).toBe(0);
+    // listagem completa respeita o filtro: nenhum código EMOP "-0" com regime "com desoneração"
+    const todos = await buscarItens(ex, { texto: "", revisoes: [revs.EMOP], incluirProprios: false, limite: 200, regimeAdotado: [{ revisaoId: revs.EMOP, regime: "COM_DESONERACAO" }] });
+    expect(todos.itens.filter((i) => i.tipo === "COMPOSICAO").every((i) => /[A-E]$/.test(i.codigo))).toBe(true);
+  });
+
   it("busca só nas revisões selecionadas", async () => {
     const r = await buscarItens(ex, { texto: "104658", revisoes: [revs.EMOP], incluirProprios: false });
     expect(r.total).toBe(0);

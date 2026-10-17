@@ -30,6 +30,7 @@ async function entrar(page: Page) {
 async function adicionar(page: Page, etapa: string, busca: string, opcao: RegExp, quantidade: string) {
   await page.getByRole("row", { name: new RegExp(etapa) }).getByRole("button", { name: "+ item" }).click();
   await page.getByLabel("Buscar serviço").fill(busca);
+  await expect(page.getByRole("option", { name: opcao })).toHaveCount(1);
   await page.getByRole("option", { name: opcao }).click();
   await page.getByLabel("Quantidade do novo item").fill(quantidade);
   await page.getByRole("button", { name: "Adicionar", exact: true }).click();
@@ -63,7 +64,8 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   respostas.push("Serviços preliminares");
   await page.getByRole("button", { name: "+ Nova etapa" }).click();
   await expect(page.getByRole("row", { name: /Serviços preliminares/ })).toBeVisible();
-  await adicionar(page, "Serviços preliminares", "01.001.0001", /01\.001\.0001-0/, "10");
+  // regime adotado "sem desoneração": só o código -0 é oferecido (o -A não aparece)
+  await adicionar(page, "Serviços preliminares", "01.001.0001", /01\.001\.0001/, "10");
   // 211,97 × 1,25 = 264,9625 → 264,96; × 10 = 2.649,60
   await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 2.649,60");
   await page.getByLabel("Quantidade 1.1").fill("2,5");
@@ -76,9 +78,11 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   await expect(page.getByText("R$ 905,46")).toBeVisible();
   // memória de cálculo do quantitativo (exemplo do usuário)
   await page.getByLabel("Adicionar memória de cálculo 1.1").click();
-  await page.getByLabel("Memória de cálculo do quantitativo — item 1.1").fill("(30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 200m²");
+  await page.getByLabel("Memória de cálculo do quantitativo — item 1.1").fill("2 x 1,25 (repetições)");
+  await expect(page.getByText("Resultado: 2,5")).toBeVisible();
   await page.getByRole("button", { name: "Salvar memória" }).click();
-  await expect(page.getByText("Memória de cálculo: (30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 200m²")).toBeVisible();
+  await expect(page.getByText("Memória de cálculo: 2 x 1,25 (repetições)")).toBeVisible();
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 662,40"); // quantidade mantida (2,5)
   await page.getByLabel("Cálculo do preço 1.1").click();
   await expect(page.getByText(/211,97 × \(1 \+ 25,00% de BDI\) = R\$ 264,96/)).toBeVisible();
   await page.screenshot({ path: "test-results/orcamento-editor.png", fullPage: true });
@@ -87,7 +91,7 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   await page.getByRole("button", { name: "Fechar revisão" }).click();
   await expect(page.getByText(/Fechada em/)).toBeVisible();
   await expect(page.getByLabel("Quantidade 1.1")).toHaveCount(0);
-  await expect(page.getByText(/Memória de cálculo: \(30m/)).toBeVisible();
+  await expect(page.getByText(/Memória de cálculo: 2 x 1,25/)).toBeVisible();
   await expect(page.getByLabel("Editar memória de cálculo 1.1")).toHaveCount(0);
 
   // nova revisão e alteração
@@ -109,18 +113,44 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   await page.screenshot({ path: "test-results/orcamento-comparacao.png", fullPage: true });
 });
 
+test("a conta da memória de cálculo preenche a quantidade (exemplo do usuário)", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  await page.getByLabel("Adicionar memória de cálculo 2.1").click();
+  await page.getByLabel("Memória de cálculo do quantitativo — item 2.1").fill("(30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 100m²");
+  await expect(page.getByText("Resultado: 200")).toBeVisible();
+  await expect(page.getByText(/resultado escrito após "=" \(100\) difere do calculado/)).toBeVisible();
+  await page.getByRole("button", { name: "Salvar memória" }).click();
+  // quantidade 200 × 243,06 = 48.612,00
+  await expect(page.getByLabel("Quantidade 2.1")).toHaveValue("200");
+  await expect(page.getByRole("row", { name: /104658/ })).toContainText("R$ 48.612,00");
+  await expect(page.getByText(/→ 200/)).toBeVisible();
+  // ao incluir um item, a memória preenche a quantidade
+  await page.getByRole("row", { name: /Acessibilidade/ }).getByRole("button", { name: "+ item" }).click();
+  await page.getByLabel("Buscar serviço").fill("01.001.0002");
+  await page.getByRole("option", { name: /01\.001\.0002/ }).click();
+  await page.getByLabel("Memória de cálculo do novo item").fill("3 x 4,5");
+  await expect(page.getByLabel("Quantidade do novo item")).toHaveValue("13,5");
+  await page.getByRole("button", { name: "Adicionar", exact: true }).click();
+  await expect(page.getByLabel("Quantidade 2.2")).toHaveValue("13,5");
+  await page.screenshot({ path: "test-results/orcamento-memoria.png", fullPage: true });
+});
+
 test("conflito de edição entre duas abas é detectado", async ({ page, browser }) => {
   const respostas = dialogos(page);
   await entrar(page);
   await page.goto("/orcamentos");
   await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  await expect(page.getByLabel("Quantidade 1.1")).toBeVisible();
   // segunda aba editando a mesma revisão
   const outra = await (await browser.newContext({ storageState: await page.context().storageState() })).newPage();
   dialogos(outra);
   await outra.goto(page.url());
   await page.getByLabel("Quantidade 1.1").fill("4");
   await page.getByLabel("Quantidade 1.1").press("Enter");
-  await expect(page.getByText("R$ 1.302,90")).toBeVisible(); // 4 × 264,96 = 1.059,84 + 243,06
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 1.059,84"); // 4 × 264,96
   await outra.getByLabel("Quantidade 1.1").fill("5");
   await outra.getByLabel("Quantidade 1.1").press("Enter");
   await expect(outra.locator("main").getByRole("alert")).toContainText(/alterado por outra pessoa/);
