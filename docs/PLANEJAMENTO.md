@@ -244,12 +244,12 @@ Casos obrigatórios (do pedido) e situação:
 | Caso | Situação |
 |---|---|
 | Precisão financeira e arredondamentos | ✅ feito |
-| BDI individual por item | ✅ feito |
+| BDI individual por item | ✅ feito (cálculo e orçamento) |
 | Composições com múltiplos componentes / circulares | ✅ feito |
 | Preços ausentes ou zerados | ✅ (cálculo) — importação na Etapa 2 |
 | Códigos com zeros à esquerda | ✅ (banco) — importação na Etapa 2 |
 | Competências duplicadas, bases retificadas | ✅ (banco) — fluxo na Etapa 2 |
-| Preservação de revisões encerradas | ✅ feito (gatilhos) |
+| Preservação de revisões encerradas | ✅ feito (gatilhos + teste de atualização de competência) |
 | Login seguro, sessão forjada | ✅ feito (E2E) |
 | Importação válida/inválida, falha e rollback | ✅ feito |
 | Diferentes regimes | ✅ feito (3 SINAPI, 2 EMOP) |
@@ -264,7 +264,7 @@ Cada etapa termina com testes passando e uma demonstração para sua validação
 |---|---|---|
 | 1 — Fundação | Projeto, banco, migrações, gatilhos, login, permissões, auditoria, tela inicial, núcleo de cálculo | **Concluída** |
 | 2 — Importação | Leitores ZIP/RAR/XLSX/DBF, adaptadores SINAPI-2025 e EMOP-DBF, assistente de 10 passos, publicação/retificação, importador CLI, carga 09/2026 no Neon | **Concluída** |
-| 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias, precificação multi-fonte | **Concluída** (aguarda validação) — no ar |
-| 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | |
+| 3 — Consulta | Busca por código/descrição, histórico de preços, composição analítica (só onde publicada), composições próprias, precificação multi-fonte | **Concluída** |
+| 4 — Orçamentação | Obras, orçamentos, etapas, itens, quantitativos, BDI global/individual, revisões, duplicação, atualização de competência, fechamento, concorrência | **Concluída** (aguarda validação) — no ar |
 | 5 — Relatórios | 10 relatórios em PDF e XLSX | |
 | 6 — Produção | Neon + hospedagem, domínio, backups automáticos com teste de restauração, revisão de segurança | |
