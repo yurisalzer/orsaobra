@@ -607,28 +607,31 @@ model Etapa {
 /// usados, para que relatórios de revisões fechadas não dependam de dados
 /// que possam mudar depois.
 model ItemOrcamento {
-  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  revisaoId        String  @map("revisao_id") @db.Uuid
-  etapaId          String  @map("etapa_id") @db.Uuid
-  ordem            Int
-  itemReferenciaId String  @map("item_referencia_id") @db.Uuid
-  baseRevisaoId    String? @map("base_revisao_id") @db.Uuid // null p/ itens próprios
-  regimeId         String? @map("regime_id") @db.Uuid
-  codigo           String // snapshot
-  descricao        String // snapshot
-  unidade          String // snapshot
-  quantidade       Decimal @db.Decimal(18, 4)
-  custoUnitario    Decimal @map("custo_unitario") @db.Decimal(18, 4) // snapshot do custo de referência
-  bdiPerfilId      String? @map("bdi_perfil_id") @db.Uuid // BDI individual (ex.: diferenciado)
-  bdiPercentual    Decimal @map("bdi_percentual") @db.Decimal(9, 6) // BDI efetivamente aplicado
-  precoUnitario    Decimal @map("preco_unitario") @db.Decimal(18, 2)
-  precoTotal       Decimal @map("preco_total") @db.Decimal(18, 2)
-  custoTotal       Decimal @default(0) @map("custo_total") @db.Decimal(18, 2) // quantidade × custo unitário (sem BDI)
-  origemPreco      String? @map("origem_preco") // PUBLICADO | COTACAO | CALCULADO
-  referenciaPreco  String? @map("referencia_preco") // ex.: "SINAPI RJ 09/2026 — Sem desoneração"
-  pendencia        String? // ex.: preço mantido da base anterior
-  memoriaCalculo   String? @map("memoria_calculo")
-  analitico        Json? // snapshot dos componentes (coeficientes e preços) ao fechar
+  id                  String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisaoId           String  @map("revisao_id") @db.Uuid
+  etapaId             String  @map("etapa_id") @db.Uuid
+  ordem               Int
+  itemReferenciaId    String  @map("item_referencia_id") @db.Uuid
+  baseRevisaoId       String? @map("base_revisao_id") @db.Uuid // null p/ itens próprios
+  regimeId            String? @map("regime_id") @db.Uuid
+  codigo              String // snapshot
+  descricao           String // snapshot
+  unidade             String // snapshot
+  quantidade          Decimal @db.Decimal(18, 4)
+  custoUnitario       Decimal @map("custo_unitario") @db.Decimal(18, 4) // snapshot do custo de referência
+  bdiPerfilId         String? @map("bdi_perfil_id") @db.Uuid // BDI individual (ex.: diferenciado)
+  bdiPercentual       Decimal @map("bdi_percentual") @db.Decimal(9, 6) // BDI efetivamente aplicado
+  precoUnitario       Decimal @map("preco_unitario") @db.Decimal(18, 2)
+  precoTotal          Decimal @map("preco_total") @db.Decimal(18, 2)
+  custoTotal          Decimal @default(0) @map("custo_total") @db.Decimal(18, 2) // quantidade × custo unitário (sem BDI)
+  origemPreco         String? @map("origem_preco") // PUBLICADO | COTACAO | CALCULADO
+  referenciaPreco     String? @map("referencia_preco") // ex.: "SINAPI RJ 09/2026 — Sem desoneração"
+  pendencia           String? // ex.: preço mantido da base anterior
+  /// como o orçamentista chegou ao quantitativo (texto livre), ex.: "(30 + 20) × 2 × 2 m = 100 m²"
+  memoriaQuantitativo String? @map("memoria_quantitativo")
+  /// demonstração do preço (custo de referência, BDI, arredondamento) — gerada pelo sistema
+  memoriaCalculo      String? @map("memoria_calculo")
+  analitico           Json? // snapshot dos componentes (coeficientes e preços) ao fechar
 
   revisao        OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
   etapa          Etapa            @relation(fields: [etapaId], references: [id], onDelete: Cascade)

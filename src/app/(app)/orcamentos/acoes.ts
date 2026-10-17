@@ -82,15 +82,18 @@ export async function acaoBuscarParaOrcamento(revisaoId: string, texto: string) 
   });
 }
 
-export async function acaoAdicionarItem(revisaoId: string, versao: number, d: { etapaId: string; itemReferenciaId: string; quantidade: string; base: { baseRevisaoId: string; regime: string | null } | null }) {
+export async function acaoAdicionarItem(revisaoId: string, versao: number, d: { etapaId: string; itemReferenciaId: string; quantidade: string; memoriaQuantitativo?: string | null; base: { baseRevisaoId: string; regime: string | null } | null }) {
   return executar((u) => executor().then((ex) => adicionarItem(ex, uuid.parse(revisaoId), versao, {
-    etapaId: uuid.parse(d.etapaId), itemReferenciaId: uuid.parse(d.itemReferenciaId), quantidade: z.string().max(40).parse(d.quantidade), base: d.base ? base.parse(d.base) : null,
+    etapaId: uuid.parse(d.etapaId), itemReferenciaId: uuid.parse(d.itemReferenciaId), quantidade: z.string().max(40).parse(d.quantidade),
+    memoriaQuantitativo: d.memoriaQuantitativo ? z.string().max(4000, "Memória de cálculo com mais de 4.000 caracteres.").parse(d.memoriaQuantitativo) : null,
+    base: d.base ? base.parse(d.base) : null,
   }, u)));
 }
 
-export async function acaoAlterarItem(revisaoId: string, versao: number, itemId: string, d: { quantidade?: string; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null }; etapaId?: string }) {
+export async function acaoAlterarItem(revisaoId: string, versao: number, itemId: string, d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null }; etapaId?: string }) {
   return executar((u) => executor().then((ex) => alterarItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), {
     quantidade: d.quantidade !== undefined ? z.string().max(40).parse(d.quantidade) : undefined,
+    memoriaQuantitativo: d.memoriaQuantitativo !== undefined ? z.string().max(4000, "Memória de cálculo com mais de 4.000 caracteres.").nullable().parse(d.memoriaQuantitativo) : undefined,
     bdiPerfilId: d.bdiPerfilId === undefined ? undefined : d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null,
     base: d.base ? base.parse(d.base) : undefined, etapaId: d.etapaId ? uuid.parse(d.etapaId) : undefined,
   }, u)));

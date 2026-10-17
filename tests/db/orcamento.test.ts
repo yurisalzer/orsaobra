@@ -76,7 +76,7 @@ describe("orçamento completo", () => {
     const e2 = await criarEtapa(ex, r1, v, { titulo: "Acessibilidade" }, u); v = e2.versao;
     const sub = await criarEtapa(ex, r1, v, { paiId: e2.id, titulo: "Piso tátil" }, u); v = sub.versao;
     etapaId = e1.id;
-    let a = await adicionarItem(ex, r1, v, { etapaId: e1.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "10" }, u); v = a.versao; itens.emop = a.id;
+    let a = await adicionarItem(ex, r1, v, { etapaId: e1.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "10", memoriaQuantitativo: "  2 ensaios × 5 amostras = 10  " }, u); v = a.versao; itens.emop = a.id;
     a = await adicionarItem(ex, r1, v, { etapaId: sub.id, itemReferenciaId: await idDe("104658"), quantidade: "12,5" }, u); v = a.versao; itens.sinapi = a.id;
     a = await adicionarItem(ex, r1, v, { etapaId: sub.id, itemReferenciaId: await idDe("36178"), quantidade: "3" }, u); v = a.versao; itens.insumo = a.id;
     const e = await carregarRevisao(ex, r1);
@@ -84,6 +84,8 @@ describe("orçamento completo", () => {
     // 211,97 × 1,2223 = 259,090931 → 259,09; 10 × 259,09 = 2.590,90
     expect(emop).toMatchObject({ numero: "1.1", custoUnitario: "211.9700", precoUnitario: "259.09", precoTotal: "2590.90", custoTotal: "2119.70", origemPreco: "PUBLICADO" });
     expect(emop.memoriaCalculo).toMatch(/211,97 × \(1 \+ 22,23% de BDI\) = R\$ 259,09/);
+    expect(emop.memoriaQuantitativo).toBe("2 ensaios × 5 amostras = 10");
+    expect(e.itens.find((i) => i.id === itens.sinapi)!.memoriaQuantitativo).toBeNull();
     const sin = e.itens.find((i) => i.id === itens.sinapi)!;
     // 194,45 × 1,2223 = 237,676235 → 237,68; 12,5 × 237,68 = 2.971,00
     expect(sin).toMatchObject({ numero: "2.1.1", custoUnitario: "194.4500", precoUnitario: "237.68", precoTotal: "2971.00", custoTotal: "2430.63" });
@@ -104,6 +106,20 @@ describe("orçamento completo", () => {
     v = await excluirItem(ex, r1, v, a.id, u);
     await expect(adicionarItem(ex, r1, v, { etapaId, itemReferenciaId: await idDe("02083"), quantidade: "-1" }, u)).rejects.toThrow(/negativa/);
     await expect(adicionarItem(ex, r1, v, { etapaId, itemReferenciaId: await idDe("02083"), quantidade: "1,23456" }, u)).rejects.toThrow(/4 casas/);
+  });
+
+  it("memória de cálculo do quantitativo: editar, apagar, limite de tamanho", async () => {
+    const memoria = "(30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²\nDescontado portão: 0";
+    v = await alterarItem(ex, r1, v, itens.sinapi, { memoriaQuantitativo: memoria }, u);
+    let e = await carregarRevisao(ex, r1);
+    expect(e.itens.find((i) => i.id === itens.sinapi)!.memoriaQuantitativo).toBe(memoria);
+    // alterar só a memória não muda valores
+    expect(e.itens.find((i) => i.id === itens.sinapi)!.precoTotal).toBe("2971.00");
+    v = await alterarItem(ex, r1, v, itens.insumo, { memoriaQuantitativo: "temporária" }, u);
+    v = await alterarItem(ex, r1, v, itens.insumo, { memoriaQuantitativo: "   " }, u);
+    e = await carregarRevisao(ex, r1);
+    expect(e.itens.find((i) => i.id === itens.insumo)!.memoriaQuantitativo).toBeNull();
+    await expect(alterarItem(ex, r1, v, itens.insumo, { memoriaQuantitativo: "x".repeat(4001) }, u)).rejects.toThrow(/4.000/);
   });
 
   it("BDI individual por item, edição de quantidade e concorrência", async () => {
@@ -148,6 +164,8 @@ describe("orçamento completo", () => {
     expect(an.tipo).toBe("OFICIAL");
     expect(an.linhas.map((l) => l.codigo)).toEqual(["88316", "88309", "36178", "34357", "34353"]);
     await expect(alterarItem(ex, r1, v + 1, itens.emop, { quantidade: "1" }, u)).rejects.toThrow(/fechada/);
+    await expect(alterarItem(ex, r1, v + 1, itens.emop, { memoriaQuantitativo: "mudança após fechar" }, u)).rejects.toThrow(/fechada/);
+    await expect(prisma.itemOrcamento.update({ where: { id: itens.emop }, data: { memoriaQuantitativo: "x" } })).rejects.toThrow(/fechada/);
     await expect(prisma.itemOrcamento.update({ where: { id: itens.emop }, data: { quantidade: 1 } })).rejects.toThrow(/fechada/);
   });
 
@@ -170,6 +188,8 @@ describe("orçamento completo", () => {
     const ins = e2.itens.find((i) => i.codigo === "36178")!;
     expect(ins.pendencia).toMatch(/Preço mantido da referência anterior/);
     expect(ins.custoUnitario).toBe(antes.itens.find((i) => i.codigo === "36178")!.custoUnitario);
+    // memórias de cálculo acompanham a nova revisão
+    expect(sin.memoriaQuantitativo).toMatch(/^\(30 m comprimento/);
     // EMOP não muda (base EMOP mantida)
     expect(e2.itens.find((i) => i.codigo === "01.001.0001-0")!.precoTotal).toBe(antes.itens.find((i) => i.codigo === "01.001.0001-0")!.precoTotal);
     // revisão 1 permanece idêntica

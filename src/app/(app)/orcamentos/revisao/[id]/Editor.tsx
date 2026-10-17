@@ -85,8 +85,8 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
         {adicionandoEm === e.id && (
           <tr><td colSpan={11} className="bg-marca-50 p-3">
             <AdicionarItem revisaoId={r.id} bases={estado.basesPadrao} aoCancelar={() => setAdicionandoEm(null)}
-              aoAdicionar={(achado, quantidade) => rodar(() => acaoAdicionarItem(r.id, versao, {
-                etapaId: e.id, itemReferenciaId: achado.itemId, quantidade,
+              aoAdicionar={(achado, quantidade, memoriaQtd) => rodar(() => acaoAdicionarItem(r.id, versao, {
+                etapaId: e.id, itemReferenciaId: achado.itemId, quantidade, memoriaQuantitativo: memoriaQtd || null,
                 base: achado.outroRegime && baseDaFonte(achado.fonte) ? { baseRevisaoId: baseDaFonte(achado.fonte)!.baseRevisaoId, regime: achado.outroRegime } : null,
               }), () => { setAviso(`${achado.codigo} adicionado.`); setAdicionandoEm(null); })} />
           </td></tr>
@@ -127,7 +127,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
           <td className="num text-sm">{formatarMoeda(i.precoUnitario)}</td>
           <td className="num text-sm font-medium">{formatarMoeda(i.precoTotal)}</td>
           <td className="whitespace-nowrap text-xs">
-            <button title="Memória de cálculo" aria-label={`Memória ${i.numero}`} onClick={() => setMemoria(memoria === i.id ? null : i.id)}>ⓘ</button>
+            <button title="Como o preço foi calculado" aria-label={`Cálculo do preço ${i.numero}`} onClick={() => setMemoria(memoria === i.id ? null : i.id)}>ⓘ</button>
             {aberta && (
               <>
                 <button title="Subir" aria-label={`Subir item ${i.numero}`} onClick={() => rodar(() => acaoMoverItem(r.id, versao, i.id, -1))}>↑</button>
@@ -138,7 +138,15 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
             )}
           </td>
         </tr>
-        {memoria === i.id && <tr><td colSpan={11} className="bg-slate-50 px-3 py-2 text-xs text-slate-700">{i.memoriaCalculo}</td></tr>}
+        {(i.memoriaQuantitativo || aberta) && (
+          <tr>
+            <td />
+            <td colSpan={10} className="pb-2 pr-3">
+              <MemoriaQuantitativo item={i} editavel={aberta} aoSalvar={(texto) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { memoriaQuantitativo: texto }))} />
+            </td>
+          </tr>
+        )}
+        {memoria === i.id && <tr><td colSpan={11} className="bg-slate-50 px-3 py-2 text-xs text-slate-700"><strong>Cálculo do preço:</strong> {i.memoriaCalculo}</td></tr>}
       </Fragment>
     );
   }
@@ -231,8 +239,9 @@ function CampoQuantidade({ valor, rotulo, aoSalvar }: { valor: string; rotulo: s
   );
 }
 
-function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoId: string; bases: EstadoRevisao["basesPadrao"]; aoAdicionar: (a: Achado, q: string) => void; aoCancelar: () => void }) {
+function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoId: string; bases: EstadoRevisao["basesPadrao"]; aoAdicionar: (a: Achado, q: string, memoria: string) => void; aoCancelar: () => void }) {
   const [busca, setBusca] = useState("");
+  const [memoriaQtd, setMemoriaQtd] = useState("");
   const [achados, setAchados] = useState<Achado[]>([]);
   const [escolhido, setEscolhido] = useState<Achado | null>(null);
   const [quantidade, setQuantidade] = useState("");
@@ -282,14 +291,53 @@ function AdicionarItem({ revisaoId, bases, aoAdicionar, aoCancelar }: { revisaoI
           {escolhido.outroRegime && <span className="text-xs text-amber-800">Este código só tem preço no regime do próprio código (diferente de “{nomeRegime(escolhido.fonte)}”); será usado esse regime.</span>}
           <label className="flex items-center gap-1">Quantidade ({escolhido.unidade ?? "s/ unid."})
             <input autoFocus value={quantidade} onChange={(e) => setQuantidade(e.target.value)} inputMode="decimal" aria-label="Quantidade do novo item"
-              onKeyDown={(e) => { if (e.key === "Enter" && quantidade.trim()) aoAdicionar(escolhido, quantidade); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && quantidade.trim()) aoAdicionar(escolhido, quantidade, memoriaQtd); }}
               className="w-28 rounded border border-slate-300 px-2 py-1 text-right" />
           </label>
-          <button disabled={!quantidade.trim()} onClick={() => aoAdicionar(escolhido, quantidade)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50">Adicionar</button>
+          <label className="flex w-full flex-col gap-1">
+            <span>Memória de cálculo do quantitativo <span className="text-slate-500">(opcional — como se chegou à quantidade)</span></span>
+            <textarea value={memoriaQtd} onChange={(e) => setMemoriaQtd(e.target.value)} rows={2} maxLength={4000} aria-label="Memória de cálculo do novo item"
+              placeholder="Ex.: (30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²" className="rounded border border-slate-300 px-2 py-1" />
+          </label>
+          <button disabled={!quantidade.trim()} onClick={() => aoAdicionar(escolhido, quantidade, memoriaQtd)} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50">Adicionar</button>
           <button onClick={() => setEscolhido(null)} className="rounded-md border border-slate-300 px-3 py-1.5">Voltar</button>
         </div>
       )}
     </div>
+  );
+}
+
+function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; editavel: boolean; aoSalvar: (texto: string | null) => void }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(item.memoriaQuantitativo ?? "");
+  useEffect(() => setTexto(item.memoriaQuantitativo ?? ""), [item.memoriaQuantitativo]);
+  if (editando) {
+    const salvar = () => {
+      setEditando(false);
+      if (texto.trim() !== (item.memoriaQuantitativo ?? "")) aoSalvar(texto.trim() || null);
+    };
+    return (
+      <div className="flex flex-col gap-1 text-xs">
+        <label htmlFor={`mem-${item.id}`} className="font-medium text-slate-600">Memória de cálculo do quantitativo — item {item.numero}</label>
+        <textarea id={`mem-${item.id}`} autoFocus value={texto} rows={3} maxLength={4000} onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); } if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salvar(); }}
+          placeholder="Ex.: (30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²" className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+        <div className="flex gap-2">
+          <button onClick={salvar} className="rounded bg-marca-600 px-2 py-0.5 text-white">Salvar memória</button>
+          <button onClick={() => { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); }} className="rounded border border-slate-300 px-2 py-0.5">Cancelar</button>
+          <span className="text-slate-500">Ctrl+Enter salva · Esc cancela</span>
+        </div>
+      </div>
+    );
+  }
+  if (!item.memoriaQuantitativo) {
+    return <button onClick={() => setEditando(true)} className="text-xs text-marca-700 underline" aria-label={`Adicionar memória de cálculo ${item.numero}`}>+ memória de cálculo do quantitativo</button>;
+  }
+  return (
+    <p className="whitespace-pre-wrap rounded bg-amber-50/60 px-2 py-1 text-xs text-slate-700">
+      <span className="font-medium">Memória de cálculo:</span> {item.memoriaQuantitativo}
+      {editavel && <> {" "}<button onClick={() => setEditando(true)} className="text-marca-700 underline" aria-label={`Editar memória de cálculo ${item.numero}`}>editar</button></>}
+    </p>
   );
 }
 

@@ -60,6 +60,7 @@ export interface LinhaItem {
   origemPreco: string | null;
   referenciaPreco: string | null;
   pendencia: string | null;
+  memoriaQuantitativo: string | null;
   memoriaCalculo: string | null;
   analitico: unknown;
 }
@@ -83,6 +84,13 @@ export interface EstadoRevisao {
 // ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
+
+/** Memória do quantitativo: texto livre, até 4.000 caracteres (vazio = sem memória). */
+export function lerMemoria(texto: string | null | undefined): string | null {
+  const t = (texto ?? "").replace(/\r\n/g, "\n").trim();
+  if (t.length > 4000) throw new ErroOrcamento("Memória de cálculo com mais de 4.000 caracteres.");
+  return t || null;
+}
 
 /** Quantidade digitada ("12,5", "1.234,5678", "12.5") → texto decimal, validada. */
 export function lerQuantidade(texto: string): string {
@@ -284,7 +292,8 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
               g.codigo AS regime, i.codigo, i.descricao, i.unidade, i.quantidade::text AS quantidade, i.custo_unitario::text AS "custoUnitario",
               i.custo_total::text AS "custoTotal", i.bdi_perfil_id AS "bdiPerfilId", i.bdi_percentual::text AS "bdiPercentual",
               i.preco_unitario::text AS "precoUnitario", i.preco_total::text AS "precoTotal", i.origem_preco AS "origemPreco",
-              i.referencia_preco AS "referenciaPreco", i.pendencia, i.memoria_calculo AS "memoriaCalculo", i.analitico
+              i.referencia_preco AS "referenciaPreco", i.pendencia, i.memoria_quantitativo AS "memoriaQuantitativo",
+              i.memoria_calculo AS "memoriaCalculo", i.analitico
          FROM item_orcamento i JOIN item_referencia ir ON ir.id = i.item_referencia_id JOIN fonte f ON f.id = ir.fonte_id
          LEFT JOIN base_revisao br ON br.id = i.base_revisao_id LEFT JOIN base_mensal b ON b.id = br.base_id
          LEFT JOIN regime g ON g.id = i.regime_id
@@ -483,10 +492,11 @@ async function precoParaItem(ex: Executor, revisaoId: string, itemReferenciaId: 
 
 export async function adicionarItem(
   ex: Executor, revisaoId: string, versao: number,
-  d: { etapaId: string; itemReferenciaId: string; quantidade: string; base?: { baseRevisaoId: string; regime: string | null } | null },
+  d: { etapaId: string; itemReferenciaId: string; quantidade: string; memoriaQuantitativo?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null },
   usuarioId: string,
 ) {
   const q = dec(lerQuantidade(d.quantidade));
+  const memoriaQtd = lerMemoria(d.memoriaQuantitativo);
   const [et] = await ex.consulta<{ ok: boolean }>(`SELECT true AS ok FROM etapa WHERE id = $1 AND revisao_id = $2`, [d.etapaId, revisaoId]);
   if (!et) throw new ErroOrcamento("Etapa não encontrada.");
   const r = await dadosRevisao(ex, revisaoId);
@@ -501,26 +511,26 @@ export async function adicionarItem(
     ...travarEdicao(revisaoId, versao),
     {
       sql: `INSERT INTO item_orcamento (id, revisao_id, etapa_id, ordem, item_referencia_id, base_revisao_id, regime_id, codigo, descricao, unidade, quantidade,
-                                        custo_unitario, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, memoria_calculo)
+                                        custo_unitario, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, memoria_calculo, memoria_quantitativo)
             VALUES ($1, $2, $3, (SELECT coalesce(max(ordem), 0) + 1 FROM item_orcamento WHERE etapa_id = $3), $4, $5,
                     (SELECT g.id FROM regime g JOIN base_mensal b ON b.fonte_id = g.fonte_id JOIN base_revisao br ON br.base_id = b.id WHERE br.id = $5 AND g.codigo = $6),
-                    $7, $8, $9, $10::numeric, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18)`,
+                    $7, $8, $9, $10::numeric, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19)`,
       params: [id, revisaoId, d.etapaId, d.itemReferenciaId, base?.baseRevisaoId ?? null, base?.regime ?? null, cab.codigo, cab.descricao, cab.unidade ?? "",
         q.toString(), v.custoUnitario.toString(), v.bdiPercentual.toString(), v.precoUnitario.toString(), v.precoTotal.toString(), v.custoTotal.toString(),
-        preco.origem, preco.referencia, v.memoria],
+        preco.origem, preco.referencia, v.memoria, memoriaQtd],
     },
-    comandoAuditoria({ usuarioId, acao: "ITEM_ADICIONADO", entidade: "item_orcamento", entidadeId: id, depois: { codigo: cab.codigo, quantidade: q.toString(), custo: v.custoUnitario.toString() } }),
+    comandoAuditoria({ usuarioId, acao: "ITEM_ADICIONADO", entidade: "item_orcamento", entidadeId: id, depois: { codigo: cab.codigo, quantidade: q.toString(), custo: v.custoUnitario.toString(), memoriaQuantitativo: memoriaQtd } }),
   ]);
   return { id, versao: versao + 1 };
 }
 
 export async function alterarItem(
   ex: Executor, revisaoId: string, versao: number, itemId: string,
-  d: { quantidade?: string; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string },
+  d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string },
   usuarioId: string,
 ) {
-  const [i] = await ex.consulta<{ id: string; item_referencia_id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null }>(
-    `SELECT id, item_referencia_id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_percentual::text, unidade, referencia_preco FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
+  const [i] = await ex.consulta<{ id: string; item_referencia_id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null; memoria_quantitativo: string | null }>(
+    `SELECT id, item_referencia_id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_percentual::text, unidade, referencia_preco, memoria_quantitativo FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
     [itemId, revisaoId],
   );
   if (!i) throw new ErroOrcamento("Item não encontrado nesta revisão.");
@@ -530,6 +540,11 @@ export async function alterarItem(
   if (d.quantidade !== undefined) {
     quantidade = lerQuantidade(d.quantidade);
     cmds.push({ sql: `UPDATE item_orcamento SET quantidade = $2::numeric WHERE id = $1`, params: [itemId, quantidade] });
+  }
+  let memoriaQtd = i.memoria_quantitativo;
+  if (d.memoriaQuantitativo !== undefined) {
+    memoriaQtd = lerMemoria(d.memoriaQuantitativo);
+    cmds.push({ sql: `UPDATE item_orcamento SET memoria_quantitativo = $2 WHERE id = $1`, params: [itemId, memoriaQtd] });
   }
   let perfil = i.bdi_perfil_id;
   let bdi = i.bdi_perfil_id ? i.bdi_percentual : (r.bdi_percentual ?? "0");
@@ -559,7 +574,7 @@ export async function alterarItem(
   }
   const v = valoresDoItem({ quantidade, custoReferencia: custo, bdi, modo: r.arredondamento, unidade: i.unidade, referencia });
   cmds.push(comandoAtualizarValores([{ id: itemId, ...serializar(v) }]));
-  cmds.push(comandoAuditoria({ usuarioId, acao: "ITEM_ALTERADO", entidade: "item_orcamento", entidadeId: itemId, antes: { quantidade: i.quantidade, custo: i.custo_unitario, bdi: i.bdi_percentual }, depois: { quantidade, custo, bdi } }));
+  cmds.push(comandoAuditoria({ usuarioId, acao: "ITEM_ALTERADO", entidade: "item_orcamento", entidadeId: itemId, antes: { quantidade: i.quantidade, custo: i.custo_unitario, bdi: i.bdi_percentual, memoriaQuantitativo: i.memoria_quantitativo }, depois: { quantidade, custo, bdi, memoriaQuantitativo: memoriaQtd } }));
   await ex.transacao(cmds);
   return versao + 1;
 }
@@ -721,9 +736,9 @@ function comandosCopiar(origemId: string, destinoId: string): Comando[] {
     },
     {
       sql: `INSERT INTO item_orcamento (revisao_id, etapa_id, ordem, item_referencia_id, base_revisao_id, regime_id, codigo, descricao, unidade, quantidade,
-                                        custo_unitario, bdi_perfil_id, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, pendencia, memoria_calculo)
+                                        custo_unitario, bdi_perfil_id, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, pendencia, memoria_calculo, memoria_quantitativo)
             SELECT $2, m.novo, i.ordem, i.item_referencia_id, i.base_revisao_id, i.regime_id, i.codigo, i.descricao, i.unidade, i.quantidade,
-                   i.custo_unitario, i.bdi_perfil_id, i.bdi_percentual, i.preco_unitario, i.preco_total, i.custo_total, i.origem_preco, i.referencia_preco, i.pendencia, i.memoria_calculo
+                   i.custo_unitario, i.bdi_perfil_id, i.bdi_percentual, i.preco_unitario, i.preco_total, i.custo_total, i.origem_preco, i.referencia_preco, i.pendencia, i.memoria_calculo, i.memoria_quantitativo
               FROM item_orcamento i JOIN tmp_mapa_etapa m ON m.antigo = i.etapa_id WHERE i.revisao_id = $1`,
       params: [origemId, destinoId],
     },

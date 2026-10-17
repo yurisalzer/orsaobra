@@ -32,7 +32,7 @@ async function adicionar(page: Page, etapa: string, busca: string, opcao: RegExp
   await page.getByLabel("Buscar serviço").fill(busca);
   await page.getByRole("option", { name: opcao }).click();
   await page.getByLabel("Quantidade do novo item").fill(quantidade);
-  await page.getByRole("button", { name: "Adicionar" }).click();
+  await page.getByRole("button", { name: "Adicionar", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("adicionado");
 }
 
@@ -74,14 +74,21 @@ test("perfil de BDI, orçamento, itens, fechamento, nova revisão e comparação
   await adicionar(page, "Acessibilidade", "104658", /104658/, "1");
   // 194,45 × 1,25 = 243,0625 → 243,06; total geral 662,40 + 243,06 = 905,46
   await expect(page.getByText("R$ 905,46")).toBeVisible();
-  await page.getByLabel("Memória 1.1").click();
+  // memória de cálculo do quantitativo (exemplo do usuário)
+  await page.getByLabel("Adicionar memória de cálculo 1.1").click();
+  await page.getByLabel("Memória de cálculo do quantitativo — item 1.1").fill("(30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 200m²");
+  await page.getByRole("button", { name: "Salvar memória" }).click();
+  await expect(page.getByText("Memória de cálculo: (30m (comprimento) + 20m (largura)) x 2 (perimetro) x 2m (altura) = 200m²")).toBeVisible();
+  await page.getByLabel("Cálculo do preço 1.1").click();
   await expect(page.getByText(/211,97 × \(1 \+ 25,00% de BDI\) = R\$ 264,96/)).toBeVisible();
   await page.screenshot({ path: "test-results/orcamento-editor.png", fullPage: true });
 
-  // fechar: fica imutável
+  // fechar: fica imutável (memória visível, sem edição)
   await page.getByRole("button", { name: "Fechar revisão" }).click();
   await expect(page.getByText(/Fechada em/)).toBeVisible();
   await expect(page.getByLabel("Quantidade 1.1")).toHaveCount(0);
+  await expect(page.getByText(/Memória de cálculo: \(30m/)).toBeVisible();
+  await expect(page.getByLabel("Editar memória de cálculo 1.1")).toHaveCount(0);
 
   // nova revisão e alteração
   await page.getByRole("button", { name: "Nova revisão" }).click();
