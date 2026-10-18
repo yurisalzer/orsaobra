@@ -20,8 +20,9 @@ async function main() {
   const ex = await criarExecutor();
   const senhaHash = await gerarHashSenha(senha);
   const [u] = await ex.consulta<{ id: string; email: string }>(
-    `INSERT INTO usuario (email, nome, senha_hash, papel, atualizado_em) VALUES (lower($1), $2, $3, 'ADMIN', now())
-     ON CONFLICT (email) DO UPDATE SET senha_hash = EXCLUDED.senha_hash, papel = 'ADMIN', ativo = true, tentativas = 0, bloqueado_ate = NULL, atualizado_em = now()
+    `INSERT INTO usuario (email, nome, senha_hash, papel, email_confirmado_em, aprovado_em, atualizado_em) VALUES (lower($1), $2, $3, 'ADMIN', now(), now(), now())
+     ON CONFLICT (email) DO UPDATE SET senha_hash = EXCLUDED.senha_hash, papel = 'ADMIN', ativo = true,
+       email_confirmado_em = coalesce(usuario.email_confirmado_em, now()), aprovado_em = coalesce(usuario.aprovado_em, now()), tentativas = 0, bloqueado_ate = NULL, atualizado_em = now()
      RETURNING id, email`,
     [email, nome, senhaHash],
   );

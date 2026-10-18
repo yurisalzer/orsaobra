@@ -6,6 +6,7 @@ import { ErroPermissao, exigirPermissao } from "@/lib/auth/sessao";
 import { CODIGOS_PERMISSAO, type Permissao } from "@/lib/auth/permissoes";
 import { criarUsuario, definirAtivo, definirPermissao, ErroUsuarios, redefinirSenha, substituirPermissoes } from "@/lib/auth/usuarios";
 import { executor } from "@/lib/banco/servidor";
+import { urlBase } from "@/lib/auth/requisicao";
 
 type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
 
@@ -36,7 +37,7 @@ export async function acaoAplicarModelo(usuarioId: string, permissoes: string[])
   return executar((autor) => executor().then((ex) => substituirPermissoes(ex, uuid.parse(usuarioId), z.array(permissao).parse(permissoes), autor)));
 }
 export async function acaoDefinirAtivo(usuarioId: string, ativo: boolean) {
-  return executar((autor) => executor().then((ex) => definirAtivo(ex, uuid.parse(usuarioId), ativo, autor)));
+  return executar((autor) => executor().then(async (ex) => definirAtivo(ex, uuid.parse(usuarioId), ativo, autor, await urlBase())));
 }
 export async function acaoCriarUsuario(d: { nome: string; email: string; senha: string; permissoes: string[] }) {
   return executar((autor) => executor().then((ex) => criarUsuario(ex, {

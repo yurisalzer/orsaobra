@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { comandoAuditoria } from "../auditoria";
 import { executor } from "../banco/servidor";
 import { CODIGOS_PERMISSAO, PERMISSOES, type Permissao } from "./permissoes";
+import { ipAtual } from "./requisicao";
 import { conferirSenha } from "./senha";
 
 export type { Permissao } from "./permissoes";
@@ -16,18 +17,18 @@ const BLOQUEIO_MS = 15 * 60 * 1000;
 
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 
-async function ipAtual(): Promise<string | null> {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0].trim() ?? h.get("x-real-ip");
-}
 
-export type ResultadoLogin = { ok: true } | { ok: false; mensagem: string };
+export type ResultadoLogin = { ok: true } | { ok: false; mensagem: string; reenviar?: boolean };
 
 export async function entrar(email: string, senha: string): Promise<ResultadoLogin> {
   const ex = await executor();
   const ip = await ipAtual();
-  const [usuario] = await ex.consulta<{ id: string; senha_hash: string; ativo: boolean; tentativas: number; bloqueado: boolean }>(
-    `SELECT id, senha_hash, ativo, tentativas, (bloqueado_ate IS NOT NULL AND bloqueado_ate > now()) AS bloqueado FROM usuario WHERE email = $1`,
+  const [usuario] = await ex.consulta<{
+    id: string; senha_hash: string; ativo: boolean; tentativas: number; bloqueado: boolean; email_confirmado: boolean; aprovado: boolean;
+  }>(
+    `SELECT id, senha_hash, ativo, tentativas, (bloqueado_ate IS NOT NULL AND bloqueado_ate > now()) AS bloqueado,
+            email_confirmado_em IS NOT NULL AS email_confirmado, aprovado_em IS NOT NULL AS aprovado
+       FROM usuario WHERE email = $1`,
     [email.trim().toLowerCase()],
   );
   const falha: ResultadoLogin = { ok: false, mensagem: "E-mail ou senha inválidos." };
@@ -37,7 +38,14 @@ export async function entrar(email: string, senha: string): Promise<ResultadoLog
     return { ok: false, mensagem: "Muitas tentativas. Tente novamente em alguns minutos." };
   }
   const senhaOk = await conferirSenha(senha, usuario?.senha_hash ?? null);
-  if (!usuario || !senhaOk || !usuario.ativo) {
+  // senha correta, mas a conta ainda não pode entrar: explica o motivo (não conta como tentativa)
+  if (usuario && senhaOk && !(usuario.ativo && usuario.email_confirmado)) {
+    await ex.transacao([comandoAuditoria({ usuarioId: usuario.id, acao: "LOGIN_NAO_LIBERADO", entidade: "usuario", entidadeId: usuario.id, ip })]);
+    if (!usuario.email_confirmado) return { ok: false, mensagem: "Confirme o seu e-mail pelo link que enviamos antes de entrar.", reenviar: true };
+    if (!usuario.aprovado) return { ok: false, mensagem: "Seu cadastro foi recebido e aguarda a liberação do acesso pelo administrador. Você receberá um e-mail quando o acesso for liberado." };
+    return { ok: false, mensagem: "Usuário desativado. Fale com o administrador." };
+  }
+  if (!usuario || !senhaOk) {
     if (usuario) {
       const tentativas = usuario.tentativas + 1;
       const bloquear = tentativas >= MAX_TENTATIVAS;
@@ -95,7 +103,7 @@ export async function usuarioAtual(): Promise<UsuarioSessao | null> {
     `SELECT u.id, u.email, u.nome,
             ARRAY(SELECT p.permissao FROM usuario_permissao p WHERE p.usuario_id = u.id ORDER BY p.permissao) AS permissoes
        FROM sessao s JOIN usuario u ON u.id = s.usuario_id
-      WHERE s.token_hash = $1 AND s.expira_em > now() AND u.ativo`,
+      WHERE s.token_hash = $1 AND s.expira_em > now() AND u.ativo AND u.email_confirmado_em IS NOT NULL`,
     [hashToken(token)],
   );
   if (!u) return null;

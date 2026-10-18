@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Barreira rápida: sem cookie de sessão, vai para o login. A validação real da
 // sessão (banco de dados) acontece no servidor, em cada página/ação.
-const PUBLICAS = ["/login"];
+const PUBLICAS = ["/login", "/cadastro"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

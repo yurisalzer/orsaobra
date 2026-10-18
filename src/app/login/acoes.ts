@@ -11,12 +11,14 @@ const esquema = z.object({
 
 export interface EstadoLogin {
   erro?: string;
+  /** Mostrar o link para reenviar a confirmação do e-mail. */
+  reenviar?: boolean;
 }
 
 export async function acaoEntrar(_: EstadoLogin, form: FormData): Promise<EstadoLogin> {
   const dados = esquema.safeParse({ email: form.get("email"), senha: form.get("senha") });
   if (!dados.success) return { erro: dados.error.issues[0].message };
   const r = await entrar(dados.data.email, dados.data.senha);
-  if (!r.ok) return { erro: r.mensagem };
+  if (!r.ok) return { erro: r.mensagem, reenviar: r.reenviar };
   redirect("/");
 }

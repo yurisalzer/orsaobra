@@ -67,3 +67,16 @@ pela linha de comando (`npm run cf:deploy`).
 npx dotenv -e .env.neon -- tsx scripts/importar.ts --email admin@x.com arquivo.rar            # só analisa
 npx dotenv -e .env.neon -- tsx scripts/importar.ts --email admin@x.com --confirmar --ciente-avisos arquivo.rar
 ```
+
+## E-mails (cadastro, confirmação e avisos)
+
+O sistema envia e-mails pela API da [Resend](https://resend.com) (plano gratuito: 3.000/mês, 100/dia).
+1. Crie a conta na Resend e verifique um domínio próprio (registros DNS indicados pela Resend).
+2. Gere uma chave de API ("Sending access").
+3. Cadastre os segredos no Worker:
+   ```
+   npx wrangler secret put RESEND_API_KEY
+   npx wrangler secret put EMAIL_REMETENTE   # ex.: Orçamento de Obras <nao-responda@seudominio.com.br>
+   npx wrangler secret put APP_URL           # ex.: https://orsaobra.orsaobra.workers.dev
+   ```
+Sem essas variáveis, nada é enviado: cada mensagem fica registrada em "Usuários e permissões → E-mails enviados pelo sistema" com o status "não enviado".

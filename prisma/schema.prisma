@@ -42,17 +42,57 @@ model Usuario {
   ativo        Boolean   @default(true)
   tentativas   Int       @default(0) // falhas de login consecutivas
   bloqueadoAte DateTime? @map("bloqueado_ate") @db.Timestamptz
+  cpf               String?   @unique // somente dígitos
+  telefone          String?
+  emailConfirmadoEm DateTime? @map("email_confirmado_em") @db.Timestamptz
+  aprovadoEm        DateTime? @map("aprovado_em") @db.Timestamptz // liberado pelo administrador
+  origem            String    @default("ADMINISTRADOR") // ADMINISTRADOR | AUTOCADASTRO
   criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz
   atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
 
   sessoes      Sessao[]
   permissoes   UsuarioPermissao[]
+  confirmacoes ConfirmacaoEmail[]
+  emails       EmailSaida[]
   auditorias   Auditoria[]
   importacoes  Importacao[]
   membroObras  ObraMembro[]
   revisoesFech OrcamentoRevisao[] @relation("RevisaoFechadaPor")
 
   @@map("usuario")
+}
+
+/// Link de confirmação de e-mail (guarda só o hash do código).
+model ConfirmacaoEmail {
+  tokenHash String    @id @map("token_hash")
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEm  DateTime  @map("expira_em") @db.Timestamptz
+  usadoEm   DateTime? @map("usado_em") @db.Timestamptz
+  criadoEm  DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId], map: "confirmacao_email_usuario_idx")
+  @@map("confirmacao_email")
+}
+
+/// Caixa de saída de e-mails do sistema (com o resultado do envio).
+model EmailSaida {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  para       String
+  assunto    String
+  texto      String
+  html       String?
+  motivo     String
+  usuarioId  String?  @map("usuario_id") @db.Uuid
+  status     String // ENVIADO | FALHOU | NAO_CONFIGURADO
+  erro       String?
+  idProvedor String?  @map("id_provedor")
+  criadoEm   DateTime @default(now()) @map("criado_em") @db.Timestamptz
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@map("email_saida")
 }
 
 /// Permissão individual por recurso (ver src/lib/auth/permissoes.ts).

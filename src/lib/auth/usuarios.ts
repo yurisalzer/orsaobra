@@ -9,6 +9,8 @@ import { randomBytes } from "node:crypto";
 import type { Executor } from "../banco/executor";
 import { comandoAuditoria } from "../auditoria";
 import { completarPermissoes, DEPENDE_DE, type Permissao } from "./permissoes";
+import { enviarEmail } from "../email/enviar";
+import { formatarCpf } from "./cadastro";
 import { gerarHashSenha, validarForcaSenha } from "./senha";
 
 export class ErroUsuarios extends Error {}
@@ -21,16 +23,25 @@ export interface UsuarioLista {
   permissoes: Permissao[];
   ultimoAcesso: string | null;
   criadoEm: string;
+  cpf: string | null;
+  telefone: string | null;
+  origem: "ADMINISTRADOR" | "AUTOCADASTRO";
+  emailConfirmado: boolean;
+  /** Acesso já liberado alguma vez pelo administrador. */
+  aprovado: boolean;
 }
 
 export async function listarUsuarios(ex: Executor): Promise<UsuarioLista[]> {
-  return ex.consulta<UsuarioLista>(
-    `SELECT u.id, u.nome, u.email, u.ativo,
+  const l = await ex.consulta<UsuarioLista>(
+    `SELECT u.id, u.nome, u.email, u.ativo, u.cpf, u.telefone, u.origem,
+            u.email_confirmado_em IS NOT NULL AS "emailConfirmado", u.aprovado_em IS NOT NULL AS aprovado,
             ARRAY(SELECT p.permissao FROM usuario_permissao p WHERE p.usuario_id = u.id ORDER BY p.permissao) AS permissoes,
             (SELECT to_char(max(a.criado_em) AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') FROM auditoria a WHERE a.usuario_id = u.id AND a.acao = 'LOGIN') AS "ultimoAcesso",
             to_char(u.criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY') AS "criadoEm"
-       FROM usuario u ORDER BY u.ativo DESC, lower(u.nome)`,
+       FROM usuario u
+      ORDER BY (u.aprovado_em IS NULL) DESC, u.ativo DESC, lower(u.nome)`,
   );
+  return l.map((u) => ({ ...u, cpf: u.cpf ? formatarCpf(u.cpf) : null }));
 }
 
 async function permissoesDe(ex: Executor, id: string) {
@@ -88,16 +99,33 @@ export async function substituirPermissoes(ex: Executor, alvoId: string, permiss
   return final;
 }
 
-export async function definirAtivo(ex: Executor, alvoId: string, ativo: boolean, autorId: string) {
+/**
+ * Ativa ou desativa. A primeira ativação de um autocadastro é a liberação do
+ * acesso: registra aprovado_em e avisa o usuário por e-mail.
+ */
+export async function definirAtivo(ex: Executor, alvoId: string, ativo: boolean, autorId: string, urlBase?: string) {
   if (alvoId === autorId && !ativo) throw new ErroUsuarios("Você não pode desativar o seu próprio usuário.");
   await permissoesDe(ex, alvoId);
+  const [alvo] = await ex.consulta<{ nome: string; email: string; aprovado: boolean; email_confirmado: boolean }>(
+    `SELECT nome, email, aprovado_em IS NOT NULL AS aprovado, email_confirmado_em IS NOT NULL AS email_confirmado FROM usuario WHERE id = $1`, [alvoId],
+  );
+  const liberacao = ativo && !alvo.aprovado;
   await ex.transacao([
-    { sql: `UPDATE usuario SET ativo = $2, atualizado_em = now() WHERE id = $1`, params: [alvoId, ativo] },
+    { sql: `UPDATE usuario SET ativo = $2, aprovado_em = CASE WHEN $2 THEN coalesce(aprovado_em, now()) ELSE aprovado_em END, atualizado_em = now() WHERE id = $1`, params: [alvoId, ativo] },
     // desativado: encerra as sessões abertas
     ...(ativo ? [] : [{ sql: `DELETE FROM sessao WHERE usuario_id = $1`, params: [alvoId] }]),
     garantirAdministrador,
-    comandoAuditoria({ usuarioId: autorId, acao: ativo ? "USUARIO_ATIVADO" : "USUARIO_DESATIVADO", entidade: "usuario", entidadeId: alvoId }),
+    comandoAuditoria({ usuarioId: autorId, acao: liberacao ? "ACESSO_LIBERADO" : ativo ? "USUARIO_ATIVADO" : "USUARIO_DESATIVADO", entidade: "usuario", entidadeId: alvoId }),
   ]);
+  if (liberacao) {
+    await enviarEmail(ex, {
+      para: alvo.email, motivo: "ACESSO_LIBERADO", usuarioId: alvoId,
+      assunto: "Acesso liberado — Orçamento de Obras",
+      texto: `Olá, ${alvo.nome}.\n\nO administrador liberou o seu acesso ao sistema Orçamento de Obras.` +
+        (urlBase ? ` Entre com o seu e-mail e a senha cadastrada: ${urlBase}/login` : " Entre com o seu e-mail e a senha cadastrada.") +
+        (alvo.email_confirmado ? "" : "\n\nAntes, confirme o seu e-mail pelo link que enviamos no cadastro."),
+    });
+  }
 }
 
 /** Senha provisória legível (sem caracteres ambíguos), com letras e números. */
@@ -123,7 +151,7 @@ export async function criarUsuario(ex: Executor, d: { nome: string; email: strin
   const id = crypto.randomUUID();
   const permissoes = completarPermissoes(d.permissoes);
   await ex.transacao([
-    { sql: `INSERT INTO usuario (id, email, nome, senha_hash, papel, atualizado_em) VALUES ($1, $2, $3, $4, 'LEITOR', now())`, params: [id, email, nome, await gerarHashSenha(d.senha)] },
+    { sql: `INSERT INTO usuario (id, email, nome, senha_hash, papel, email_confirmado_em, aprovado_em, atualizado_em) VALUES ($1, $2, $3, $4, 'LEITOR', now(), now(), now())`, params: [id, email, nome, await gerarHashSenha(d.senha)] },
     { sql: `INSERT INTO usuario_permissao (usuario_id, permissao) SELECT $1, unnest($2::text[])`, params: [id, permissoes] },
     comandoAuditoria({ usuarioId: autorId, acao: "USUARIO_CRIADO", entidade: "usuario", entidadeId: id, depois: { nome, email, permissoes } }),
   ]);
