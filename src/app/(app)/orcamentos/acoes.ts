@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ErroPermissao, exigirPermissao, type Permissao } from "@/lib/auth/sessao";
+import { ErroPermissao, exigirPermissao, temPermissao, type Permissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
-  excluirEtapa, excluirItem, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
+  excluirEtapa, excluirItem, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
 
@@ -150,4 +150,12 @@ export async function acaoSalvarCronograma(revisaoId: string, versao: number, d:
   return executar((u) => executor().then((ex) => salvarCronograma(ex, uuid.parse(revisaoId), versao, z.object({
     meses: z.number().int(), parcelas: z.array(z.object({ etapaId: uuid, periodo: z.number().int(), percentual: z.string().max(20) })).max(5000),
   }).parse(d), u)));
+}
+
+/** Exclui o orçamento: só em elaboração, por quem o criou ou pelo administrador (permissão "Usuários"). */
+export async function acaoExcluirOrcamento(orcamentoId: string) {
+  return executar(async (usuarioId) => {
+    const u = await exigirPermissao("ORCAMENTOS_EDITAR");
+    await excluirOrcamento(await executor(), uuid.parse(orcamentoId), { id: usuarioId, administrador: temPermissao(u, "USUARIOS") });
+  }, "/orcamentos");
 }

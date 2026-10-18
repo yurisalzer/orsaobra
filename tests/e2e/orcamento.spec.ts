@@ -310,3 +310,36 @@ test("cabeçalho dos relatórios: cadastro com logo, escolha na obra e uso no re
   expect(wb.worksheets[0].getImages()).toHaveLength(1);
   expect(wb.worksheets[0].getCell(2, 3).value).toBe("Prefeitura Municipal de Macaé");
 });
+
+test("pesquisa na lista de orçamentos e exclusão de orçamento em elaboração", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  const pesquisa = page.getByLabel("Pesquisar obras e orçamentos");
+  for (const termo of ["creche", "OB-001", "SEI-120001", "cobertura"]) {
+    await pesquisa.fill(termo);
+    await page.getByRole("button", { name: "Pesquisar" }).click();
+    await expect(page.getByRole("status")).toContainText("1 obra encontrada");
+    await expect(page.getByRole("link", { name: "Reforma da cobertura" })).toBeVisible();
+  }
+  await pesquisa.fill("obra inexistente");
+  await pesquisa.press("Enter");
+  await expect(page.getByRole("status")).toContainText("Nada encontrado para “obra inexistente”");
+  await page.getByRole("link", { name: "Limpar" }).click();
+  await expect(pesquisa).toHaveValue("");
+
+  // orçamento com revisão fechada não oferece exclusão
+  await expect(page.getByLabel("Excluir orçamento Reforma da cobertura")).toHaveCount(0);
+
+  // novo orçamento em elaboração na mesma obra: quem criou pode excluir
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption({ label: "Creche Municipal" });
+  await page.getByLabel("Título").fill("Orçamento descartável");
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Orçamento descartável" })).toBeVisible();
+  await page.goto("/orcamentos");
+  await expect(page.getByRole("row", { name: /Orçamento descartável/ })).toContainText("Orçamentista");
+  await page.getByLabel("Excluir orçamento Orçamento descartável").click();
+  await expect(page.getByRole("link", { name: "Orçamento descartável" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Reforma da cobertura" })).toBeVisible();
+});

@@ -301,17 +301,77 @@ export async function criarOrcamento(
   return { orcamentoId, revisaoId };
 }
 
-export async function listarOrcamentos(ex: Executor) {
-  return ex.consulta<{ obraId: string; obra: string; obraCodigo: string | null; orgaoSolicitante: string | null; orcamentoId: string; codigo: string | null; titulo: string | null; revisoes: number; ultimaRevisaoId: string | null; ultimaNumero: number | null; ultimaStatus: string | null; total: string | null; atualizado: string | null }>(
-    `SELECT o.id AS "obraId", o.nome AS obra, o.codigo AS "obraCodigo", o.orgao_solicitante AS "orgaoSolicitante", oc.id AS "orcamentoId", oc.codigo, oc.titulo,
+export interface LinhaOrcamento {
+  obraId: string; obra: string; obraCodigo: string | null; obraProcesso: string | null; orgaoSolicitante: string | null;
+  orcamentoId: string | null; codigo: string | null; titulo: string | null; revisoes: number; ultimaRevisaoId: string | null; ultimaNumero: number | null;
+  ultimaStatus: string | null; total: string | null; atualizado: string | null;
+  /** Quem criou o orçamento (revisão 1). */
+  criadoPorId: string | null; criadoPor: string | null;
+  /** Nenhuma revisão fechada: o orçamento ainda está em elaboração. */
+  emElaboracao: boolean;
+}
+
+/**
+ * Obras e orçamentos. `busca` filtra (sem diferenciar acentos/maiúsculas) por
+ * nome, código/número ou processo da obra, e por código ou título do orçamento.
+ */
+export async function listarOrcamentos(ex: Executor, busca?: string | null): Promise<LinhaOrcamento[]> {
+  const termos = (busca ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
+    .split(/\s+/).map((t) => t.replace(/[%_\\]/g, "")).filter(Boolean).slice(0, 8);
+  const params: unknown[] = [];
+  const conds = termos.map((t) => {
+    params.push(`%${t}%`);
+    return `lower(f_unaccent(concat_ws(' ', o.nome, o.codigo, o.processo, oc.codigo, oc.titulo))) LIKE $${params.length}`;
+  });
+  return ex.consulta<LinhaOrcamento>(
+    `SELECT o.id AS "obraId", o.nome AS obra, o.codigo AS "obraCodigo", o.processo AS "obraProcesso", o.orgao_solicitante AS "orgaoSolicitante",
+            oc.id AS "orcamentoId", oc.codigo, oc.titulo,
             (SELECT count(*)::int FROM orcamento_revisao r WHERE r.orcamento_id = oc.id) AS revisoes,
             u.id AS "ultimaRevisaoId", u.numero AS "ultimaNumero", u.status::text AS "ultimaStatus",
             coalesce(u.total_geral, (SELECT sum(i.preco_total) FROM item_orcamento i WHERE i.revisao_id = u.id))::text AS total,
-            to_char(u.atualizado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS atualizado
+            to_char(u.atualizado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS atualizado,
+            r1.criado_por_id AS "criadoPorId", cu.nome AS "criadoPor",
+            NOT EXISTS (SELECT 1 FROM orcamento_revisao r WHERE r.orcamento_id = oc.id AND r.status = 'FECHADA') AS "emElaboracao"
        FROM obra o LEFT JOIN orcamento oc ON oc.obra_id = o.id
        LEFT JOIN LATERAL (SELECT * FROM orcamento_revisao r WHERE r.orcamento_id = oc.id ORDER BY r.numero DESC LIMIT 1) u ON true
+       LEFT JOIN LATERAL (SELECT r.criado_por_id FROM orcamento_revisao r WHERE r.orcamento_id = oc.id ORDER BY r.numero LIMIT 1) r1 ON true
+       LEFT JOIN usuario cu ON cu.id = r1.criado_por_id
+      ${conds.length ? `WHERE ${conds.join(" AND ")}` : ""}
       ORDER BY o.nome, oc.titulo`,
+    params,
   );
+}
+
+/** Regra de exclusão: só em elaboração (nenhuma revisão fechada), pelo criador ou pelo administrador. */
+export function podeExcluirOrcamento(o: { criadoPorId: string | null; emElaboracao: boolean }, u: { id: string; administrador: boolean }): boolean {
+  return o.emElaboracao && (u.administrador || o.criadoPorId === u.id);
+}
+
+/**
+ * Exclui o orçamento com todas as revisões, etapas, itens e cronograma. A obra
+ * continua cadastrada. A verificação é repetida dentro da transação.
+ */
+export async function excluirOrcamento(ex: Executor, orcamentoId: string, u: { id: string; administrador: boolean }) {
+  const [o] = await ex.consulta<{ titulo: string; codigo: string | null; obra_id: string; criado_por_id: string | null; em_elaboracao: boolean; revisoes: number }>(
+    `SELECT oc.titulo, oc.codigo, oc.obra_id,
+            (SELECT r.criado_por_id FROM orcamento_revisao r WHERE r.orcamento_id = oc.id ORDER BY r.numero LIMIT 1) AS criado_por_id,
+            NOT EXISTS (SELECT 1 FROM orcamento_revisao r WHERE r.orcamento_id = oc.id AND r.status = 'FECHADA') AS em_elaboracao,
+            (SELECT count(*)::int FROM orcamento_revisao r WHERE r.orcamento_id = oc.id) AS revisoes
+       FROM orcamento oc WHERE oc.id = $1`, [orcamentoId],
+  );
+  if (!o) throw new ErroOrcamento("Orçamento não encontrado.");
+  if (!o.em_elaboracao) throw new ErroOrcamento("Este orçamento tem revisão fechada e não pode ser excluído.");
+  if (!u.administrador && o.criado_por_id !== u.id) throw new ErroOrcamento("Só quem criou o orçamento (ou o administrador) pode excluí-lo.");
+  await ex.transacao([
+    {
+      sql: `SELECT imp_exigir(NOT EXISTS (SELECT 1 FROM orcamento_revisao WHERE orcamento_id = $1 AND status = 'FECHADA'),
+                              'Este orçamento tem revisão fechada e não pode ser excluído.')`,
+      params: [orcamentoId],
+    },
+    { sql: `DELETE FROM orcamento_revisao WHERE orcamento_id = $1`, params: [orcamentoId] },
+    { sql: `DELETE FROM orcamento WHERE id = $1`, params: [orcamentoId] },
+    comandoAuditoria({ usuarioId: u.id, acao: "ORCAMENTO_EXCLUIDO", entidade: "orcamento", entidadeId: orcamentoId, antes: { titulo: o.titulo, codigo: o.codigo, obraId: o.obra_id, revisoes: o.revisoes } }),
+  ]);
 }
 
 // ---------------------------------------------------------------------------

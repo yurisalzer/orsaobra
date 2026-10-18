@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  duplicarOrcamento, excluirItem, fecharRevisao, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  duplicarOrcamento, excluirItem, excluirOrcamento, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { prisma } from "./ajuda";
@@ -273,5 +273,69 @@ describe("orçamento completo", () => {
     expect(e.orcamento.id).not.toBe(orcamentoId);
     expect(e.itens.map((i) => [i.numero, i.codigo, i.precoTotal])).toEqual(o.itens.map((i) => [i.numero, i.codigo, i.precoTotal]));
     expect(e.totais.total).toBe(o.totais.total);
+  });
+});
+
+describe("pesquisar e excluir orçamentos", () => {
+  let outro: string;
+  const linha = async (titulo: string) => (await listarOrcamentos(ex)).find((l) => l.titulo === titulo)!;
+
+  beforeAll(async () => {
+    outro = (await prisma.usuario.create({ data: { email: "outro.orc@t.com", nome: "Outro Orçamentista", senhaHash: "x" } })).id;
+  });
+
+  it("pesquisa por nome, número/código e processo da obra, sem diferenciar acentos", async () => {
+    const titulos = async (q: string) => [...new Set((await listarOrcamentos(ex, q)).map((l) => l.obra))];
+    expect(await titulos("escola municipal")).toEqual(["Escola Municipal X"]);
+    expect(await titulos("ob-001")).toEqual(["Escola Municipal X"]);
+    expect(await titulos("SEI-123")).toEqual(["Escola Municipal X"]);
+    expect(await titulos("niteroi")).toEqual([]); // cidade não entra na pesquisa
+    expect(await titulos("reforma geral cópia")).toEqual(["Escola Municipal X"]); // título do orçamento
+    expect((await listarOrcamentos(ex, "copia")).map((l) => l.titulo)).toEqual(["Reforma geral — cópia"]);
+    expect(await titulos("100%_")).toEqual([]);
+    expect((await listarOrcamentos(ex, "")).length).toBe((await listarOrcamentos(ex)).length);
+  });
+
+  it("só quem criou (ou o administrador) exclui, e só em elaboração", async () => {
+    const copia = await linha("Reforma geral — cópia");
+    const original = await linha("Reforma geral");
+    expect(copia).toMatchObject({ criadoPorId: u, emElaboracao: true });
+    expect(original.emElaboracao).toBe(false);
+    expect(podeExcluirOrcamento(copia, { id: outro, administrador: false })).toBe(false);
+    expect(podeExcluirOrcamento(copia, { id: outro, administrador: true })).toBe(true);
+    expect(podeExcluirOrcamento(original, { id: u, administrador: true })).toBe(false);
+    await expect(excluirOrcamento(ex, copia.orcamentoId!, { id: outro, administrador: false })).rejects.toThrow(/Só quem criou/);
+    await expect(excluirOrcamento(ex, original.orcamentoId!, { id: u, administrador: true })).rejects.toThrow(/revisão fechada/);
+
+    // orçamento do outro usuário, com etapas, itens e cronograma: o administrador exclui
+    const obra = (await prisma.orcamento.findUniqueOrThrow({ where: { id: original.orcamentoId! } })).obraId;
+    const r = await criarOrcamento(ex, { obraId: obra, titulo: "Para excluir", bases: [basesPadrao()[0]] }, outro);
+    const et = await criarEtapa(ex, r.revisaoId, 1, { titulo: "Etapa" }, outro);
+    await adicionarItem(ex, r.revisaoId, et.versao, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "2" }, outro);
+    await excluirOrcamento(ex, r.orcamentoId, { id: u, administrador: true });
+    expect(await prisma.orcamento.findUnique({ where: { id: r.orcamentoId } })).toBeNull();
+    expect(await prisma.orcamentoRevisao.count({ where: { orcamentoId: r.orcamentoId } })).toBe(0);
+    expect(await prisma.itemOrcamento.count({ where: { revisaoId: r.revisaoId } })).toBe(0);
+    const aud = await prisma.auditoria.findFirstOrThrow({ where: { acao: "ORCAMENTO_EXCLUIDO", entidadeId: r.orcamentoId } });
+    expect(aud).toMatchObject({ usuarioId: u, antes: { titulo: "Para excluir", revisoes: 1 } });
+
+    // o criador exclui a própria cópia (feita de uma revisão fechada); a obra continua
+    await excluirOrcamento(ex, copia.orcamentoId!, { id: u, administrador: false });
+    expect(await linha("Reforma geral — cópia")).toBeUndefined();
+    expect(await prisma.obra.findUnique({ where: { id: obra } })).not.toBeNull();
+  });
+
+  it("excluir o orçamento de origem não afeta uma cópia já fechada", async () => {
+    const obra = await criarObra(ex, { nome: "Obra das cópias" }, u);
+    const a = await criarOrcamento(ex, { obraId: obra, titulo: "Origem", bases: [basesPadrao()[0]] }, u);
+    const et = await criarEtapa(ex, a.revisaoId, 1, { titulo: "Etapa única" }, u);
+    await adicionarItem(ex, a.revisaoId, et.versao, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "1" }, u);
+    const b = await duplicarOrcamento(ex, a.revisaoId, { titulo: "Cópia fechada" }, u);
+    await fecharRevisao(ex, b.revisaoId, (await prisma.orcamentoRevisao.findUniqueOrThrow({ where: { id: b.revisaoId } })).versao, u);
+    const antes = await carregarRevisao(ex, b.revisaoId);
+    await excluirOrcamento(ex, a.orcamentoId, { id: u, administrador: false });
+    const depois = await carregarRevisao(ex, b.revisaoId);
+    expect(depois.revisao.status).toBe("FECHADA");
+    expect(depois.totais.total).toBe(antes.totais.total);
   });
 });
