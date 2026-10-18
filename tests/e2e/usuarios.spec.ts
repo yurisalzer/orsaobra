@@ -63,6 +63,7 @@ test("administrador cadastra usuário e libera ou bloqueia recursos pelas caixas
   await expect(page.getByLabel("Editar orçamentos — Leitor Teste")).toBeChecked();
   await page.getByLabel("Consulta de preços — Leitor Teste").uncheck();
   await expect(page.getByLabel("Consulta de preços — Leitor Teste")).not.toBeChecked();
+  await expect(page.getByText("Salvando…")).toHaveCount(0); // a caixa muda na hora; espera gravar
   await page.reload();
   await expect(page.getByLabel("Editar orçamentos — Leitor Teste")).toBeChecked();
   await expect(page.getByLabel("Consulta de preços — Leitor Teste")).not.toBeChecked();
@@ -78,6 +79,7 @@ test("administrador cadastra usuário e libera ou bloqueia recursos pelas caixas
   // desativar encerra o acesso
   await page.getByLabel("Ativo — Leitor Teste").uncheck();
   await expect(page.getByLabel("Ativo — Leitor Teste")).not.toBeChecked();
+  await expect(page.getByText("Salvando…")).toHaveCount(0);
   await leitor.goto("/orcamentos");
   await expect(leitor).toHaveURL(/\/login/);
   await ctx.close();
