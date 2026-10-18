@@ -7,7 +7,7 @@ import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
-  excluirEtapa, excluirItem, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
+  excluirEtapa, excluirItem, excluirObra, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
 
@@ -26,7 +26,7 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: strin
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
     // mensagens de regras do banco (imp_exigir / gatilhos) são seguras para exibir
-    const regra = /(alterado por outra pessoa|fechada|não pode ser|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
+    const regra = /(alterado por outra pessoa|fechada|não pode ser|tem orçamentos|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
     if (!regra) console.error(e);
     return { ok: false, erro: regra ?? "Não foi possível concluir a operação. Tente novamente." };
   }
@@ -158,5 +158,13 @@ export async function acaoExcluirOrcamento(orcamentoId: string) {
   return executar(async (usuarioId) => {
     const u = await exigirPermissao("ORCAMENTOS_EDITAR");
     await excluirOrcamento(await executor(), uuid.parse(orcamentoId), { id: usuarioId, administrador: temPermissao(u, "USUARIOS") });
+  }, "/orcamentos");
+}
+
+/** Exclui a obra sem orçamentos: quem a cadastrou ou o administrador. */
+export async function acaoExcluirObra(obraId: string) {
+  return executar(async (usuarioId) => {
+    const u = await exigirPermissao("ORCAMENTOS_EDITAR");
+    await excluirObra(await executor(), uuid.parse(obraId), { id: usuarioId, administrador: temPermissao(u, "USUARIOS") });
   }, "/orcamentos");
 }

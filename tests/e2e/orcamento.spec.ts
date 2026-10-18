@@ -343,3 +343,23 @@ test("pesquisa na lista de orçamentos e exclusão de orçamento em elaboração
   await expect(page.getByRole("link", { name: "Orçamento descartável" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Reforma da cobertura" })).toBeVisible();
 });
+
+test("obra sem orçamentos pode ser excluída por quem a cadastrou", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption("");
+  await page.getByLabel("Nome da obra").fill("Obra temporária");
+  await page.getByLabel("Título").fill("Orçamento temporário");
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Orçamento temporário" })).toBeVisible();
+  await page.goto("/orcamentos");
+  // com orçamento: não há exclusão da obra
+  await expect(page.getByLabel("Excluir obra Obra temporária")).toHaveCount(0);
+  await page.getByLabel("Excluir orçamento Orçamento temporário").click();
+  await expect(page.getByText("Nenhum orçamento nesta obra.")).toBeVisible();
+  await page.getByLabel("Excluir obra Obra temporária").click();
+  await expect(page.getByRole("heading", { name: "Obra temporária" })).toHaveCount(0);
+  await expect(page.getByLabel("Excluir obra Creche Municipal")).toHaveCount(0);
+});
+

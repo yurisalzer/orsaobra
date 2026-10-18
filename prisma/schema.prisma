@@ -57,6 +57,7 @@ model Usuario {
   auditorias   Auditoria[]
   importacoes  Importacao[]
   membroObras  ObraMembro[]
+  obrasCriadas Obra[]      @relation("ObraCriadaPor")
   revisoesFech OrcamentoRevisao[] @relation("RevisaoFechadaPor")
 
   @@map("usuario")
@@ -563,10 +564,12 @@ model Obra {
   endereco         String?
   municipio        String? // cidade
   uf               String   @default("RJ") @db.Char(2)
+  criadoPorId      String?  @map("criado_por_id") @db.Uuid
   criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz
 
   orcamentos Orcamento[]
   membros    ObraMembro[]
+  criadoPor  Usuario?    @relation("ObraCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
   cabecalho  CabecalhoRelatorio? @relation(fields: [cabecalhoId], references: [id], onDelete: SetNull)
 
   @@map("obra")

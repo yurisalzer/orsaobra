@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  duplicarOrcamento, excluirItem, excluirOrcamento, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { prisma } from "./ajuda";
@@ -337,5 +337,25 @@ describe("pesquisar e excluir orçamentos", () => {
     const depois = await carregarRevisao(ex, b.revisaoId);
     expect(depois.revisao.status).toBe("FECHADA");
     expect(depois.totais.total).toBe(antes.totais.total);
+  });
+
+  it("exclui obra sem orçamentos: só quem cadastrou ou o administrador", async () => {
+    const obra = await criarObra(ex, { nome: "Obra vazia", codigo: "OV-1" }, u);
+    const l = (await listarOrcamentos(ex)).find((x) => x.obraId === obra)!;
+    expect(l).toMatchObject({ obraCriadaPorId: u, orcamentoId: null });
+    expect(podeExcluirObra({ obraCriadaPorId: u, orcamentos: 0 }, { id: outro, administrador: false })).toBe(false);
+    expect(podeExcluirObra({ obraCriadaPorId: u, orcamentos: 0 }, { id: outro, administrador: true })).toBe(true);
+    expect(podeExcluirObra({ obraCriadaPorId: u, orcamentos: 1 }, { id: u, administrador: true })).toBe(false);
+    await expect(excluirObra(ex, obra, { id: outro, administrador: false })).rejects.toThrow(/Só quem cadastrou/);
+    // com orçamento: recusa
+    const comOrc = (await listarOrcamentos(ex)).find((x) => x.titulo === "Reforma geral")!.obraId;
+    await expect(excluirObra(ex, comOrc, { id: u, administrador: true })).rejects.toThrow(/tem orçamentos/);
+    await excluirObra(ex, obra, { id: u, administrador: false });
+    expect(await prisma.obra.findUnique({ where: { id: obra } })).toBeNull();
+    expect(await prisma.auditoria.findFirstOrThrow({ where: { acao: "OBRA_EXCLUIDA", entidadeId: obra } })).toMatchObject({ usuarioId: u, antes: { nome: "Obra vazia", codigo: "OV-1" } });
+    // o administrador exclui obra de outro usuário
+    const deOutro = await criarObra(ex, { nome: "Obra do outro" }, outro);
+    await excluirObra(ex, deOutro, { id: u, administrador: true });
+    expect(await prisma.obra.findUnique({ where: { id: deOutro } })).toBeNull();
   });
 });

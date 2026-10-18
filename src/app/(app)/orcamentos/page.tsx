@@ -2,8 +2,8 @@ import Link from "next/link";
 import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { formatarMoeda } from "@/lib/calculo/decimal";
-import { listarOrcamentos, podeExcluirOrcamento } from "@/lib/orcamento/servico";
-import { ExcluirOrcamento } from "./ExcluirOrcamento";
+import { listarOrcamentos, podeExcluirObra, podeExcluirOrcamento } from "@/lib/orcamento/servico";
+import { ExcluirObra, ExcluirOrcamento } from "./ExcluirOrcamento";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,10 @@ export default async function Orcamentos({ searchParams }: { searchParams: Promi
               {o.obraProcesso && <p className="text-xs text-slate-500">Processo {o.obraProcesso}</p>}
             </div>
             {editor && (
-              <Link href={`/orcamentos/obra/${o.obraId}`} aria-label={`Editar obra ${o.obra}`} className="shrink-0 text-sm text-marca-700 hover:underline">Editar obra</Link>
+              <div className="flex shrink-0 items-center gap-4">
+                {podeExcluirObra({ obraCriadaPorId: o.obraCriadaPorId, orcamentos: lista.filter((l) => l.obraId === o.obraId && l.orcamentoId).length }, quem) && <ExcluirObra obraId={o.obraId} nome={o.obra} />}
+                <Link href={`/orcamentos/obra/${o.obraId}`} aria-label={`Editar obra ${o.obra}`} className="text-sm text-marca-700 hover:underline">Editar obra</Link>
+              </div>
             )}
           </div>
           <table className="mt-2 w-full text-sm">

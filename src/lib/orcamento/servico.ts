@@ -245,8 +245,8 @@ export async function criarObra(ex: Executor, d: DadosObra, usuarioId: string) {
   const id = crypto.randomUUID();
   await ex.transacao([
     {
-      sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf, cabecalho_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)`,
-      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.uf, o.cabecalhoId],
+      sql: `INSERT INTO obra (id, nome, codigo, processo, descricao, endereco, municipio, orgao_solicitante, uf, cabecalho_id, criado_por_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid, $11)`,
+      params: [id, o.nome, o.codigo, o.processo, o.descricao, o.endereco, o.municipio, o.orgaoSolicitante, o.uf, o.cabecalhoId, usuarioId],
     },
     comandoAuditoria({ usuarioId, acao: "OBRA_CRIADA", entidade: "obra", entidadeId: id, depois: o }),
   ]);
@@ -315,7 +315,7 @@ export async function criarOrcamento(
 }
 
 export interface LinhaOrcamento {
-  obraId: string; obra: string; obraCodigo: string | null; obraProcesso: string | null; orgaoSolicitante: string | null;
+  obraId: string; obra: string; obraCodigo: string | null; obraProcesso: string | null; orgaoSolicitante: string | null; obraCriadaPorId: string | null;
   orcamentoId: string | null; codigo: string | null; titulo: string | null; revisoes: number; ultimaRevisaoId: string | null; ultimaNumero: number | null;
   ultimaStatus: string | null; total: string | null; atualizado: string | null;
   /** Quem criou o orçamento (revisão 1). */
@@ -337,7 +337,7 @@ export async function listarOrcamentos(ex: Executor, busca?: string | null): Pro
     return `lower(f_unaccent(concat_ws(' ', o.nome, o.codigo, o.processo, oc.codigo, oc.titulo))) LIKE $${params.length}`;
   });
   return ex.consulta<LinhaOrcamento>(
-    `SELECT o.id AS "obraId", o.nome AS obra, o.codigo AS "obraCodigo", o.processo AS "obraProcesso", o.orgao_solicitante AS "orgaoSolicitante",
+    `SELECT o.id AS "obraId", o.nome AS obra, o.codigo AS "obraCodigo", o.processo AS "obraProcesso", o.orgao_solicitante AS "orgaoSolicitante", o.criado_por_id AS "obraCriadaPorId",
             oc.id AS "orcamentoId", oc.codigo, oc.titulo,
             (SELECT count(*)::int FROM orcamento_revisao r WHERE r.orcamento_id = oc.id) AS revisoes,
             u.id AS "ultimaRevisaoId", u.numero AS "ultimaNumero", u.status::text AS "ultimaStatus",
@@ -353,6 +353,26 @@ export async function listarOrcamentos(ex: Executor, busca?: string | null): Pro
       ORDER BY o.nome, oc.titulo`,
     params,
   );
+}
+
+/** Obra sem orçamentos: quem a cadastrou (ou o administrador) pode excluí-la. */
+export function podeExcluirObra(o: { obraCriadaPorId: string | null; orcamentos: number }, u: { id: string; administrador: boolean }): boolean {
+  return o.orcamentos === 0 && (u.administrador || o.obraCriadaPorId === u.id);
+}
+
+/** Exclui a obra; recusa se houver orçamento (verificado também na transação). */
+export async function excluirObra(ex: Executor, obraId: string, u: { id: string; administrador: boolean }) {
+  const [o] = await ex.consulta<{ nome: string; codigo: string | null; processo: string | null; criado_por_id: string | null; orcamentos: number }>(
+    `SELECT nome, codigo, processo, criado_por_id, (SELECT count(*)::int FROM orcamento oc WHERE oc.obra_id = o.id) AS orcamentos FROM obra o WHERE id = $1`, [obraId],
+  );
+  if (!o) throw new ErroOrcamento("Obra não encontrada.");
+  if (o.orcamentos > 0) throw new ErroOrcamento("A obra tem orçamentos e não pode ser excluída. Exclua os orçamentos antes.");
+  if (!u.administrador && o.criado_por_id !== u.id) throw new ErroOrcamento("Só quem cadastrou a obra (ou o administrador) pode excluí-la.");
+  await ex.transacao([
+    { sql: `SELECT imp_exigir(NOT EXISTS (SELECT 1 FROM orcamento WHERE obra_id = $1), 'A obra tem orçamentos e não pode ser excluída. Exclua os orçamentos antes.')`, params: [obraId] },
+    { sql: `DELETE FROM obra WHERE id = $1`, params: [obraId] },
+    comandoAuditoria({ usuarioId: u.id, acao: "OBRA_EXCLUIDA", entidade: "obra", entidadeId: obraId, antes: { nome: o.nome, codigo: o.codigo, processo: o.processo } }),
+  ]);
 }
 
 /** Regra de exclusão: só em elaboração (nenhuma revisão fechada), pelo criador ou pelo administrador. */
