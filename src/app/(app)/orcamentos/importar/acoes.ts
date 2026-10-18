@@ -36,7 +36,10 @@ export async function acaoCriarEtapas(revisaoId: string, versao: number, etapas:
     z.object({ arquivo: z.string().max(200), linhas: z.number().int(), itens: z.number().int() }).parse(origem), u));
 }
 
-export async function acaoImportarItens(revisaoId: string, versao: number, itens: { ref: number; etapaId: string; itemReferenciaId: string; quantidade: string }[]) {
+export async function acaoImportarItens(revisaoId: string, versao: number, itens: { ref: number; etapaId: string; itemReferenciaId: string | null; quantidade: string; informado?: { codigo: string; descricao: string; unidade: string; custo: string; arquivo: string } | null }[]) {
   return executar(async (u) => importarItens(await executor(), uuid.parse(revisaoId), z.number().int().parse(versao),
-    z.array(z.object({ ref: z.number().int(), etapaId: uuid, itemReferenciaId: uuid, quantidade: z.string().max(30) })).max(200).parse(itens), u));
+    z.array(z.object({
+      ref: z.number().int(), etapaId: uuid, itemReferenciaId: uuid.nullable(), quantidade: z.string().max(30),
+      informado: z.object({ codigo: z.string().max(60), descricao: z.string().max(2000), unidade: z.string().max(20), custo: z.string().max(40), arquivo: z.string().max(200) }).nullable().optional(),
+    })).max(200).parse(itens), u));
 }

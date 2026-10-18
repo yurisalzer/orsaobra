@@ -64,22 +64,34 @@ test("importa planilha .xlsx: colunas automáticas, dados de cadastro, conferên
   // conferência: 2 encontrados, 1 não encontrado
   await expect(page.getByRole("status")).toContainText("2 de 3 itens serão importados");
   await expect(page.getByText("Não encontrado nas bases escolhidas")).toBeVisible();
-  // corrigir o código inexistente para um que existe
+  // corrigir o código inexistente para um que existe (e voltar)
   await page.getByRole("button", { name: "Corrigir código da linha 14" }).click();
   await page.getByLabel("Código da linha 14").fill("36178");
   await page.getByLabel("Código da linha 14").press("Enter");
   await expect(page.getByRole("status")).toContainText("3 de 3 itens serão importados");
-  await page.getByLabel("Importar linha 14").uncheck();
+  await page.getByRole("button", { name: "Corrigir código da linha 14" }).click();
+  await page.getByLabel("Código da linha 14").fill("999999");
+  await page.getByLabel("Código da linha 14").press("Enter");
   await expect(page.getByRole("status")).toContainText("2 de 3 itens serão importados");
-  await page.getByRole("button", { name: "Importar 2 itens" }).click();
-
-  await expect(page.getByText("Orçamento importado: 2 itens gravados.")).toBeVisible();
+  // não encontrado: incluir com preço informado (custo do arquivo já preenchido)
+  await page.getByLabel("Incluir com preço informado — linha 14").check();
+  await expect(page.getByLabel("Custo informado — linha 14")).toHaveValue("10");
+  await expect(page.getByRole("status")).toContainText("3 de 3 itens serão importados (1 com preço informado)");
+  await page.getByRole("button", { name: "Importar 3 itens" }).click();
+  await expect(page.getByText("Orçamento importado: 3 itens gravados.")).toBeVisible();
   await page.getByRole("link", { name: "Abrir o orçamento" }).click();
   await expect(page.getByRole("heading", { name: "Reforma da escola (importado)" })).toBeVisible();
   await expect(page.getByLabel("Quantidade 1.1")).toHaveValue("4,00");
   await expect(page.getByLabel("Quantidade 2.1")).toHaveValue("1.234,50");
-  // 4 × 211,97 + 1.234,5 × 194,45 = 847,88 + 240.048,53 (sem BDI)
-  await expect(page.getByText("R$ 240.896,41").first()).toBeVisible();
+  // 4 × 211,97 + 1.234,5 × 194,45 + 2 × 10,00 = 847,88 + 240.048,53 + 20,00 (sem BDI)
+  await expect(page.getByText("R$ 240.916,41").first()).toBeVisible();
+  // item informado: selo, sem vínculo com a base, custo editável
+  const informado = page.getByRole("row").filter({ has: page.getByLabel("Custo unitário 2.2") });
+  await expect(informado).toContainText("INFORMADO");
+  await expect(informado).toContainText("Preço informado pelo orçamentista");
+  await page.getByLabel("Custo unitário 2.2").fill("12,50");
+  await page.getByLabel("Custo unitário 2.2").press("Enter");
+  await expect(page.getByText("R$ 240.921,41").first()).toBeVisible();
   await page.screenshot({ path: "test-results/importar-xlsx.png", fullPage: true });
 });
 
@@ -94,16 +106,19 @@ test("importa de volta o PDF do orçamento sintético gerado pelo sistema", asyn
 
   await page.goto("/orcamentos/importar");
   await page.getByLabel(/Arquivo do orçamento/).setInputFiles({ name: "sintetico.pdf", mimeType: "application/pdf", buffer: arquivo });
-  await expect(page.getByRole("status")).toContainText("2 etapas e 2 itens");
+  await expect(page.getByRole("status")).toContainText("2 etapas e 3 itens");
   await page.getByRole("button", { name: "Avançar" }).click();
   // a obra já existe (mesmo código): o orçamento vai para ela
   await expect(page.getByLabel("Obra", { exact: true })).not.toHaveValue("");
   await expect(page.getByLabel("Título")).toHaveValue("Reforma da escola (importado)");
   await page.getByLabel("Título").fill("Cópia via PDF");
   await page.getByRole("button", { name: "Conferir itens nas bases" }).click();
-  await expect(page.getByRole("status")).toContainText("2 de 2 itens serão importados");
-  await page.getByRole("button", { name: "Importar 2 itens" }).click();
+  await expect(page.getByRole("status")).toContainText("2 de 3 itens serão importados");
+  await page.getByRole("button", { name: "Incluir todos os não encontrados com preço informado" }).click();
+  await expect(page.getByLabel("Custo informado — linha 14")).toHaveValue("12,50");
+  await expect(page.getByRole("status")).toContainText("3 de 3 itens serão importados (1 com preço informado)");
+  await page.getByRole("button", { name: "Importar 3 itens" }).click();
   await page.getByRole("link", { name: "Abrir o orçamento" }).click();
   await expect(page.getByRole("heading", { name: "Cópia via PDF" })).toBeVisible();
-  await expect(page.getByText("R$ 240.896,41").first()).toBeVisible();
+  await expect(page.getByText("R$ 240.921,41").first()).toBeVisible();
 });

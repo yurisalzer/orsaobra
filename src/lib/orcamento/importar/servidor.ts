@@ -12,7 +12,7 @@ import { comandoAuditoria } from "../../auditoria";
 import { arredondar, dec } from "../../calculo/decimal";
 import { precificar, type ContextoPreco } from "../../referencia/precificacao";
 import {
-  comandoInserirItem, contextoDaRevisao, dadosRevisao, ErroOrcamento, lerQuantidade, travarEdicao, valoresDoItem,
+  comandoInserirItem, contextoDaRevisao, dadosRevisao, ErroOrcamento, lerCustoInformado, lerQuantidade, REFERENCIA_INFORMADO, travarEdicao, valoresDoItem,
 } from "../servico";
 
 export interface Candidato {
@@ -131,8 +131,10 @@ export interface ItemLote {
   /** Identifica a linha do arquivo, para o relatório de falhas. */
   ref: number;
   etapaId: string;
-  itemReferenciaId: string;
+  /** null = item não encontrado nas bases, incluído com o preço informado pelo usuário. */
+  itemReferenciaId: string | null;
   quantidade: string;
+  informado?: { codigo: string; descricao: string; unidade: string; custo: string; arquivo: string } | null;
 }
 
 /**
@@ -144,7 +146,7 @@ export async function importarItens(ex: Executor, revisaoId: string, versao: num
   const r = await dadosRevisao(ex, revisaoId);
   const etapas = new Set((await ex.consulta<{ id: string }>(`SELECT id FROM etapa WHERE revisao_id = $1`, [revisaoId])).map((e) => e.id));
   const ctx = await contextoDaRevisao(ex, revisaoId);
-  const ids = [...new Set(itens.map((i) => i.itemReferenciaId))];
+  const ids = [...new Set(itens.flatMap((i) => (i.itemReferenciaId ? [i.itemReferenciaId] : [])))];
   const precos = await precificar(ex, ids, ctx);
   const cabs = new Map((await ex.consulta<{ id: string; fonte: string; codigo: string; descricao: string; unidade: string | null }>(
     `SELECT ir.id, f.codigo AS fonte, ir.codigo, v.descricao, v.unidade
@@ -162,11 +164,29 @@ export async function importarItens(ex: Executor, revisaoId: string, versao: num
   const cmds = [];
   let gravados = 0;
   for (const it of itens) {
-    const cab = cabs.get(it.itemReferenciaId);
-    const preco = precos.get(it.itemReferenciaId);
     let q;
     try { q = dec(lerQuantidade(it.quantidade)); } catch (e) { falhas.push({ ref: it.ref, motivo: (e as Error).message }); continue; }
     if (!etapas.has(it.etapaId)) { falhas.push({ ref: it.ref, motivo: "etapa não encontrada" }); continue; }
+    if (!it.itemReferenciaId) {
+      // preço informado pelo usuário (item que não existe nas bases)
+      const inf = it.informado;
+      if (!inf) { falhas.push({ ref: it.ref, motivo: "sem item de referência nem preço informado" }); continue; }
+      let custo;
+      try { custo = lerCustoInformado(inf.custo); } catch (e) { falhas.push({ ref: it.ref, motivo: (e as Error).message }); continue; }
+      const descricao = inf.descricao.trim().slice(0, 2000);
+      if (!descricao) { falhas.push({ ref: it.ref, motivo: "item sem descrição" }); continue; }
+      const referencia = `${REFERENCIA_INFORMADO} (importado de ${inf.arquivo.slice(0, 120)})`;
+      const v = valoresDoItem({ quantidade: q, custoReferencia: custo, bdi: r.bdi_percentual ?? "0", modo: r.arredondamento, unidade: inf.unidade, referencia });
+      cmds.push(comandoInserirItem({
+        id: crypto.randomUUID(), revisaoId, etapaId: it.etapaId, itemReferenciaId: null, base: null,
+        cab: { codigo: inf.codigo.trim().slice(0, 60), descricao, unidade: inf.unidade.trim().slice(0, 20) }, quantidade: q, valores: v,
+        preco: { origem: "INFORMADO", referencia }, memoriaQuantitativo: null,
+      }));
+      gravados++;
+      continue;
+    }
+    const cab = cabs.get(it.itemReferenciaId);
+    const preco = precos.get(it.itemReferenciaId);
     if (!cab) { falhas.push({ ref: it.ref, motivo: "item de referência não encontrado" }); continue; }
     if (!preco?.valor) { falhas.push({ ref: it.ref, motivo: `sem preço na base/regime do orçamento (${preco?.pendencia ?? "sem preço"})` }); continue; }
     const base = cab.fonte === "PROPRIA" ? null : ctx.bases.find((b) => b.fonte === cab.fonte) ?? null;

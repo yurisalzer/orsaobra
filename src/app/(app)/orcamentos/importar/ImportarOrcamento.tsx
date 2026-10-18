@@ -21,7 +21,8 @@ interface Props {
 
 interface Aba { nome: string; grade: Grade }
 interface Leitura { arquivo: string; pdf: boolean; abas: Aba[]; textoExtra: string }
-interface Decisao { escolha: string | null; importar: boolean; codigo: string }
+/** escolha = item da base; sem escolha, `informar` inclui o item com o custo digitado pelo usuário. */
+interface Decisao { escolha: string | null; importar: boolean; codigo: string; informar: boolean; custo: string }
 
 const PASSOS = ["Arquivo", "Colunas", "Dados do orçamento", "Conferência", "Importação"];
 const campo = "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
@@ -39,6 +40,16 @@ function quantidadeAceita(q: string): { valor: string; arredondada: boolean } {
   if (Number(d[4]) >= 5) n += BigInt(1);
   const s = n.toString().padStart(5, "0");
   return { valor: `${s.slice(0, -4)}.${s.slice(-4)}`, arredondada: true };
+}
+
+/** Custo do arquivo (sem BDI), na escrita brasileira, para o usuário conferir. */
+const custoDoArquivo = (it: ItemEstruturado) => (it.custoUnitario ? it.custoUnitario.replace(".", ",") : "");
+/** Custo digitado: número não negativo com até 4 casas (aceita "1.234,56" ou "1234.56"). */
+function custoValido(t: string): boolean {
+  const s = t.trim().replace(/^R\$\s*/, "");
+  if (!s) return false;
+  const norm = /,/.test(s) ? s.replace(/\./g, "").replace(",", ".") : s;
+  return /^\d+(\.\d{1,4})?$/.test(norm);
 }
 
 /** Escolha automática: só candidatos com preço; desempata pela fonte citada no arquivo ou pelo formato do código. */
@@ -212,7 +223,7 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
       for (const it of estrutura.itens) {
         const cs = todos.filter((c) => c.consulta === (it.codigo ?? "").trim().toUpperCase().replace(/\s+/g, " "));
         const escolha = escolherCandidato(it, cs);
-        dec[it.indice] = { escolha, importar: !!escolha, codigo: it.codigo ?? "" };
+        dec[it.indice] = { escolha, importar: !!escolha, codigo: it.codigo ?? "", informar: false, custo: custoDoArquivo(it) };
       }
       setDecisoes(dec);
       setPasso(3);
@@ -228,14 +239,17 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
     if (!r.ok) return setErro(r.erro);
     setCandidatos((cs) => [...cs.filter((c) => c.consulta !== novo.trim().toUpperCase()), ...r.dados]);
     const escolha = escolherCandidato({ ...it, codigo: novo }, r.dados);
-    setDecisoes((d) => ({ ...d, [it.indice]: { codigo: novo, escolha, importar: !!escolha } }));
+    setDecisoes((d) => ({ ...d, [it.indice]: { ...d[it.indice], codigo: novo, escolha, importar: !!escolha, informar: escolha ? false : d[it.indice]?.informar ?? false } }));
   }
 
   const candidatosDe = (it: ItemEstruturado) => {
     const cod = (decisoes[it.indice]?.codigo ?? it.codigo ?? "").trim().toUpperCase().replace(/\s+/g, " ");
     return candidatos.filter((c) => c.consulta === cod);
   };
-  const aImportar = estrutura.itens.filter((i) => decisoes[i.indice]?.importar && decisoes[i.indice]?.escolha);
+  const informadoOk = (d?: Decisao) => !!d && !d.escolha && d.informar && custoValido(d.custo);
+  const aImportar = estrutura.itens.filter((i) => (decisoes[i.indice]?.importar && decisoes[i.indice]?.escolha) || informadoOk(decisoes[i.indice]));
+  const informados = aImportar.filter((i) => !decisoes[i.indice].escolha).length;
+  const naoEncontrados = estrutura.itens.filter((i) => !decisoes[i.indice]?.escolha);
 
   async function importar() {
     setErro(null);
@@ -260,9 +274,13 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
       let gravados = 0;
       const falhas: { ref: number; motivo: string }[] = [];
       for (let i = 0; i < aImportar.length; i += 40) {
-        const lote = aImportar.slice(i, i + 40).map((it) => ({
-          ref: it.indice, etapaId: et.dados.ids[it.etapaChave], itemReferenciaId: decisoes[it.indice].escolha!, quantidade: quantidadeAceita(it.quantidade!).valor,
-        }));
+        const lote = aImportar.slice(i, i + 40).map((it) => {
+          const d = decisoes[it.indice];
+          return {
+            ref: it.indice, etapaId: et.dados.ids[it.etapaChave], itemReferenciaId: d.escolha, quantidade: quantidadeAceita(it.quantidade!).valor,
+            informado: d.escolha ? null : { codigo: d.codigo || it.codigo || "", descricao: it.descricao || d.codigo || "Item importado", unidade: it.unidade ?? "", custo: d.custo, arquivo: leitura!.arquivo },
+          };
+        });
         setProgresso({ feito: i, total: aImportar.length, texto: `Gravando itens ${i + 1} a ${Math.min(i + 40, aImportar.length)} de ${aImportar.length}…` });
         const r = await acaoImportarItens(revisaoId, versao, lote);
         if (!r.ok) throw new Error(`${r.erro} O orçamento foi criado com os itens gravados até aqui; abra-o para conferir ou exclua-o na lista de orçamentos.`);
@@ -442,8 +460,8 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="font-medium">Conferência dos itens</h2>
           <p className="text-sm" role="status">
-            {aImportar.length} de {estrutura.itens.length} itens serão importados.{" "}
-            {estrutura.itens.length - aImportar.length > 0 && <span className="text-amber-800">Os demais não foram encontrados nas bases escolhidas (ou estão sem preço no regime) — corrija o código ou deixe de fora.</span>}
+            {aImportar.length} de {estrutura.itens.length} itens serão importados{informados > 0 ? ` (${informados} com preço informado)` : ""}.{" "}
+            {estrutura.itens.length - aImportar.length > 0 && <span className="text-amber-800">Os demais não foram encontrados nas bases escolhidas (ou estão sem preço no regime) — corrija o código, inclua com preço informado ou deixe de fora.</span>}
           </p>
           <p className="text-xs text-slate-500">O custo de cada item vem da base de referência; o valor do arquivo aparece só para comparação (diferenças em destaque).</p>
           <div className="max-h-[32rem] overflow-auto rounded border border-slate-200">
@@ -453,7 +471,7 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
               </thead>
               <tbody>
                 {estrutura.itens.map((it) => {
-                  const d = decisoes[it.indice] ?? { escolha: null, importar: false, codigo: it.codigo ?? "" };
+                  const d = decisoes[it.indice] ?? { escolha: null, importar: false, codigo: it.codigo ?? "", informar: false, custo: "" };
                   const cs = candidatosDe(it);
                   const c = cs.find((x) => x.itemReferenciaId === d.escolha);
                   const q = quantidadeAceita(it.quantidade ?? "0");
@@ -479,6 +497,23 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
                         {c ? <span className="block">{c.fonte} {c.codigo} — {c.descricao} ({c.unidade ?? "s/ unid."})</span>
                           : cs.length === 1 ? <span className="block text-amber-800">{cs[0].fonte} {cs[0].codigo}: sem preço no regime/base escolhidos ({cs[0].pendencia})</span>
                           : cs.length === 0 ? <span className="block text-amber-800">Não encontrado nas bases escolhidas</span> : null}
+                        {!d.escolha && (
+                          <div className="mt-1 rounded border border-slate-200 bg-white p-1.5">
+                            <label className="flex items-center gap-1">
+                              <input type="checkbox" checked={d.informar} aria-label={`Incluir com preço informado — linha ${it.indice + 1}`}
+                                onChange={(e) => setDecisoes({ ...decisoes, [it.indice]: { ...d, informar: e.target.checked } })} />
+                              Incluir no orçamento com preço informado
+                            </label>
+                            {d.informar && (
+                              <label className="mt-1 flex items-center gap-1">Custo unitário sem BDI (R$)
+                                <input value={d.custo} inputMode="decimal" aria-label={`Custo informado — linha ${it.indice + 1}`}
+                                  onChange={(e) => setDecisoes({ ...decisoes, [it.indice]: { ...d, custo: e.target.value } })}
+                                  className={`w-24 rounded border px-1 text-right ${custoValido(d.custo) ? "border-slate-300" : "border-amber-500 bg-amber-50"}`} />
+                              </label>
+                            )}
+                            {d.informar && !custoValido(d.custo) && <span className="block text-amber-800">Informe o custo unitário (até 4 casas).</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="text-right">{c ? moeda(c.custo) : "—"}</td>
                       <td className={`px-2 text-right ${difere ? "font-medium text-amber-800" : ""}`}>{moeda(it.custoUnitario)}</td>
@@ -488,6 +523,16 @@ export function ImportarOrcamento({ obras, bases, perfis, cabecalhos }: Props) {
               </tbody>
             </table>
           </div>
+          {naoEncontrados.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <button className={`${botao} border border-slate-300`} onClick={() => setDecisoes((ds) => {
+                const n = { ...ds };
+                for (const it of naoEncontrados) n[it.indice] = { ...n[it.indice], informar: true };
+                return n;
+              })}>Incluir todos os não encontrados com preço informado</button>
+              <span className="text-xs text-slate-500">O custo vem preenchido com o valor do arquivo (sem BDI), quando houver; confira e ajuste. No orçamento, esses itens ficam marcados como “INFORMADO” e o custo pode ser editado.</span>
+            </div>
+          )}
           <div className="flex gap-2">
             <button onClick={() => setPasso(2)} className={`${botao} border border-slate-300`}>Voltar</button>
             <button onClick={() => void importar()} disabled={aImportar.length === 0} className={`${botao} bg-marca-600 text-white`}>Importar {aImportar.length} itens</button>

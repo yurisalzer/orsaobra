@@ -134,6 +134,8 @@ function etapasEmOrdem(e: EstadoRevisao) {
 }
 const itensDaEtapa = (e: EstadoRevisao, etapaId: string) => e.itens.filter((i) => i.etapaId === etapaId).sort((a, b) => a.ordem - b.ordem);
 const estiloEtapa = (nivel: number) => (nivel === 0 ? "grupo1" : nivel === 1 ? "grupo2" : "grupo3") as Linha["estilo"];
+/** Rótulo da fonte nos relatórios. */
+const rotuloFonte = (f: string) => (f === "PROPRIA" ? "Próprio" : f === "INFORMADO" ? "Informado" : f);
 const referenciaDoItem = (it: LinhaItem) => it.referenciaPreco ?? (it.fonte === "PROPRIA" ? "Próprio" : "—");
 
 function linhasTotais(e: EstadoRevisao, nCols: number): Linha[] {
@@ -180,7 +182,7 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
       if (it.fonte !== "PROPRIA" && p && (p.baseRevisaoId !== it.baseRevisaoId || p.regime !== it.regime)) notas.push(`Item ${it.numero} (${it.codigo}): base/regime diferente do padrão — ${referenciaDoItem(it)}.`);
       if (it.pendencia) notas.push(`Item ${it.numero} (${it.codigo}): ${it.pendencia}`);
       const cu = arredondar(it.custoUnitario, 2, modo).toFixed(2);
-      const base = [it.numero, it.fonte === "PROPRIA" ? "Próprio" : it.fonte, it.codigo, it.descricao, it.unidade, it.quantidade, cu];
+      const base = [it.numero, rotuloFonte(it.fonte), it.codigo, it.descricao, it.unidade, it.quantidade, cu];
       linhas.push({ celulas: analitico ? [...base, "", it.bdiPercentual, it.precoUnitario, it.precoTotal] : [...base, it.bdiPercentual, it.precoUnitario, it.precoTotal], estilo: analitico ? "destaque" : undefined });
       if (!analitico || it.tipo !== "COMPOSICAO") continue;
       const an = (analiticos?.get(it.id) ?? it.analitico) as AnaliticoItem | null;
@@ -200,7 +202,7 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
       for (const l of an.linhas) {
         if (l.custo) soma = soma.plus(l.custo);
         linhas.push({
-          celulas: ["", l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, `${l.descricao}${l.percentual && !dec(l.percentual).isZero() ? ` (+${formatarNumero(l.percentual, 2)}%)` : ""}`, l.unidade ?? "",
+          celulas: ["", rotuloFonte(l.fonte), l.codigo, `${l.descricao}${l.percentual && !dec(l.percentual).isZero() ? ` (+${formatarNumero(l.percentual, 2)}%)` : ""}`, l.unidade ?? "",
             { valor: l.coeficiente, tipo: "coeficiente" }, l.precoUnitario ? { valor: l.precoUnitario, tipo: "preco" } : l.situacao === "% sobre a mão de obra" ? "% s/ MO" : "sem preço", l.custo ? moeda2(l.custo) : "", "", "", ""],
           estilo: "detalhe",
         });
@@ -280,7 +282,7 @@ async function cpu(c: Contexto): Promise<Documento> {
     const an = (analiticos?.get(it.id) ?? it.analitico) as AnaliticoItem | null;
     const usados = ordem.filter((x) => `${x.itemReferenciaId}|${x.baseRevisaoId}|${x.regime}|${x.custoUnitario}|${x.bdiPercentual}` === k).map((x) => x.numero);
     const campos = [
-      { rotulo: "Serviço", valor: `${it.fonte === "PROPRIA" ? "Próprio" : it.fonte} ${it.codigo} — ${it.descricao}` },
+      { rotulo: "Serviço", valor: `${rotuloFonte(it.fonte)} ${it.codigo} — ${it.descricao}` },
       { rotulo: "Unidade", valor: it.unidade || "—" },
       { rotulo: "Referência", valor: referenciaDoItem(it) },
       { rotulo: "Composição", valor: an?.tipo === "OFICIAL" ? "Analítica oficial publicada" : an?.tipo === "PROPRIA" ? "Composição própria" : an?.tipo === "SICRO" ? "Composição de custo unitário publicada pelo DNIT (SICRO, sem desoneração)" : "Analítica não publicada pela fonte" },
@@ -297,7 +299,7 @@ async function cpu(c: Contexto): Promise<Documento> {
     let soma = dec(0);
     for (const l of an?.linhas ?? []) {
       if (l.custo) soma = soma.plus(l.custo);
-      linhas.push({ celulas: [l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, l.descricao, NATUREZA[l.tipo] ?? l.tipo, l.unidade ?? "", l.coeficiente, l.percentual && !dec(l.percentual).isZero() ? l.percentual : null, l.precoUnitario ?? (l.situacao === "% sobre a mão de obra" ? `${formatarNumero(l.coeficiente, 2)}% s/ MO` : "sem preço"), l.custo ? moeda2(l.custo) : ""] });
+      linhas.push({ celulas: [rotuloFonte(l.fonte), l.codigo, l.descricao, NATUREZA[l.tipo] ?? l.tipo, l.unidade ?? "", l.coeficiente, l.percentual && !dec(l.percentual).isZero() ? l.percentual : null, l.precoUnitario ?? (l.situacao === "% sobre a mão de obra" ? `${formatarNumero(l.coeficiente, 2)}% s/ MO` : "sem preço"), l.custo ? moeda2(l.custo) : ""] });
     }
     const custo = dec(it.custoUnitario);
     const preco = dec(it.precoUnitario);
@@ -364,7 +366,7 @@ function abcServicos(c: Contexto): Documento {
   }
   const curva = curvaAbc([...grupos.values()].map((g) => ({ chave: g, valor: g.total })));
   const linhas: Linha[] = curva.map((l, i) => ({
-    celulas: [String(i + 1), l.chave.it.fonte === "PROPRIA" ? "Próprio" : l.chave.it.fonte, l.chave.it.codigo,
+    celulas: [String(i + 1), rotuloFonte(l.chave.it.fonte), l.chave.it.codigo,
       l.chave.itens.length > 1 ? `${l.chave.it.descricao} (itens ${l.chave.itens.join(", ")})` : l.chave.it.descricao,
       l.chave.it.unidade, l.chave.quantidade.toString(), l.chave.precos.size === 1 ? [...l.chave.precos][0] : "vários",
       moeda2(l.valor), l.percentual.toDecimalPlaces(6).toString(), l.acumulado.toDecimalPlaces(6).toString(), l.classe],
@@ -385,7 +387,7 @@ async function abcInsumos(c: Contexto): Promise<Documento> {
   const semPreco = insumos.filter((i) => !i.custo);
   const curva = curvaAbc(comCusto.map((i) => ({ chave: i, valor: i.custo! })));
   const linhas: Linha[] = curva.map((l, i) => ({
-    celulas: [String(i + 1), l.chave.fonte === "PROPRIA" ? "Próprio" : l.chave.fonte, l.chave.codigo,
+    celulas: [String(i + 1), rotuloFonte(l.chave.fonte), l.chave.codigo,
       `${l.chave.descricao}${l.chave.semAnalitica ? (l.chave.fonte === "SICRO" ? " [composição SICRO — não desmembrada]" : " [serviço sem analítica publicada]") : ""}`, l.chave.unidade ?? "",
       arredondar(l.chave.quantidade, 4).toString(), l.chave.precoUnitario!.toString(), moeda2(l.valor), l.percentual.toDecimalPlaces(6).toString(), l.acumulado.toDecimalPlaces(6).toString(), l.classe],
     estilo: l.classe === "A" ? "destaque" : undefined,
@@ -524,7 +526,7 @@ async function comparativo(c: Contexto, outra: string | null | undefined): Promi
   const rot = (x: typeof cmp.a) => `Rev. ${x.numero}`;
   const situacao = { INCLUIDO: "Incluído", EXCLUIDO: "Excluído", ALTERADO: "Alterado", IGUAL: "Igual" } as const;
   const linhas: Linha[] = cmp.linhas.map((l) => ({
-    celulas: [situacao[l.situacao], l.etapa, l.fonte === "PROPRIA" ? "Próprio" : l.fonte, l.codigo, l.descricao, l.unidade,
+    celulas: [situacao[l.situacao], l.etapa, rotuloFonte(l.fonte), l.codigo, l.descricao, l.unidade,
       l.a?.quantidade ?? null, l.a?.precoUnitario ?? null, l.a?.precoTotal ?? null, l.b?.quantidade ?? null, l.b?.precoUnitario ?? null, l.b?.precoTotal ?? null, l.diferenca],
     estilo: l.situacao === "IGUAL" ? undefined : "destaque",
   }));
@@ -561,7 +563,7 @@ async function comparativo(c: Contexto, outra: string | null | undefined): Promi
 
 async function historico(c: Contexto): Promise<Documento> {
   const e = c.estado;
-  const oficiais = e.itens.filter((i) => i.fonte !== "PROPRIA");
+  const oficiais = e.itens.filter((i) => i.fonte !== "PROPRIA" && i.itemReferenciaId);
   const ids = [...new Set(oficiais.map((i) => i.itemReferenciaId))];
   const pontos = ids.length ? await c.ex.consulta<{ item_id: string; competencia: string; numero: number; status: string; regime: string | null; valor: string }>(
     `SELECT p.item_id, to_char(b.competencia, 'YYYY-MM') AS competencia, r.numero, r.status::text AS status, g.codigo AS regime, p.valor::text AS valor
@@ -618,7 +620,7 @@ function memoria(c: Contexto): Documento {
           if (r) mq += ` — resultado: ${formatarNumero(r.valor.toDecimalPlaces(4), Math.min(Math.max(r.valor.toDecimalPlaces(4).decimalPlaces(), 2), 4))}${r.valor.toDecimalPlaces(4).eq(it.quantidade) ? "" : " (difere da quantidade lançada)"}`;
         } catch { /* texto sem conta */ }
       }
-      linhas.push({ celulas: [it.numero, `${it.fonte === "PROPRIA" ? "Próprio" : it.fonte} ${it.codigo}`, `${it.descricao} (${it.unidade || "s/ unid."})`, it.quantidade, mq, it.memoriaCalculo ?? ""] });
+      linhas.push({ celulas: [it.numero, `${rotuloFonte(it.fonte)} ${it.codigo}`, `${it.descricao} (${it.unidade || "s/ unid."})`, it.quantidade, mq, it.memoriaCalculo ?? ""] });
     }
   }
   return documento(c, "memoria", "paisagem", [{

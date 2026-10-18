@@ -241,7 +241,10 @@ export function lerLinhas(g: Grade, cab: Cabecalho, mapa: Mapa, opcoes: { contin
     const desc = normalizar(base.descricao);
     if (RE_TOTAL.test(desc) || (!base.descricao && RE_TOTAL.test(textoLinha))) { linhas.push({ ...base, nota: "linha de total" }); continue; }
     const qtd = base.quantidade !== null && Number(base.quantidade) > 0;
-    if (qtd && (base.codigo || base.descricao)) { linhas.push({ ...base, tipo: "ITEM" }); continue; }
+    // item: tem quantidade e unidade (ou um código com cara de código). Linha de etapa costuma trazer
+    // o total da etapa em alguma coluna numérica, mas não tem unidade.
+    const codigoValido = !!base.codigo && pareceCodigo(base.codigo);
+    if (qtd && (base.codigo || base.descricao) && (mapa.unidade === undefined || base.unidade || codigoValido)) { linhas.push({ ...base, tipo: "ITEM" }); continue; }
     const soTexto = base.descricao && !base.item && !base.codigo && !base.unidade && base.quantidade === null;
     const anterior = linhas[linhas.length - 1];
     if (opcoes.continuacao && soTexto && anterior && anterior.tipo !== "IGNORADA") {
@@ -249,12 +252,12 @@ export function lerLinhas(g: Grade, cab: Cabecalho, mapa: Mapa, opcoes: { contin
       continue;
     }
     // título de etapa escrito fora da coluna de descrição (célula mesclada)
-    if (!base.descricao && base.quantidade === null && !base.unidade) {
+    if (!base.descricao && !base.unidade) {
       const livre = l.map((c, k) => (k === mapa.item ? "" : textoDe(c))).find((t) => t && lerNumero(t) === null && !pareceCodigo(t) && t.length >= 3);
       if (livre) { base.descricao = livre; if (base.codigo === livre) base.codigo = null; if (base.fonte === livre) base.fonte = null; }
     }
-    if (base.descricao && !base.unidade && base.quantidade === null && !(base.codigo && pareceCodigo(base.codigo))) {
-      linhas.push({ ...base, tipo: "ETAPA" });
+    if (base.descricao && !base.unidade && !codigoValido && (base.quantidade === null || mapa.unidade !== undefined)) {
+      linhas.push({ ...base, tipo: "ETAPA", quantidade: null });
       continue;
     }
     if (base.codigo || base.descricao) linhas.push({ ...base, nota: qtd ? undefined : "sem quantidade" });

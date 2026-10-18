@@ -706,7 +706,7 @@ model ItemOrcamento {
   revisaoId           String  @map("revisao_id") @db.Uuid
   etapaId             String  @map("etapa_id") @db.Uuid
   ordem               Int
-  itemReferenciaId    String  @map("item_referencia_id") @db.Uuid
+  itemReferenciaId    String? @map("item_referencia_id") @db.Uuid // null = preço informado pelo orçamentista
   baseRevisaoId       String? @map("base_revisao_id") @db.Uuid // null p/ itens próprios
   regimeId            String? @map("regime_id") @db.Uuid
   codigo              String // snapshot
@@ -719,7 +719,7 @@ model ItemOrcamento {
   precoUnitario       Decimal @map("preco_unitario") @db.Decimal(18, 2)
   precoTotal          Decimal @map("preco_total") @db.Decimal(18, 2)
   custoTotal          Decimal @default(0) @map("custo_total") @db.Decimal(18, 2) // quantidade × custo unitário (sem BDI)
-  origemPreco         String? @map("origem_preco") // PUBLICADO | COTACAO | CALCULADO
+  origemPreco         String? @map("origem_preco") // PUBLICADO | COTACAO | CALCULADO | INFORMADO
   referenciaPreco     String? @map("referencia_preco") // ex.: "SINAPI RJ 09/2026 — Sem desoneração"
   pendencia           String? // ex.: preço mantido da base anterior
   /// como o orçamentista chegou ao quantitativo (texto livre), ex.: "(30 + 20) × 2 × 2 m = 100 m²"
@@ -730,7 +730,7 @@ model ItemOrcamento {
 
   revisao        OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
   etapa          Etapa            @relation(fields: [etapaId], references: [id], onDelete: Cascade)
-  itemReferencia ItemReferencia   @relation(fields: [itemReferenciaId], references: [id])
+  itemReferencia ItemReferencia?  @relation(fields: [itemReferenciaId], references: [id])
   baseRevisao    BaseRevisao?     @relation(fields: [baseRevisaoId], references: [id])
   regime         Regime?          @relation(fields: [regimeId], references: [id])
   bdiPerfil      BdiPerfil?       @relation(fields: [bdiPerfilId], references: [id])

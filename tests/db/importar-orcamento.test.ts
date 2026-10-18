@@ -3,7 +3,8 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { analisarGrade, fonteCitada, lerLinhas, montarEstrutura } from "@/lib/orcamento/importar/analisar";
 import { lerPdf, lerPlanilha } from "@/lib/orcamento/importar/ler-arquivo";
 import { conferirCodigos, criarEtapasImportadas, importarItens } from "@/lib/orcamento/importar/servidor";
-import { adicionarItem, carregarRevisao, criarEtapa, criarObra, criarOrcamento } from "@/lib/orcamento/servico";
+import { adicionarItem, alterarItem, carregarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, fecharRevisao, novaRevisao, reprecificarRevisao, trocarItem } from "@/lib/orcamento/servico";
+import { RELATORIOS } from "@/lib/relatorios/documento";
 import { montarRelatorio } from "@/lib/relatorios/montar";
 import { prisma } from "./ajuda";
 import { carregarAmostras } from "./carga";
@@ -117,5 +118,55 @@ describe("importar orçamento", () => {
     expect(r.falhas[1].motivo).toMatch(/4 casas/);
     await expect(importarItens(ex, o.revisaoId, et.versao, [], u)).resolves.toMatchObject({ gravados: 0 });
     await expect(importarItens(ex, o.revisaoId, 1, [{ ref: 1, etapaId: et.ids.e1, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "1" }], u)).rejects.toThrow(/alterado por outra pessoa/);
+  });
+
+  it("item não encontrado entra com preço informado: editável, fora do recálculo pelas bases, nos relatórios e trocável por código da base", async () => {
+    const obra = await criarObra(ex, { nome: "Obra informados" }, u);
+    const o = await criarOrcamento(ex, { obraId: obra, titulo: "Com itens informados", bases: bases() }, u);
+    const et = await criarEtapasImportadas(ex, o.revisaoId, 1, [{ chave: "e1", titulo: "Etapa única", paiChave: null }], { arquivo: "prefeitura.xlsx", linhas: 3, itens: 3 }, u);
+    const r = await importarItens(ex, o.revisaoId, et.versao, [
+      { ref: 1, etapaId: et.ids.e1, itemReferenciaId: await idDe("104658"), quantidade: "2" },
+      { ref: 2, etapaId: et.ids.e1, itemReferenciaId: null, quantidade: "3", informado: { codigo: "01.090.0000-G", descricao: "INDICE GERAL P/ ADMINISTRACAO LOCAL", unidade: "UR", custo: "1.234,5678", arquivo: "prefeitura.xlsx" } },
+      { ref: 3, etapaId: et.ids.e1, itemReferenciaId: null, quantidade: "1", informado: { codigo: "X", descricao: "SEM CUSTO", unidade: "UN", custo: "", arquivo: "prefeitura.xlsx" } },
+      { ref: 4, etapaId: et.ids.e1, itemReferenciaId: null, quantidade: "1", informado: null },
+    ], u);
+    expect(r.gravados).toBe(2);
+    expect(r.falhas.map((f) => [f.ref, f.motivo])).toEqual([[3, "Informe o custo unitário."], [4, "sem item de referência nem preço informado"]]);
+    let v = r.versao;
+    let e = await carregarRevisao(ex, o.revisaoId);
+    const inf = e.itens.find((i) => i.codigo === "01.090.0000-G")!;
+    expect(inf).toMatchObject({ itemReferenciaId: null, fonte: "INFORMADO", origemPreco: "INFORMADO", custoUnitario: "1234.5678", unidade: "UR", precoTotal: "3703.71" }); // 1.234,57 × 3
+    expect(inf.referenciaPreco).toMatch(/informado pelo orçamentista \(importado de prefeitura\.xlsx\)/);
+    // custo editável só no item informado
+    v = await alterarItem(ex, o.revisaoId, v, inf.id, { custoInformado: "100,5" }, u);
+    const ref = e.itens.find((i) => i.codigo === "104658")!;
+    await expect(alterarItem(ex, o.revisaoId, v, ref.id, { custoInformado: "1" }, u)).rejects.toThrow(/vem da base/);
+    await expect(alterarItem(ex, o.revisaoId, v, inf.id, { base: { baseRevisaoId: rev.SINAPI, regime: "SEM_DESONERACAO" } }, u)).rejects.toThrow(/preço informado/);
+    // o recálculo pelas bases não mexe no informado
+    v = await reprecificarRevisao(ex, o.revisaoId, v, u).then((x) => (typeof x === "number" ? x : (x as { versao: number }).versao));
+    e = await carregarRevisao(ex, o.revisaoId);
+    expect(e.itens.find((i) => i.id === inf.id)).toMatchObject({ custoUnitario: "100.5000", precoTotal: "301.50" });
+    expect(e.totais.total).toBe((301.5 + 2 * 194.45).toFixed(2));
+    // relatórios com item informado
+    for (const t of RELATORIOS.filter((x) => x.tipo !== "comparativo")) {
+      const d = await montarRelatorio(ex, o.revisaoId, t.tipo, { emitidoPor: "Teste", agora: new Date() });
+      expect(d.secoes.length).toBeGreaterThan(0);
+    }
+    const sint = await montarRelatorio(ex, o.revisaoId, "sintetico", { emitidoPor: "Teste", agora: new Date() });
+    expect(JSON.stringify(sint)).toContain("Informado");
+    // fechar, nova revisão e duplicar mantêm o item informado
+    await fecharRevisao(ex, o.revisaoId, v, u);
+    const n = await novaRevisao(ex, o.revisaoId, { descricao: "Revisão 2" }, u);
+    const e2 = await carregarRevisao(ex, n.revisaoId);
+    expect(e2.itens.find((i) => i.codigo === "01.090.0000-G")).toMatchObject({ itemReferenciaId: null, custoUnitario: "100.5000" });
+    const dup = await duplicarOrcamento(ex, n.revisaoId, { titulo: "Cópia" }, u);
+    expect((await carregarRevisao(ex, dup.revisaoId)).itens.filter((i) => !i.itemReferenciaId)).toHaveLength(1);
+    // trocar o item informado por um código da base: passa a ter o preço da base
+    const alvo = e2.itens.find((i) => i.codigo === "01.090.0000-G")!;
+    await trocarItem(ex, n.revisaoId, e2.revisao.versao, alvo.id, await idDe("01.001.0001-0"), u);
+    const e3 = await carregarRevisao(ex, n.revisaoId);
+    expect(e3.itens.find((i) => i.id === alvo.id)).toMatchObject({ fonte: "EMOP", codigo: "01.001.0001-0", origemPreco: "PUBLICADO", quantidade: "3.0000" });
+    // a regra do banco: sem referência, só com origem INFORMADO
+    await expect(ex.consulta(`UPDATE item_orcamento SET origem_preco = 'PUBLICADO' WHERE id = $1`, [inf.id])).rejects.toThrow();
   });
 });

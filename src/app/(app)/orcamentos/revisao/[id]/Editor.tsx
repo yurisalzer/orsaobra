@@ -124,7 +124,9 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
           <td className="py-1 pl-2 text-xs">{i.numero}</td>
           <td><SeloFonte fonte={i.fonte} /></td>
           <td className="whitespace-nowrap font-mono text-xs">
-            <Link className="text-marca-700 hover:underline" href={`/consulta/item/${i.itemReferenciaId}${i.baseRevisaoId ? `?b_${i.fonte}=${i.baseRevisaoId}${i.regime ? `&r_${i.fonte}=${i.regime}` : ""}` : ""}`} target="_blank">{i.codigo}</Link>
+            {i.itemReferenciaId
+              ? <Link className="text-marca-700 hover:underline" href={`/consulta/item/${i.itemReferenciaId}${i.baseRevisaoId ? `?b_${i.fonte}=${i.baseRevisaoId}${i.regime ? `&r_${i.fonte}=${i.regime}` : ""}` : ""}`} target="_blank">{i.codigo}</Link>
+              : <span title="Item sem vínculo com base de referência (preço informado). Use ✎ para trocar por um código da base.">{i.codigo || "—"}</span>}
             {aberta && <button title="Editar código (trocar o serviço/insumo)" aria-label={`Editar código do item ${i.numero}`} className="ml-1 font-sans text-slate-500 hover:text-marca-700" onClick={() => setTrocando(trocando === i.id ? null : i.id)}>✎</button>}
           </td>
           <td className="text-sm">
@@ -136,7 +138,11 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
           <td className="num">
             {aberta ? <CampoQuantidade valor={i.quantidade} rotulo={`Quantidade ${i.numero}`} aoSalvar={(q) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { quantidade: q }))} /> : qtd(i.quantidade)}
           </td>
-          <td className="num text-sm">{formatarMoeda(i.custoUnitario)}</td>
+          <td className="num text-sm">
+            {aberta && !i.itemReferenciaId
+              ? <CampoQuantidade valor={i.custoUnitario} rotulo={`Custo unitário ${i.numero}`} aoSalvar={(c) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { custoInformado: c }))} />
+              : formatarMoeda(i.custoUnitario)}
+          </td>
           <td className="text-xs">
             {aberta ? (
               <select value={i.bdiPerfilId ?? ""} aria-label={`BDI ${i.numero}`} className="max-w-[9rem] rounded border border-slate-300 px-1 py-0.5"
@@ -156,7 +162,7 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
               <>
                 <button title="Subir" aria-label={`Subir item ${i.numero}`} onClick={() => rodar(() => acaoMoverItem(r.id, versao, i.id, -1))}>↑</button>
                 <button title="Descer" aria-label={`Descer item ${i.numero}`} onClick={() => rodar(() => acaoMoverItem(r.id, versao, i.id, 1))}>↓</button>
-                {i.fonte !== "PROPRIA" && <TrocarBase item={i} bases={bases.filter((b) => b.fonte === i.fonte)} aoTrocar={(b) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { base: b }))} />}
+                {i.fonte !== "PROPRIA" && i.itemReferenciaId && <TrocarBase item={i} bases={bases.filter((b) => b.fonte === i.fonte)} aoTrocar={(b) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { base: b }))} />}
                 <button title="Excluir" aria-label={`Excluir item ${i.numero}`} className="text-red-700" onClick={() => { if (window.confirm(`Excluir o item ${i.numero} (${i.codigo})?`)) rodar(() => acaoExcluirItem(r.id, versao, i.id)); }}>✕</button>
               </>
             )}

@@ -106,3 +106,21 @@ describe("importação de orçamento — análise", () => {
     expect(linhas[1]).toMatchObject({ descricao: "PLACA DE IDENTIFICACAO DE OBRA PUBLICA EM CHAPA GALVANIZADA", quantidade: "4.00", custoUnitario: "264.96", total: "1059.84" });
   });
 });
+
+describe("importação de orçamento — etapas com total na coluna de quantidade", () => {
+  it("linha sem unidade e com título no lugar do código é etapa, mesmo com número na quantidade", () => {
+    const g: Grade = [
+      ["Item", "Código", "Descrição", "Unid.", "Quant.", "Preço unit.", "Total"],
+      ["1", "SERVIÇOS ADMINISTRATIVOS", null, null, 755487.13, null, null],
+      ["1.1", "01.090.0000-G", "INDICE GERAL P/ ADMINISTRAÇÃO LOCAL", "UR", 100, 7100, 710000],
+      ["2", "MOBILIZAÇÃO E DESMOBILIZAÇÃO DA OBRA", null, null, 122534.67, null, null],
+      [null, "02.006.0015-A", "ALUGUEL CONTAINER", "UNXMES", 12, 1265, 15180],
+    ];
+    const a = analisarGrade(g);
+    const l = lerLinhas(g, a.cabecalho, a.mapa);
+    expect(l.map((x) => `${x.tipo}:${x.descricao.slice(0, 12)}`)).toEqual(["ETAPA:SERVIÇOS ADM", "ITEM:INDICE GERAL", "ETAPA:MOBILIZAÇÃO ", "ITEM:ALUGUEL CONT"]);
+    expect(l[0]).toMatchObject({ codigo: null, quantidade: null });
+    const e = montarEstrutura(l);
+    expect(e.itens.map((i) => e.etapas.find((x) => x.chave === i.etapaChave)!.titulo)).toEqual(["SERVIÇOS ADMINISTRATIVOS", "MOBILIZAÇÃO E DESMOBILIZAÇÃO DA OBRA"]);
+  });
+});

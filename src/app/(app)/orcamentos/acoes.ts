@@ -26,7 +26,7 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: strin
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
     // mensagens de regras do banco (imp_exigir / gatilhos) são seguras para exibir
-    const regra = /(alterado por outra pessoa|fechada|não pode ser|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
+    const regra = /(alterado por outra pessoa|fechada|não pode ser|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
     if (!regra) console.error(e);
     return { ok: false, erro: regra ?? "Não foi possível concluir a operação. Tente novamente." };
   }
@@ -105,12 +105,13 @@ export async function acaoAdicionarItem(revisaoId: string, versao: number, d: { 
   }, u)));
 }
 
-export async function acaoAlterarItem(revisaoId: string, versao: number, itemId: string, d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null }; etapaId?: string }) {
+export async function acaoAlterarItem(revisaoId: string, versao: number, itemId: string, d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null }; etapaId?: string; custoInformado?: string }) {
   return executar((u) => executor().then((ex) => alterarItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), {
     quantidade: d.quantidade !== undefined ? z.string().max(40).parse(d.quantidade) : undefined,
     memoriaQuantitativo: d.memoriaQuantitativo !== undefined ? z.string().max(4000, "Memória de cálculo com mais de 4.000 caracteres.").nullable().parse(d.memoriaQuantitativo) : undefined,
     bdiPerfilId: d.bdiPerfilId === undefined ? undefined : d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null,
     base: d.base ? base.parse(d.base) : undefined, etapaId: d.etapaId ? uuid.parse(d.etapaId) : undefined,
+    custoInformado: d.custoInformado !== undefined ? z.string().max(40).parse(d.custoInformado) : undefined,
   }, u)));
 }
 export async function acaoTrocarItem(revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string) {

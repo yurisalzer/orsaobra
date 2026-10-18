@@ -43,7 +43,8 @@ export interface LinhaItem {
   etapaId: string;
   ordem: number;
   numero: string;
-  itemReferenciaId: string;
+  /** null = preço informado pelo orçamentista (sem item de referência; fonte "INFORMADO"). */
+  itemReferenciaId: string | null;
   fonte: string;
   tipo: "INSUMO" | "COMPOSICAO";
   baseRevisaoId: string | null;
@@ -95,6 +96,18 @@ export function lerMemoria(texto: string | null | undefined): string | null {
 }
 
 /** Quantidade digitada ("12,5", "1.234,5678", "12.5") → texto decimal, validada. */
+/** Custo unitário informado pelo orçamentista (sem BDI, até 4 casas). */
+export function lerCustoInformado(texto: string): string {
+  const c = lerNumero(texto);
+  if (!c) throw new ErroOrcamento("Informe o custo unitário.");
+  if (c.isNegative()) throw new ErroOrcamento("Custo unitário não pode ser negativo.");
+  if (c.decimalPlaces() > 4) throw new ErroOrcamento("Custo unitário com no máximo 4 casas decimais.");
+  if (c.gte("1e14")) throw new ErroOrcamento("Custo unitário grande demais.");
+  return c.toString();
+}
+
+export const REFERENCIA_INFORMADO = "Preço informado pelo orçamentista";
+
 export function lerQuantidade(texto: string): string {
   const q = lerNumero(texto);
   if (!q) throw new ErroOrcamento("Quantidade inválida.");
@@ -405,7 +418,7 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
       `SELECT id, pai_id AS "paiId", ordem, titulo FROM etapa WHERE revisao_id = $1`, [revisaoId],
     ),
     ex.consulta<Omit<LinhaItem, "numero">>(
-      `SELECT i.id, i.etapa_id AS "etapaId", i.ordem, i.item_referencia_id AS "itemReferenciaId", f.codigo AS fonte, ir.tipo::text AS tipo,
+      `SELECT i.id, i.etapa_id AS "etapaId", i.ordem, i.item_referencia_id AS "itemReferenciaId", coalesce(f.codigo, 'INFORMADO') AS fonte, coalesce(ir.tipo::text, 'INSUMO') AS tipo,
               i.base_revisao_id AS "baseRevisaoId",
               CASE WHEN i.base_revisao_id IS NULL THEN NULL ELSE f.codigo || ' ' || to_char(b.competencia, 'MM/YYYY') || CASE WHEN br.numero > 0 THEN ' ret.' || br.numero ELSE '' END END AS "baseRotulo",
               g.codigo AS regime, i.codigo, i.descricao, i.unidade, i.quantidade::text AS quantidade, i.custo_unitario::text AS "custoUnitario",
@@ -413,7 +426,7 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
               i.preco_unitario::text AS "precoUnitario", i.preco_total::text AS "precoTotal", i.origem_preco AS "origemPreco",
               i.referencia_preco AS "referenciaPreco", i.pendencia, i.memoria_quantitativo AS "memoriaQuantitativo",
               i.memoria_calculo AS "memoriaCalculo", i.analitico
-         FROM item_orcamento i JOIN item_referencia ir ON ir.id = i.item_referencia_id JOIN fonte f ON f.id = ir.fonte_id
+         FROM item_orcamento i LEFT JOIN item_referencia ir ON ir.id = i.item_referencia_id LEFT JOIN fonte f ON f.id = ir.fonte_id
          LEFT JOIN base_revisao br ON br.id = i.base_revisao_id LEFT JOIN base_mensal b ON b.id = br.base_id
          LEFT JOIN regime g ON g.id = i.regime_id
         WHERE i.revisao_id = $1`,
@@ -611,7 +624,7 @@ async function precoParaItem(ex: Executor, revisaoId: string, itemReferenciaId: 
 
 /** INSERT de um item do orçamento com os valores já calculados (snapshot). */
 export function comandoInserirItem(d: {
-  id: string; revisaoId: string; etapaId: string; itemReferenciaId: string; base: { baseRevisaoId: string; regime: string | null } | null;
+  id: string; revisaoId: string; etapaId: string; itemReferenciaId: string | null; base: { baseRevisaoId: string; regime: string | null } | null;
   cab: { codigo: string; descricao: string; unidade: string | null }; quantidade: Dec; valores: ValoresItem;
   preco: { origem: string; referencia: string | null }; memoriaQuantitativo: string | null;
 }): Comando {
@@ -655,10 +668,10 @@ export async function adicionarItem(
 
 export async function alterarItem(
   ex: Executor, revisaoId: string, versao: number, itemId: string,
-  d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string },
+  d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string; custoInformado?: string },
   usuarioId: string,
 ) {
-  const [i] = await ex.consulta<{ id: string; item_referencia_id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null; memoria_quantitativo: string | null }>(
+  const [i] = await ex.consulta<{ id: string; item_referencia_id: string | null; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null; memoria_quantitativo: string | null }>(
     `SELECT id, item_referencia_id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_percentual::text, unidade, referencia_preco, memoria_quantitativo FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
     [itemId, revisaoId],
   );
@@ -684,7 +697,13 @@ export async function alterarItem(
   }
   let custo = i.custo_unitario;
   let referencia = i.referencia_preco;
-  if (d.base) {
+  if (d.custoInformado !== undefined) {
+    if (i.item_referencia_id) throw new ErroOrcamento("O custo deste item vem da base de referência; para outro preço, troque o código ou a base.");
+    custo = lerCustoInformado(d.custoInformado);
+    cmds.push({ sql: `UPDATE item_orcamento SET custo_unitario = $2::numeric WHERE id = $1`, params: [itemId, custo] });
+  }
+  if (d.base && !i.item_referencia_id) throw new ErroOrcamento("Item com preço informado não usa base de referência.");
+  if (d.base && i.item_referencia_id) {
     const { preco, base } = await precoParaItem(ex, revisaoId, i.item_referencia_id, d.base);
     if (!preco.valor) throw new ErroOrcamento(`Sem preço na base/regime escolhidos: ${preco.pendencia ?? ""}`);
     const cab = await cabecalhoItem(ex, i.item_referencia_id, base?.baseRevisaoId);
@@ -714,7 +733,7 @@ export async function alterarItem(
  * revisão para a fonte do novo código.
  */
 export async function trocarItem(ex: Executor, revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string, usuarioId: string) {
-  const [i] = await ex.consulta<{ item_referencia_id: string; codigo: string; unidade: string; quantidade: string; bdi_perfil_id: string | null; bdi_percentual: string }>(
+  const [i] = await ex.consulta<{ item_referencia_id: string | null; codigo: string; unidade: string; quantidade: string; bdi_perfil_id: string | null; bdi_percentual: string }>(
     `SELECT item_referencia_id, codigo, unidade, quantidade::text, bdi_perfil_id, bdi_percentual::text FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
     [itemId, revisaoId],
   );
@@ -849,7 +868,7 @@ export interface AnaliticoItem {
  */
 export async function montarAnaliticos(ex: Executor, revisaoId: string, itens: LinhaItem[]): Promise<{ id: string; analitico: AnaliticoItem }[]> {
   const ctx = await contextoDaRevisao(ex, revisaoId);
-  const comps = itens.filter((it) => it.tipo === "COMPOSICAO");
+  const comps = itens.filter((it): it is LinhaItem & { itemReferenciaId: string } => it.tipo === "COMPOSICAO" && !!it.itemReferenciaId);
   // versão da composição de cada item (consultas em lote: oficiais na base/regime do item; próprias vigentes)
   const versoes = await versoesDasComposicoes(ex, comps.map((it) => ({ chave: it.id, itemId: it.itemReferenciaId, fonte: it.fonte, baseRevisaoId: it.baseRevisaoId, regime: it.regime })));
   const linhasPorVersao = await linhasDasVersoes(ex, [...new Set([...versoes.values()].map((v) => v.versaoId))]);
@@ -1187,7 +1206,7 @@ export async function compararRevisoes(ex: Executor, revisaoA: string, revisaoB:
   const chaves = (e: EstadoRevisao) => {
     const cont = new Map<string, number>();
     return e.itens.map((it) => {
-      const base = `${it.itemReferenciaId}|${e.etapas.find((x) => x.id === it.etapaId)?.titulo ?? ""}`;
+      const base = `${it.itemReferenciaId ?? `informado:${it.codigo}:${it.descricao}`}|${e.etapas.find((x) => x.id === it.etapaId)?.titulo ?? ""}`;
       const n = (cont.get(base) ?? 0) + 1;
       cont.set(base, n);
       return { k: `${base}|${n}`, it, etapa: tituloEtapa(e, it.etapaId) };

@@ -53,7 +53,17 @@ export async function explodirInsumos(ex: Executor, itens: LinhaItem[], ctx: Con
 
   // 1º nível: itens do orçamento (com o analítico gravado no fechamento, quando houver)
   let fronteira: No[] = [];
+  // itens com preço informado (sem referência) entram como estão
+  const informados: InsumoExplodido[] = [];
   for (const it of itens) {
+    if (!it.itemReferenciaId) {
+      const q = dec(it.quantidade);
+      informados.push({
+        itemId: `informado:${it.id}`, fonte: it.fonte, codigo: it.codigo, descricao: it.descricao, unidade: it.unidade || null, tipo: "INSUMO", semAnalitica: false,
+        quantidade: q, precoUnitario: dec(it.custoUnitario), custo: q.times(it.custoUnitario), referencia: it.referenciaPreco,
+      });
+      continue;
+    }
     const base = it.fonte === "PROPRIA" ? null : it.baseRevisaoId ? { fonte: it.fonte, baseRevisaoId: it.baseRevisaoId, regime: it.regime } : null;
     const q = dec(it.quantidade);
     if (it.tipo === "INSUMO") { somar(it.itemReferenciaId, it.fonte, base, q, "INSUMO", false); continue; }
@@ -127,5 +137,5 @@ export async function explodirInsumos(ex: Executor, itens: LinhaItem[], ctx: Con
       precoUnitario: p?.valor ?? null, custo: p?.valor ? a.quantidade.times(p.valor) : null, referencia: p?.referencia ?? null,
     };
   });
-  return { insumos, niveis };
+  return { insumos: [...insumos, ...informados], niveis };
 }
