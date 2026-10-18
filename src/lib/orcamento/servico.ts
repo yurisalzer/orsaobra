@@ -105,7 +105,7 @@ export function lerQuantidade(texto: string): string {
 }
 
 /** Confere situação e versão, incrementa a versão. Deve abrir toda transação de edição. */
-function travarEdicao(revisaoId: string, versaoEsperada: number): Comando[] {
+export function travarEdicao(revisaoId: string, versaoEsperada: number): Comando[] {
   return [
     { sql: `SELECT imp_exigir((SELECT status = 'EM_ELABORACAO' FROM orcamento_revisao WHERE id = $1 FOR UPDATE), 'Esta revisão está fechada e não pode ser alterada. Crie uma nova revisão.')`, params: [revisaoId] },
     { sql: `SELECT imp_exigir((SELECT versao = $2 FROM orcamento_revisao WHERE id = $1), 'O orçamento foi alterado por outra pessoa (ou em outra aba) enquanto você editava. Recarregue a página.')`, params: [revisaoId, versaoEsperada] },
@@ -135,7 +135,7 @@ export function valoresDoItem(p: { quantidade: Dec | string; custoReferencia: De
   return { custoUnitario: dec(p.custoReferencia), bdiPercentual: dec(p.bdi), custoTotal: r.custoTotal, precoUnitario: r.precoUnitario, precoTotal: r.precoTotal, memoria };
 }
 
-async function dadosRevisao(ex: Executor, revisaoId: string) {
+export async function dadosRevisao(ex: Executor, revisaoId: string) {
   const [r] = await ex.consulta<{ id: string; orcamento_id: string; status: string; versao: number; bdi_percentual: string | null; arredondamento: ModoArredondamento; data_referencia: string }>(
     `SELECT id, orcamento_id, status::text, versao, bdi_percentual::text, arredondamento::text AS arredondamento, to_char(data_referencia, 'YYYY-MM-DD') AS data_referencia
        FROM orcamento_revisao WHERE id = $1`,
@@ -609,6 +609,25 @@ async function precoParaItem(ex: Executor, revisaoId: string, itemReferenciaId: 
   return { info, preco, base, ctx };
 }
 
+/** INSERT de um item do orçamento com os valores já calculados (snapshot). */
+export function comandoInserirItem(d: {
+  id: string; revisaoId: string; etapaId: string; itemReferenciaId: string; base: { baseRevisaoId: string; regime: string | null } | null;
+  cab: { codigo: string; descricao: string; unidade: string | null }; quantidade: Dec; valores: ValoresItem;
+  preco: { origem: string; referencia: string | null }; memoriaQuantitativo: string | null;
+}): Comando {
+  const v = d.valores;
+  return {
+    sql: `INSERT INTO item_orcamento (id, revisao_id, etapa_id, ordem, item_referencia_id, base_revisao_id, regime_id, codigo, descricao, unidade, quantidade,
+                                      custo_unitario, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, memoria_calculo, memoria_quantitativo)
+          VALUES ($1, $2, $3, (SELECT coalesce(max(ordem), 0) + 1 FROM item_orcamento WHERE etapa_id = $3), $4, $5,
+                  (SELECT g.id FROM regime g JOIN base_mensal b ON b.fonte_id = g.fonte_id JOIN base_revisao br ON br.base_id = b.id WHERE br.id = $5 AND g.codigo = $6),
+                  $7, $8, $9, $10::numeric, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19)`,
+    params: [d.id, d.revisaoId, d.etapaId, d.itemReferenciaId, d.base?.baseRevisaoId ?? null, d.base?.regime ?? null, d.cab.codigo, d.cab.descricao, d.cab.unidade ?? "",
+      d.quantidade.toString(), v.custoUnitario.toString(), v.bdiPercentual.toString(), v.precoUnitario.toString(), v.precoTotal.toString(), v.custoTotal.toString(),
+      d.preco.origem, d.preco.referencia, v.memoria, d.memoriaQuantitativo],
+  };
+}
+
 export async function adicionarItem(
   ex: Executor, revisaoId: string, versao: number,
   d: { etapaId: string; itemReferenciaId: string; quantidade: string; memoriaQuantitativo?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null },
@@ -628,16 +647,7 @@ export async function adicionarItem(
   const id = crypto.randomUUID();
   await ex.transacao([
     ...travarEdicao(revisaoId, versao),
-    {
-      sql: `INSERT INTO item_orcamento (id, revisao_id, etapa_id, ordem, item_referencia_id, base_revisao_id, regime_id, codigo, descricao, unidade, quantidade,
-                                        custo_unitario, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, memoria_calculo, memoria_quantitativo)
-            VALUES ($1, $2, $3, (SELECT coalesce(max(ordem), 0) + 1 FROM item_orcamento WHERE etapa_id = $3), $4, $5,
-                    (SELECT g.id FROM regime g JOIN base_mensal b ON b.fonte_id = g.fonte_id JOIN base_revisao br ON br.base_id = b.id WHERE br.id = $5 AND g.codigo = $6),
-                    $7, $8, $9, $10::numeric, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19)`,
-      params: [id, revisaoId, d.etapaId, d.itemReferenciaId, base?.baseRevisaoId ?? null, base?.regime ?? null, cab.codigo, cab.descricao, cab.unidade ?? "",
-        q.toString(), v.custoUnitario.toString(), v.bdiPercentual.toString(), v.precoUnitario.toString(), v.precoTotal.toString(), v.custoTotal.toString(),
-        preco.origem, preco.referencia, v.memoria, memoriaQtd],
-    },
+    comandoInserirItem({ id, revisaoId, etapaId: d.etapaId, itemReferenciaId: d.itemReferenciaId, base, cab, quantidade: q, valores: v, preco, memoriaQuantitativo: memoriaQtd }),
     comandoAuditoria({ usuarioId, acao: "ITEM_ADICIONADO", entidade: "item_orcamento", entidadeId: id, depois: { codigo: cab.codigo, quantidade: q.toString(), custo: v.custoUnitario.toString(), memoriaQuantitativo: memoriaQtd } }),
   ]);
   return { id, versao: versao + 1 };

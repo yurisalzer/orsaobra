@@ -1,0 +1,20 @@
+// Planilha de orçamento no formato comum de prefeituras (timbre, identificação,
+// cabeçalho em duas linhas, etapas numeradas, itens, totais).
+export const LINHAS_EXEMPLO: (string | number | null)[][] = [
+  ["PREFEITURA MUNICIPAL DE MACAÉ", null, null, null, null, null, null, null, null],
+  ["Secretaria Municipal de Obras", null, null, null, null, null, null, null, null],
+  [null],
+  ["Obra: Reforma da Escola Municipal Aldo Silva", null, null, null, null, "Processo: 12.345/2026", null, null, null],
+  ["Local:", "Rua das Palmeiras, 200 - Centro", null, null, null, "Município: Macaé", null, null, null],
+  ["Data-base: EMOP 09/2026 e SINAPI 09/2026 (não desonerado)", null, null, null, null, "BDI: 25,00%", null, null, null],
+  [null],
+  ["ITEM", "FONTE", "CÓDIGO", "DESCRIÇÃO DOS SERVIÇOS", "UNID.", "QUANT.", "PREÇO UNITÁRIO (R$)", null, "TOTAL (R$)"],
+  [null, null, null, null, null, null, "S/ BDI", "C/ BDI", null],
+  ["1", null, null, "SERVIÇOS PRELIMINARES", null, null, null, null, 1059.84],
+  ["1.1", "EMOP", "01.001.0001-0", "PLACA DE IDENTIFICACAO DE OBRA PUBLICA", "M2", 4, 211.97, 264.96, 1059.84],
+  ["2", null, null, "ACESSIBILIDADE", null, null, null, null, null],
+  ["2.1", "SINAPI", "104658", "PISO PODOTATIL DE ALERTA OU DIRECIONAL, DE CONCRETO", "M", "1.234,5", "194,45", "243,06", "300.057,57"],
+  ["2.2", "SINAPI", "999999", "SERVIÇO INEXISTENTE NA BASE", "UN", 2, 10, 12.5, 25],
+  ["", null, null, "SUBTOTAL ACESSIBILIDADE", null, null, null, null, 300082.57],
+  [null, null, null, "TOTAL GERAL", null, null, null, null, 301142.41],
+];

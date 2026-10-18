@@ -18,7 +18,12 @@ export default async function Orcamentos({ searchParams }: { searchParams: Promi
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Obras e orçamentos</h1>
-        {temPermissao(u, "ORCAMENTOS_EDITAR") && <Link href="/orcamentos/novo" className="rounded-md bg-marca-600 px-4 py-2 text-sm font-medium text-white hover:bg-marca-700">Novo orçamento</Link>}
+        {editor && (
+          <div className="flex gap-2">
+            <Link href="/orcamentos/importar" className="rounded-md border border-marca-600 px-4 py-2 text-sm font-medium text-marca-700 hover:bg-marca-50">Importar orçamento</Link>
+            <Link href="/orcamentos/novo" className="rounded-md bg-marca-600 px-4 py-2 text-sm font-medium text-white hover:bg-marca-700">Novo orçamento</Link>
+          </div>
+        )}
       </div>
       <form role="search" className="flex flex-wrap items-center gap-2" action="/orcamentos">
         <input name="q" type="search" defaultValue={busca} aria-label="Pesquisar obras e orçamentos"

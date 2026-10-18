@@ -25,9 +25,13 @@ const nextConfig: NextConfig = {
       };
     }
     // O PDF dos relatórios é gerado só no navegador: o pdfmake e as fontes
-    // (~2 MB) não precisam entrar no código do servidor (worker).
+    // (~2 MB) não precisam entrar no código do servidor (worker). O mesmo vale
+    // para os leitores do "Importar orçamento" (SheetJS e pdf.js).
     if (isServer) {
-      config.resolve.alias = { ...config.resolve.alias, "pdfmake/build/pdfmake": false, "pdfmake/build/vfs_fonts": false };
+      config.resolve.alias = {
+        ...config.resolve.alias, "pdfmake/build/pdfmake": false, "pdfmake/build/vfs_fonts": false,
+        xlsx: false, "pdfjs-dist": false, "pdfjs-dist/build/pdf.worker.min.mjs": false,
+      };
     }
     return config;
   },
