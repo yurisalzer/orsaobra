@@ -9,7 +9,7 @@ import { EditorProprio } from "../../EditorProprio";
 const paraEdicao = (c: string) => (c.includes(".") ? c.replace(/0+$/, "").replace(/\.$/, "") : c).replace(".", ",");
 
 export default async function Editar({ params }: { params: Promise<{ id: string }> }) {
-  await exigirUsuario("ORCAMENTISTA");
+  await exigirUsuario("COMPOSICOES");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { SeloFonte } from "@/components/SeloFonte";
-import { exigirUsuario, temPapel } from "@/lib/auth/sessao";
+import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { dec } from "@/lib/calculo/decimal";
 import { formatarCoeficiente, formatarPreco, nomeRegime } from "@/lib/formato/precos";
@@ -22,7 +22,7 @@ type SP = Record<string, string | string[] | undefined>;
 const STATUS: Record<string, string> = { PUBLICADA: "Publicada", SUBSTITUIDA: "Substituída", EM_IMPORTACAO: "Não publicada", VALIDADA: "Validada (não publicada)" };
 
 export default async function DetalheItem({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SP> }) {
-  const u = await exigirUsuario();
+  const u = await exigirUsuario("CONSULTA");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const sp = await searchParams;
@@ -37,7 +37,7 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
   const selDaFonte = sel.find((s) => s.fonte === item.fonte);
 
   const [historico, usado] = await Promise.all([
-    historicoPrecos(ex, id, u.papel === "ADMIN"),
+    historicoPrecos(ex, id, temPermissao(u, "IMPORTACAO")),
     usadoEm(ex, id, selDaFonte?.base.revisaoId ?? null),
   ]);
   // Item oficial publicado num único regime nesta base (ex.: EMOP "-0" / "-A"): usa o regime do próprio código.
@@ -70,7 +70,7 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
   const precos = await precificar(ex, [id, ...(linhas ?? []).map((l) => l.itemId)], ctx);
   const precoItem = precos.get(id)!;
   const listaCotacoes = item.fonte === "PROPRIA" && item.tipo === "INSUMO" ? await cotacoes(ex, id) : [];
-  const podeEditar = temPapel(u, "ORCAMENTISTA");
+  const podeEditar = temPermissao(u, "COMPOSICOES");
 
   // totais da analítica (sem arredondamentos intermediários)
   let soma = dec(0);

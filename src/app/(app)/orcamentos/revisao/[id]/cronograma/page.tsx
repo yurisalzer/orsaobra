@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { exigirUsuario, temPapel } from "@/lib/auth/sessao";
+import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { carregarRevisao, ErroOrcamento, lerCronograma } from "@/lib/orcamento/servico";
 import { EditorCronograma } from "./EditorCronograma";
@@ -9,7 +9,7 @@ import { EditorCronograma } from "./EditorCronograma";
 export const dynamic = "force-dynamic";
 
 export default async function PaginaCronograma({ params }: { params: Promise<{ id: string }> }) {
-  const u = await exigirUsuario();
+  const u = await exigirUsuario("ORCAMENTOS_VER");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();
@@ -28,7 +28,7 @@ export default async function PaginaCronograma({ params }: { params: Promise<{ i
       </div>
       <EditorCronograma
         revisaoId={id} versao={estado.revisao.versao} etapas={etapas} total={estado.totais.total}
-        inicial={cronograma} editavel={estado.revisao.status === "EM_ELABORACAO" && temPapel(u, "ORCAMENTISTA")}
+        inicial={cronograma} editavel={estado.revisao.status === "EM_ELABORACAO" && temPermissao(u, "ORCAMENTOS_EDITAR")}
       />
     </div>
   );

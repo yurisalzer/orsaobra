@@ -5,7 +5,7 @@ import { basePadraoPorFonte, basesDisponiveis, type BaseDisponivel } from "./bas
 
 /** Lê das URLs a base/regime escolhidos por fonte (parâmetros b_<FONTE> e r_<FONTE>). */
 export async function selecaoDeBases(ex: Executor, u: UsuarioSessao, sp: Record<string, string | string[] | undefined>) {
-  const todas = await basesDisponiveis(ex, { incluirNaoPublicadas: u.papel === "ADMIN" });
+  const todas = await basesDisponiveis(ex, { incluirNaoPublicadas: u.permissoes.includes("IMPORTACAO") });
   const padrao = basePadraoPorFonte(todas);
   const fontes = [...new Set(todas.map((b) => b.fonte))];
   const selecao: { fonte: string; base: BaseDisponivel; regime: string | null; opcoes: BaseDisponivel[] }[] = [];

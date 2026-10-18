@@ -2,7 +2,7 @@ import { exigirUsuario } from "@/lib/auth/sessao";
 import { EditorProprio } from "../EditorProprio";
 
 export default async function Nova({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
-  await exigirUsuario("ORCAMENTISTA");
+  await exigirUsuario("COMPOSICOES");
   const tipo = (await searchParams).tipo === "INSUMO" ? "INSUMO" : "COMPOSICAO";
   return (
     <div className="space-y-4">

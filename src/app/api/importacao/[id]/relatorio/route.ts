@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { z } from "zod";
-import { usuarioAtual } from "@/lib/auth/sessao";
+import { temPermissao, usuarioAtual } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { detalheImportacao, verificacoes } from "@/lib/importacao/consultas";
 import type { Identificacao } from "@/lib/importacao/tipos";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /** Relatório de inconsistências da importação em XLSX. */
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await usuarioAtual();
-  if (!u || u.papel !== "ADMIN") return new Response("Não autorizado", { status: 403 });
+  if (!u || !temPermissao(u, "IMPORTACAO")) return new Response("Não autorizado", { status: 403 });
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) return new Response("Não encontrado", { status: 404 });
   const ex = await executor();

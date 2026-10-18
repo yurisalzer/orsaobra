@@ -1,18 +1,19 @@
 import Link from "next/link";
-import { exigirUsuario } from "@/lib/auth/sessao";
+import { exigirUsuario, type Permissao } from "@/lib/auth/sessao";
+import { rotuloPerfil } from "@/lib/auth/permissoes";
 import { acaoSair } from "./acoes";
 
-const MENU = [
+// cada item aparece só para quem tem a permissão
+const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
   { href: "/", rotulo: "Início" },
-  { href: "/orcamentos", rotulo: "Orçamentos" },
-  { href: "/consulta", rotulo: "Consulta de preços" },
-  { href: "/composicoes", rotulo: "Composições" },
-  { href: "/bdi", rotulo: "BDI" },
-  { href: "/cabecalhos", rotulo: "Cabeçalhos" },
-  { href: "/importacao", rotulo: "Importação", admin: true },
+  { href: "/orcamentos", rotulo: "Orçamentos", permissao: "ORCAMENTOS_VER" },
+  { href: "/consulta", rotulo: "Consulta de preços", permissao: "CONSULTA" },
+  { href: "/composicoes", rotulo: "Composições", permissao: "CONSULTA" },
+  { href: "/bdi", rotulo: "BDI", permissao: "BDI" },
+  { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
+  { href: "/importacao", rotulo: "Importação", permissao: "IMPORTACAO" },
+  { href: "/usuarios", rotulo: "Usuários", permissao: "USUARIOS" },
 ];
-
-const NOME_PAPEL = { ADMIN: "Administrador", ORCAMENTISTA: "Orçamentista", LEITOR: "Leitor" } as const;
 
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const u = await exigirUsuario();
@@ -22,12 +23,12 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link href="/" className="font-semibold text-marca-900">Orçamento de Obras</Link>
           <nav className="flex flex-wrap gap-4 text-sm">
-            {MENU.filter((m) => !m.admin || u.papel === "ADMIN").map((m) => (
+            {MENU.filter((m) => !m.permissao || u.permissoes.includes(m.permissao)).map((m) => (
               <Link key={m.href} href={m.href} className="text-slate-600 hover:text-marca-700">{m.rotulo}</Link>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <Link href="/conta" className="text-slate-600 hover:text-marca-700">{u.nome} · {NOME_PAPEL[u.papel]}</Link>
+            <Link href="/conta" className="text-slate-600 hover:text-marca-700">{u.nome} · {rotuloPerfil(u.permissoes)}</Link>
             <form action={acaoSair}>
               <button className="rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-100">Sair</button>
             </form>

@@ -4,9 +4,10 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { comandoAuditoria } from "../auditoria";
 import { executor } from "../banco/servidor";
+import { CODIGOS_PERMISSAO, PERMISSOES, type Permissao } from "./permissoes";
 import { conferirSenha } from "./senha";
 
-export type Papel = "ADMIN" | "ORCAMENTISTA" | "LEITOR";
+export type { Permissao } from "./permissoes";
 
 export const COOKIE_SESSAO = "sessao";
 const DURACAO_MS = 12 * 60 * 60 * 1000; // 12 horas
@@ -84,30 +85,49 @@ export interface UsuarioSessao {
   id: string;
   email: string;
   nome: string;
-  papel: Papel;
+  permissoes: Permissao[];
 }
 
 export async function usuarioAtual(): Promise<UsuarioSessao | null> {
   const token = (await cookies()).get(COOKIE_SESSAO)?.value;
   if (!token) return null;
   const [u] = await (await executor()).consulta<UsuarioSessao>(
-    `SELECT u.id, u.email, u.nome, u.papel::text AS papel FROM sessao s JOIN usuario u ON u.id = s.usuario_id
+    `SELECT u.id, u.email, u.nome,
+            ARRAY(SELECT p.permissao FROM usuario_permissao p WHERE p.usuario_id = u.id ORDER BY p.permissao) AS permissoes
+       FROM sessao s JOIN usuario u ON u.id = s.usuario_id
       WHERE s.token_hash = $1 AND s.expira_em > now() AND u.ativo`,
     [hashToken(token)],
   );
-  return u ?? null;
+  if (!u) return null;
+  return { ...u, permissoes: u.permissoes.filter((p): p is Permissao => CODIGOS_PERMISSAO.includes(p)) };
 }
 
-const HIERARQUIA: Record<Papel, number> = { LEITOR: 1, ORCAMENTISTA: 2, ADMIN: 3 };
-
-export function temPapel(u: { papel: Papel }, minimo: Papel): boolean {
-  return HIERARQUIA[u.papel] >= HIERARQUIA[minimo];
+export function temPermissao(u: { permissoes: readonly string[] }, p: Permissao): boolean {
+  return u.permissoes.includes(p);
 }
 
-/** Para páginas e ações do servidor: exige login (e papel mínimo). */
-export async function exigirUsuario(minimo: Papel = "LEITOR"): Promise<UsuarioSessao> {
+/** Erro de permissão em ações do servidor (vira mensagem para o usuário). */
+export class ErroPermissao extends Error {
+  constructor(p: Permissao) {
+    super(`Você não tem permissão para esta ação (${PERMISSOES.find((x) => x.codigo === p)!.nome}). Fale com o administrador.`);
+  }
+}
+
+/**
+ * Para páginas: exige login e, se informada, a permissão (sem ela, mostra a
+ * página "sem acesso"). Para ações, use exigirPermissao.
+ */
+export async function exigirUsuario(permissao?: Permissao): Promise<UsuarioSessao> {
   const u = await usuarioAtual();
   if (!u) redirect("/login");
-  if (!temPapel(u, minimo)) throw new Error("Permissão insuficiente.");
+  if (permissao && !temPermissao(u, permissao)) redirect(`/sem-acesso?p=${permissao}`);
+  return u;
+}
+
+/** Para ações do servidor: exige login e a permissão; sem ela, lança ErroPermissao. */
+export async function exigirPermissao(permissao: Permissao): Promise<UsuarioSessao> {
+  const u = await usuarioAtual();
+  if (!u) redirect("/login");
+  if (!temPermissao(u, permissao)) throw new ErroPermissao(permissao);
   return u;
 }

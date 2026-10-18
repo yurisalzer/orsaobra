@@ -38,7 +38,7 @@ model Usuario {
   email        String    @unique
   nome         String
   senhaHash    String    @map("senha_hash")
-  papel        Papel     @default(LEITOR)
+  papel        Papel     @default(LEITOR) // legado: o acesso é dado por usuario_permissao
   ativo        Boolean   @default(true)
   tentativas   Int       @default(0) // falhas de login consecutivas
   bloqueadoAte DateTime? @map("bloqueado_ate") @db.Timestamptz
@@ -46,12 +46,25 @@ model Usuario {
   atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
 
   sessoes      Sessao[]
+  permissoes   UsuarioPermissao[]
   auditorias   Auditoria[]
   importacoes  Importacao[]
   membroObras  ObraMembro[]
   revisoesFech OrcamentoRevisao[] @relation("RevisaoFechadaPor")
 
   @@map("usuario")
+}
+
+/// Permissão individual por recurso (ver src/lib/auth/permissoes.ts).
+model UsuarioPermissao {
+  usuarioId   String   @map("usuario_id") @db.Uuid
+  permissao   String
+  concedidaEm DateTime @default(now()) @map("concedida_em") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, permissao])
+  @@map("usuario_permissao")
 }
 
 model Sessao {

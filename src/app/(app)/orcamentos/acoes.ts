@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { exigirUsuario } from "@/lib/auth/sessao";
+import { ErroPermissao, exigirPermissao, type Permissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
@@ -13,14 +13,15 @@ import { buscarItens } from "@/lib/referencia/busca";
 
 export type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
 
-async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: string): Promise<Resultado<T>> {
+async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: string, permissao: Permissao = "ORCAMENTOS_EDITAR"): Promise<Resultado<T>> {
   try {
-    const u = await exigirUsuario("ORCAMENTISTA");
+    const u = await exigirPermissao(permissao);
     const dados = await f(u.id);
     if (caminho) revalidatePath(caminho);
     return { ok: true, dados };
   } catch (e) {
     if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
+    if (e instanceof ErroPermissao) return { ok: false, erro: e.message };
     if (e instanceof ErroOrcamento || e instanceof ErroBdi) return { ok: false, erro: e.message };
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
@@ -139,10 +140,10 @@ export async function acaoSalvarPerfil(d: { id: string | null; nome: string; des
   return executar((u) => executor().then((ex) => salvarPerfil(ex, {
     id: d.id ? uuid.parse(d.id) : null, nome: z.string().max(120).parse(d.nome), descricao: d.descricao ? z.string().max(500).parse(d.descricao) : null,
     percentualInformado: d.percentualInformado, parcelas: z.array(parcela).max(30).parse(d.parcelas),
-  }, u)), "/bdi");
+  }, u)), "/bdi", "BDI");
 }
 export async function acaoArquivarPerfil(id: string, ativo: boolean) {
-  return executar((u) => executor().then((ex) => arquivarPerfil(ex, uuid.parse(id), ativo, u)), "/bdi");
+  return executar((u) => executor().then((ex) => arquivarPerfil(ex, uuid.parse(id), ativo, u)), "/bdi", "BDI");
 }
 
 export async function acaoSalvarCronograma(revisaoId: string, versao: number, d: { meses: number; parcelas: { etapaId: string; periodo: number; percentual: string }[] }) {

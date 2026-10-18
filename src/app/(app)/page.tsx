@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { exigirUsuario } from "@/lib/auth/sessao";
+import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function Inicio() {
       </div>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 font-medium">Bases de referência disponíveis</h2>
-        {u.papel === "ADMIN" && pendentes.length > 0 && (
+        {temPermissao(u, "IMPORTACAO") && pendentes.length > 0 && (
           <p className="mb-3 rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {pendentes.length} base(s) importada(s) aguardando validação/publicação: {pendentes.map((b) => `${b.fonte.split(" ")[0]} ${b.competencia}`).join(", ")}.{" "}
             <Link href="/importacao" className="underline">Revisar e publicar</Link>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { exigirUsuario } from "@/lib/auth/sessao";
+import { ErroPermissao, exigirPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { adaptadorPorId } from "@/lib/importacao/adaptadores";
 import { amostraStaging, detalheImportacao } from "@/lib/importacao/consultas";
@@ -16,9 +16,10 @@ export type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string; c
 
 async function executar<T>(f: (usuarioId: string) => Promise<T>): Promise<Resultado<T>> {
   try {
-    const u = await exigirUsuario("ADMIN");
+    const u = await exigirPermissao("IMPORTACAO");
     return { ok: true, dados: await f(u.id) };
   } catch (e) {
+    if (e instanceof ErroPermissao) return { ok: false, erro: e.message };
     if (e instanceof ErroImportacao) return { ok: false, erro: e.message, codigo: e.codigo };
     // erros de redirecionamento do Next (sessão expirada) devem seguir adiante
     if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;

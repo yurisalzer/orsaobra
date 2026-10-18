@@ -8,7 +8,7 @@ import { FormNovo } from "./FormNovo";
 export const dynamic = "force-dynamic";
 
 export default async function Novo() {
-  await exigirUsuario("ORCAMENTISTA");
+  await exigirUsuario("ORCAMENTOS_EDITAR");
   const ex = await executor();
   const [obras, bases, perfis, cabecalhos] = await Promise.all([
     ex.consulta<{ id: string; nome: string }>(`SELECT id, nome FROM obra ORDER BY nome`),

@@ -17,7 +17,7 @@ const SIT: Record<string, { nome: string; cor: string }> = {
 };
 
 export default async function Comparar({ searchParams }: { searchParams: Promise<{ a?: string; b?: string; todos?: string }> }) {
-  await exigirUsuario();
+  await exigirUsuario("ORCAMENTOS_VER");
   const sp = await searchParams;
   const ids = z.object({ a: z.string().uuid(), b: z.string().uuid() }).safeParse(sp);
   if (!ids.success) notFound();

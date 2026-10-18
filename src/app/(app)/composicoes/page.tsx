@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { exigirUsuario, temPapel } from "@/lib/auth/sessao";
+import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { listarProprios } from "@/lib/referencia/proprios";
 
 export const dynamic = "force-dynamic";
 
 export default async function Composicoes() {
-  const u = await exigirUsuario();
+  const u = await exigirUsuario("CONSULTA");
   const lista = await listarProprios(await executor());
-  const pode = temPapel(u, "ORCAMENTISTA");
+  const pode = temPermissao(u, "COMPOSICOES");
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">

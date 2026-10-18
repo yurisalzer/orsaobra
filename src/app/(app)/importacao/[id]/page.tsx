@@ -10,7 +10,7 @@ import { Selo } from "../nova/Assistente";
 export const dynamic = "force-dynamic";
 
 export default async function RelatorioImportacao({ params }: { params: Promise<{ id: string }> }) {
-  await exigirUsuario("ADMIN");
+  await exigirUsuario("IMPORTACAO");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();

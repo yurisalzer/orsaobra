@@ -3,7 +3,7 @@ import { exigirUsuario } from "@/lib/auth/sessao";
 import { Assistente } from "./Assistente";
 
 export default async function NovaImportacao() {
-  await exigirUsuario("ADMIN");
+  await exigirUsuario("IMPORTACAO");
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">

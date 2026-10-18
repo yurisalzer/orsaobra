@@ -9,7 +9,7 @@ import { Relatorios } from "./Relatorios";
 export const dynamic = "force-dynamic";
 
 export default async function PaginaRelatorios({ params }: { params: Promise<{ id: string }> }) {
-  await exigirUsuario();
+  await exigirUsuario("RELATORIOS");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const estado = await carregarRevisao(await executor(), id).catch((e) => { if (e instanceof ErroOrcamento) return null; throw e; });

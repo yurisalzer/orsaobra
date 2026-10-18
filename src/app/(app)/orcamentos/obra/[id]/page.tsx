@@ -10,7 +10,7 @@ import { FormObra } from "./FormObra";
 export const dynamic = "force-dynamic";
 
 export default async function EditarObra({ params }: { params: Promise<{ id: string }> }) {
-  await exigirUsuario("ORCAMENTISTA");
+  await exigirUsuario("ORCAMENTOS_EDITAR");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();

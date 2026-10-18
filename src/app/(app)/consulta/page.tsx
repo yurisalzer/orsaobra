@@ -14,7 +14,7 @@ type SP = Record<string, string | string[] | undefined>;
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
 export default async function Consulta({ searchParams }: { searchParams: Promise<SP> }) {
-  const u = await exigirUsuario();
+  const u = await exigirUsuario("CONSULTA");
   const sp = await searchParams;
   const ex = await executor();
   const sel = await selecaoDeBases(ex, u, sp);

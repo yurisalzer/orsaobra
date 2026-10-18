@@ -18,7 +18,7 @@ const STATUS_IMP: Record<string, string> = {
 };
 
 export default async function PaginaImportacao() {
-  await exigirUsuario("ADMIN");
+  await exigirUsuario("IMPORTACAO");
   const ex = await executor();
   const [bases, importacoes] = await Promise.all([listarBases(ex), listarImportacoes(ex)]);
   return (

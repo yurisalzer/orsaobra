@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { exigirUsuario } from "@/lib/auth/sessao";
+import { ErroPermissao, exigirPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { arquivarCabecalho, ErroCabecalho, salvarCabecalho } from "@/lib/relatorios/cabecalhos";
 
@@ -10,12 +10,13 @@ type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
 
 async function executar<T>(f: (usuarioId: string) => Promise<T>): Promise<Resultado<T>> {
   try {
-    const u = await exigirUsuario("ORCAMENTISTA");
+    const u = await exigirPermissao("CABECALHOS");
     const dados = await f(u.id);
     revalidatePath("/cabecalhos");
     return { ok: true, dados };
   } catch (e) {
     if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
+    if (e instanceof ErroPermissao) return { ok: false, erro: e.message };
     if (e instanceof ErroCabecalho) return { ok: false, erro: e.message };
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     console.error(e);

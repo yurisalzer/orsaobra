@@ -40,7 +40,7 @@ export function quantidadeDaMemoria(texto: string): { quantidade: string | null;
   }
 }
 
-export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean }) {
+export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean; podeRelatorios: boolean }) {
   const router = useRouter();
   const [versao, setVersao] = useState(estado.revisao.versao);
   const [erro, setErro] = useState<string | null>(null);
@@ -202,7 +202,7 @@ export function Editor({ estado, perfis, bases, podeEditar }: { estado: EstadoRe
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
-          <Link href={`/orcamentos/revisao/${r.id}/relatorios`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Relatórios</Link>
+          {podeRelatorios && <Link href={`/orcamentos/revisao/${r.id}/relatorios`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Relatórios</Link>}
           <Link href={`/orcamentos/revisao/${r.id}/cronograma`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Cronograma</Link>
         {podeEditar && (
           <>

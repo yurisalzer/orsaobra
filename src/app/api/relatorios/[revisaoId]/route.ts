@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { comandoAuditoria } from "@/lib/auditoria";
-import { usuarioAtual } from "@/lib/auth/sessao";
+import { temPermissao, usuarioAtual } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { RELATORIOS, type TipoRelatorio } from "@/lib/relatorios/documento";
 import { ErroRelatorio, montarRelatorio } from "@/lib/relatorios/montar";
@@ -13,6 +13,7 @@ const tipos = RELATORIOS.map((r) => r.tipo) as [TipoRelatorio, ...TipoRelatorio[
 export async function GET(req: Request, { params }: { params: Promise<{ revisaoId: string }> }) {
   const u = await usuarioAtual();
   if (!u) return Response.json({ erro: "Sessão expirada. Entre novamente." }, { status: 401 });
+  if (!temPermissao(u, "RELATORIOS")) return Response.json({ erro: "Você não tem permissão para emitir relatórios. Fale com o administrador." }, { status: 403 });
   const { revisaoId } = await params;
   const url = new URL(req.url);
   const p = z.object({

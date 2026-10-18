@@ -5,6 +5,7 @@
  */
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { criarExecutor } from "../src/lib/banco/executor";
+import { CODIGOS_PERMISSAO } from "../src/lib/auth/permissoes";
 import { gerarHashSenha, validarForcaSenha } from "../src/lib/auth/senha";
 
 const proxy = process.env.HTTPS_PROXY ?? process.env.https_proxy;
@@ -24,6 +25,8 @@ async function main() {
      RETURNING id, email`,
     [email, nome, senhaHash],
   );
+  // administrador = todas as permissões
+  await ex.consulta(`INSERT INTO usuario_permissao (usuario_id, permissao) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING`, [u.id, CODIGOS_PERMISSAO]);
   await ex.consulta(`INSERT INTO auditoria (acao, entidade, entidade_id) VALUES ('ADMIN_DEFINIDO_VIA_SCRIPT', 'usuario', $1)`, [u.id]);
   console.log(`Administrador pronto: ${u.email}`);
   await ex.encerrar?.();
