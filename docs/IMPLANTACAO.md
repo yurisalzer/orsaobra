@@ -77,6 +77,13 @@ O sistema envia e-mails pela API da [Resend](https://resend.com) (plano gratuito
    ```
    npx wrangler secret put RESEND_API_KEY
    npx wrangler secret put EMAIL_REMETENTE   # ex.: Orçamento de Obras <nao-responda@seudominio.com.br>
-   npx wrangler secret put APP_URL           # ex.: https://orsaobra.orsaobra.workers.dev
+   npx wrangler secret put APP_URL           # ex.: https://orca.yws.eng.br
    ```
 Sem essas variáveis, nada é enviado: cada mensagem fica registrada em "Usuários e permissões → E-mails enviados pelo sistema" com o status "não enviado".
+
+## Endereço próprio
+
+O sistema atende em **https://orca.yws.eng.br** (zona `yws.eng.br` na Cloudflare; domínio registrado na
+Locaweb, com os nameservers da Cloudflare). O domínio está em `wrangler.jsonc` (`routes`, `custom_domain`);
+o endereço `orsaobra.orsaobra.workers.dev` continua ativo. Os registros do Resend (DKIM, SPF, DMARC) ficam
+na zona da Cloudflare; o remetente é `Orçamento de Obras <orcamento@yws.eng.br>`.
