@@ -8,5 +8,8 @@
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // endereço próprio (zona yws.eng.br na Cloudflare); o *.workers.dev continua ativo
+  "routes": [{ "pattern": "orca.yws.eng.br", "custom_domain": true }],
+  "workers_dev": true
 }
