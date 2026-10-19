@@ -9,7 +9,7 @@ import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
   acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem, acaoTrocarItem,
-  acaoFechar, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
+  acaoAtualizarBdi, acaoFechar, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
 } from "../../acoes";
 
 export interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
@@ -228,6 +228,23 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
       </div>
 
       {erro && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{erro}</p>}
+      {estado.divergenciasBdi.length > 0 && (
+        <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">O BDI foi alterado na aba BDI depois de aplicado neste orçamento.</p>
+          <ul className="mt-1 list-disc pl-5">
+            {estado.divergenciasBdi.map((d) => (
+              <li key={d.perfilId}>
+                Perfil “{d.nome}”: este orçamento usa {d.aplicado.map((x) => `${x.replace(".", ",")}%`).join(" / ")}{d.global ? " (BDI global)" : ""}{d.itens ? ` em ${d.itens} item(ns)` : ""}; o perfil agora é {d.atual.replace(".", ",")}%.
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">Os preços continuam calculados com o percentual antigo. A revisão só pode ser fechada depois de atualizar.</p>
+          {aberta && podeEditar && (
+            <button disabled={pendente} onClick={() => { if (window.confirm("Atualizar o BDI de todos os itens para o percentual atual dos perfis?")) rodar(() => acaoAtualizarBdi(r.id, versao), () => setAviso("BDI atualizado e itens recalculados.")); }}
+              className="mt-2 rounded-md bg-amber-700 px-3 py-1.5 text-white disabled:opacity-50">Atualizar BDI</button>
+          )}
+        </div>
+      )}
       {aviso && <p role="status" className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{aviso}</p>}
       {pendente && <p className="text-xs text-slate-500" aria-live="polite">Salvando…</p>}
 

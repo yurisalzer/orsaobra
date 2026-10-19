@@ -82,6 +82,19 @@ export interface EstadoRevisao {
   etapas: EtapaLinha[];
   itens: LinhaItem[];
   totais: { custoDireto: string; bdi: string; total: string; itens: number; pendencias: number };
+  /** Perfis de BDI alterados depois de aplicados nesta revisão (só em elaboração). */
+  divergenciasBdi: DivergenciaBdi[];
+}
+
+export interface DivergenciaBdi {
+  perfilId: string;
+  nome: string;
+  /** Percentual(is) gravado(s) na revisão/itens. */
+  aplicado: string[];
+  /** Percentual atual do perfil. */
+  atual: string;
+  global: boolean;
+  itens: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -487,8 +500,52 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
   const total = itens.reduce((a, x) => a.plus(x.precoTotal), dec(0));
   return {
     revisao: r, orcamento: orc, revisoes, basesPadrao, etapas, itens,
+    divergenciasBdi: r.status === "EM_ELABORACAO" ? await divergenciasBdi(ex, r, itens) : [],
     totais: { custoDireto: custoDireto.toFixed(2), bdi: total.minus(custoDireto).toFixed(2), total: total.toFixed(2), itens: itens.length, pendencias: itens.filter((i) => i.pendencia).length },
   };
+}
+
+/**
+ * O orçamento grava o percentual do BDI quando o perfil é escolhido. Se o
+ * perfil for editado depois, a revisão em elaboração fica com o valor antigo:
+ * aqui se detecta essa diferença (a revisão não pode ser fechada assim).
+ */
+async function divergenciasBdi(ex: Executor, r: { bdiPerfilId: string | null; bdiPercentual: string | null }, itens: Pick<LinhaItem, "bdiPerfilId" | "bdiPercentual">[]): Promise<DivergenciaBdi[]> {
+  const usados = new Set([r.bdiPerfilId, ...itens.map((i) => i.bdiPerfilId)].filter((x): x is string => !!x));
+  if (!usados.size) return [];
+  const perfis = (await listarPerfis(ex)).filter((p) => usados.has(p.id));
+  const out: DivergenciaBdi[] = [];
+  for (const p of perfis) {
+    const atual = dec(p.bdiAplicado);
+    const global = r.bdiPerfilId === p.id && r.bdiPercentual !== null && !dec(r.bdiPercentual).eq(atual);
+    const doPerfil = itens.filter((i) => i.bdiPerfilId === p.id && !dec(i.bdiPercentual).eq(atual));
+    if (!global && !doPerfil.length) continue;
+    const aplicado = [...new Set([...(global ? [dec(r.bdiPercentual!).toFixed(2)] : []), ...doPerfil.map((i) => dec(i.bdiPercentual).toFixed(2))])];
+    out.push({ perfilId: p.id, nome: p.nome, aplicado, atual: atual.toFixed(2), global, itens: doPerfil.length });
+  }
+  return out;
+}
+
+/** Relê os perfis de BDI (global e diferenciados) e recalcula todos os itens da revisão. */
+export async function atualizarBdi(ex: Executor, revisaoId: string, versao: number, usuarioId: string) {
+  const r = await dadosRevisao(ex, revisaoId);
+  const [rev] = await ex.consulta<{ bdi_perfil_id: string | null }>(`SELECT bdi_perfil_id FROM orcamento_revisao WHERE id = $1`, [revisaoId]);
+  const perfis = new Map((await listarPerfis(ex)).map((p) => [p.id, p.bdiAplicado]));
+  const global = rev.bdi_perfil_id ? perfis.get(rev.bdi_perfil_id) ?? r.bdi_percentual : r.bdi_percentual;
+  const itens = await ex.consulta<{ id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; unidade: string; referencia_preco: string | null }>(
+    `SELECT id, quantidade::text, custo_unitario::text, bdi_perfil_id, unidade, referencia_preco FROM item_orcamento WHERE revisao_id = $1`, [revisaoId],
+  );
+  const novos = itens.map((i) => {
+    const bdi = i.bdi_perfil_id ? perfis.get(i.bdi_perfil_id) ?? "0" : (global ?? "0");
+    return { id: i.id, ...serializar(valoresDoItem({ quantidade: i.quantidade, custoReferencia: i.custo_unitario, bdi, modo: r.arredondamento, unidade: i.unidade, referencia: i.referencia_preco })) };
+  });
+  await ex.transacao([
+    ...travarEdicao(revisaoId, versao),
+    { sql: `UPDATE orcamento_revisao SET bdi_percentual = $2::numeric WHERE id = $1`, params: [revisaoId, global] },
+    ...(novos.length ? [comandoAtualizarValores(novos)] : []),
+    comandoAuditoria({ usuarioId, acao: "BDI_ATUALIZADO", entidade: "orcamento_revisao", entidadeId: revisaoId, antes: { bdiGlobal: r.bdi_percentual }, depois: { bdiGlobal: global } }),
+  ]);
+  return versao + 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,6 +1071,10 @@ export async function fecharRevisao(ex: Executor, revisaoId: string, versao: num
   const estado = await carregarRevisao(ex, revisaoId);
   if (estado.revisao.status !== "EM_ELABORACAO") throw new ErroOrcamento("Revisão já fechada.");
   if (estado.itens.length === 0) throw new ErroOrcamento("Não é possível fechar um orçamento sem itens.");
+  if (estado.divergenciasBdi.length) {
+    const d = estado.divergenciasBdi.map((x) => `"${x.nome}" (aplicado ${x.aplicado.join(", ")}%, perfil atual ${x.atual}%)`).join("; ");
+    throw new ErroOrcamento(`O BDI foi alterado depois de aplicado neste orçamento: ${d}. Use “Atualizar BDI” antes de fechar a revisão.`);
+  }
   const analiticos = await montarAnaliticos(ex, revisaoId, estado.itens);
   await ex.transacao([
     ...travarEdicao(revisaoId, versao),

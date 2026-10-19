@@ -450,6 +450,8 @@ async function bdi(c: Contexto): Promise<Documento> {
     }
     if (p.percentualInformado !== null) paragrafos.push(`BDI informado no perfil (ex.: fixado em edital): ${formatarNumero(p.percentualInformado, 4)}% — prevalece sobre o calculado.`);
     paragrafos.push(`BDI aplicado aos itens (2 casas): ${fmtPct(p.bdiAplicado)}`);
+    const div = e.divergenciasBdi.find((x) => x.perfilId === p.id);
+    if (div) paragrafos.push(`ATENÇÃO: o perfil foi alterado depois de aplicado; os preços desta prévia ainda usam ${div.aplicado.map((x) => fmtPct(x)).join(" / ")}. Atualize o BDI no orçamento antes de fechar a revisão.`);
     secoes.push({
       titulo: `Perfil "${p.nome}"`, paragrafos: p.descricao ? [p.descricao, ...paragrafos] : paragrafos,
       tabela: p.parcelas.length ? { colunas: [{ titulo: "Tipo", tipo: "texto", largura: 6 }, { titulo: "Parcela", tipo: "texto", largura: 40 }, { titulo: "%", tipo: "percentual", largura: 10 }], linhas } : undefined,

@@ -3,9 +3,10 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  atualizarBdi, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
+import { montarRelatorio } from "@/lib/relatorios/montar";
 import { prisma } from "./ajuda";
 import { carregarAmostras, importarPublicar } from "./carga";
 
@@ -359,3 +360,42 @@ describe("pesquisar e excluir orçamentos", () => {
     expect(await prisma.obra.findUnique({ where: { id: deOutro } })).toBeNull();
   });
 });
+
+describe("perfil de BDI alterado depois de aplicado", () => {
+  it("detecta a diferença, impede o fechamento e atualiza os itens", async () => {
+    const global = await salvarPerfil(ex, { nome: "Global editável", percentualInformado: "20", parcelas: [] }, u);
+    const dif = await salvarPerfil(ex, { nome: "Diferenciado editável", percentualInformado: "10", parcelas: [] }, u);
+    const obra = await criarObra(ex, { nome: "Obra BDI" }, u);
+    const o = await criarOrcamento(ex, { obraId: obra, titulo: "BDI que muda", bases: [basesPadrao()[0]], bdiPerfilId: global }, u);
+    let v = 1;
+    const et = await criarEtapa(ex, o.revisaoId, v, { titulo: "Etapa única" }, u); v = et.versao;
+    const a = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "1" }, u); v = a.versao;
+    const b = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "1" }, u); v = b.versao;
+    v = await alterarItem(ex, o.revisaoId, v, b.id, { bdiPerfilId: dif }, u);
+    expect((await carregarRevisao(ex, o.revisaoId)).divergenciasBdi).toEqual([]);
+
+    // perfis editados na aba BDI
+    await salvarPerfil(ex, { id: global, nome: "Global editável", percentualInformado: "25", parcelas: [] }, u);
+    await salvarPerfil(ex, { id: dif, nome: "Diferenciado editável", percentualInformado: "12", parcelas: [] }, u);
+    let e = await carregarRevisao(ex, o.revisaoId);
+    expect(e.divergenciasBdi.map((d) => [d.nome, d.aplicado, d.atual, d.global, d.itens])).toEqual([
+      ["Diferenciado editável", ["10.00"], "12.00", false, 1],
+      ["Global editável", ["20.00"], "25.00", true, 0],
+    ]);
+    // valores ainda com o percentual antigo: 211,97 × 1,20 = 254,36 e × 1,10 = 233,17
+    expect(e.itens.map((i) => i.precoUnitario)).toEqual(["254.36", "233.17"]);
+    const rel = await montarRelatorio(ex, o.revisaoId, "bdi", { emitidoPor: "Teste", agora: new Date() });
+    expect(JSON.stringify(rel)).toContain("ATENÇÃO: o perfil foi alterado depois de aplicado");
+    await expect(fecharRevisao(ex, o.revisaoId, v, u)).rejects.toThrow(/Atualizar BDI/);
+
+    v = await atualizarBdi(ex, o.revisaoId, v, u);
+    e = await carregarRevisao(ex, o.revisaoId);
+    expect(e.divergenciasBdi).toEqual([]);
+    expect(e.revisao.bdiPercentual).toBe("25.000000");
+    // 211,97 × 1,25 = 264,9625 → 264,96; × 1,12 = 237,4064 → 237,41
+    expect(e.itens.map((i) => i.precoUnitario)).toEqual(["264.96", "237.41"]);
+    expect(await prisma.auditoria.count({ where: { acao: "BDI_ATUALIZADO", entidadeId: o.revisaoId } })).toBe(1);
+    await fecharRevisao(ex, o.revisaoId, v, u);
+  });
+});
+

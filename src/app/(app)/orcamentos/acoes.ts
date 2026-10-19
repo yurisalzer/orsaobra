@@ -6,7 +6,7 @@ import { ErroPermissao, exigirPermissao, temPermissao, type Permissao } from "@/
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
-  adicionarItem, alterarItem, alterarObra, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
+  adicionarItem, alterarItem, alterarObra, atualizarBdi, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
   excluirEtapa, excluirItem, excluirObra, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
@@ -26,7 +26,7 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: strin
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
     // mensagens de regras do banco (imp_exigir / gatilhos) são seguras para exibir
-    const regra = /(alterado por outra pessoa|fechada|não pode ser|tem orçamentos|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
+    const regra = /(alterado por outra pessoa|fechada|não pode ser|BDI foi alterado|tem orçamentos|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
     if (!regra) console.error(e);
     return { ok: false, erro: regra ?? "Não foi possível concluir a operação. Tente novamente." };
   }
@@ -128,6 +128,9 @@ export async function acaoReprecificar(revisaoId: string, versao: number) {
 }
 export async function acaoFechar(revisaoId: string, versao: number) {
   return executar((u) => executor().then((ex) => fecharRevisao(ex, uuid.parse(revisaoId), versao, u)), "/orcamentos");
+}
+export async function acaoAtualizarBdi(revisaoId: string, versao: number) {
+  return executar((u) => executor().then((ex) => atualizarBdi(ex, uuid.parse(revisaoId), versao, u)), "/orcamentos");
 }
 export async function acaoNovaRevisao(origemId: string, descricao: string, novasBases: { baseRevisaoId: string; regime: string | null }[] | null) {
   return executar((u) => executor().then((ex) => novaRevisao(ex, uuid.parse(origemId), { descricao: z.string().max(300).parse(descricao), novasBases: novasBases ? z.array(base).parse(novasBases) : null }, u)), "/orcamentos");

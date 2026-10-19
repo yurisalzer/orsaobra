@@ -363,3 +363,44 @@ test("obra sem orçamentos pode ser excluída por quem a cadastrou", async ({ pa
   await expect(page.getByLabel("Excluir obra Creche Municipal")).toHaveCount(0);
 });
 
+
+test("perfil de BDI editado depois de aplicado: aviso no orçamento e “Atualizar BDI”", async ({ page }) => {
+  const respostas = dialogos(page);
+  await entrar(page);
+  await page.goto("/bdi");
+  await page.getByRole("button", { name: "Novo perfil de BDI" }).click();
+  await page.getByLabel("Nome do perfil").fill("BDI que muda");
+  await page.getByLabel("Percentual informado (ex.: fixado em edital)").check();
+  await page.getByLabel("BDI informado (%)").fill("10");
+  await page.getByRole("button", { name: "Salvar perfil" }).click();
+  await expect(page.getByRole("heading", { name: /BDI que muda — BDI 10,00%/ })).toBeVisible();
+
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption({ label: "Creche Municipal" });
+  await page.getByLabel("Título").fill("Orçamento com BDI que muda");
+  await page.getByLabel("BDI global").selectOption({ label: "BDI que muda — 10,00%" });
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Orçamento com BDI que muda" })).toBeVisible();
+  const url = page.url();
+  respostas.push("Etapa única");
+  await page.getByRole("button", { name: "+ Nova etapa" }).click();
+  await adicionar(page, "Etapa única", "01.001.0001", /01\.001\.0001/, "1");
+  await expect(page.getByText("R$ 233,17").first()).toBeVisible(); // 211,97 × 1,10
+
+  // o perfil muda na aba BDI
+  await page.goto("/bdi");
+  await page.getByRole("heading", { name: /BDI que muda/ }).locator("xpath=ancestor::section[1]").getByRole("button", { name: "Editar" }).click();
+  await page.getByLabel("BDI informado (%)").fill("12");
+  await page.getByRole("button", { name: "Salvar perfil" }).click();
+  await expect(page.getByRole("heading", { name: /BDI que muda — BDI 12,00%/ })).toBeVisible();
+
+  await page.goto(url);
+  const aviso = page.getByRole("status").filter({ hasText: "O BDI foi alterado" });
+  await expect(aviso).toContainText("este orçamento usa 10,00% (BDI global); o perfil agora é 12,00%");
+  await page.getByRole("button", { name: "Fechar revisão" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("Use “Atualizar BDI” antes de fechar");
+  await page.getByRole("button", { name: "Atualizar BDI" }).click();
+  await expect(page.getByText("BDI atualizado e itens recalculados.")).toBeVisible();
+  await expect(aviso).toHaveCount(0);
+  await expect(page.getByText("R$ 237,41").first()).toBeVisible(); // 211,97 × 1,12
+});
