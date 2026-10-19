@@ -416,3 +416,24 @@ test("perfil de BDI editado depois de aplicado: aviso no orçamento e “Atualiz
   await page.getByLabel("BDI 1.1").selectOption({ label: "Global (12,00%)" });
   await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 237,41");
 });
+
+test("gera a versão com desoneração e compara com a original", async ({ page }) => {
+  dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura" }).click();
+  await page.getByRole("button", { name: "Versão com/sem desoneração" }).click();
+  await expect(page.getByLabel("Regime da nova versão")).toHaveValue("COM_DESONERACAO");
+  await expect(page.getByLabel("Título da nova versão")).toHaveValue("Reforma da cobertura — com desoneração");
+  await page.getByRole("button", { name: "Gerar e comparar" }).click();
+  await expect(page.getByRole("heading", { name: "Comparação: Reforma da cobertura × Reforma da cobertura — com desoneração" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("código(s) da EMOP trocados pelo par do novo regime");
+  await expect(page.getByText("→ 01.001.0001-A").first()).toBeVisible();
+  await page.screenshot({ path: "test-results/versao-regime.png", fullPage: true });
+  await page.getByRole("link", { name: /Abrir B:/ }).click();
+  await expect(page.getByRole("heading", { name: "Reforma da cobertura — com desoneração" })).toBeVisible();
+  await expect(page.getByText("Versões em outro regime:")).toBeVisible();
+  await expect(page.getByText("(original)")).toBeVisible();
+  await page.getByRole("link", { name: "Comparar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Comparação: Reforma da cobertura ×/ })).toBeVisible();
+});

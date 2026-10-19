@@ -9,7 +9,7 @@ import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
   acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem, acaoTrocarItem,
-  acaoAtualizarBdi, acaoFechar, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
+  acaoAtualizarBdi, acaoFechar, acaoGerarVersaoRegime, acaoMoverEtapa, acaoMoverItem, acaoNovaRevisao, acaoRenomearEtapa, acaoReprecificar, type Resultado,
 } from "../../acoes";
 
 export interface BaseOpcao { revisaoId: string; fonte: string; rotulo: string; regimes: { codigo: string; nome: string }[] }
@@ -203,6 +203,18 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
             </span>
             {r.descricao && <span className="text-slate-500">— {r.descricao}</span>}
           </p>
+          {estado.orcamento.versoes.length > 0 && (
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-slate-500">Versões em outro regime:</span>
+              {estado.orcamento.versoes.map((v) => (
+                <span key={v.orcamentoId} className="flex items-center gap-1">
+                  <Link href={`/orcamentos/revisao/${v.revisaoId}`} className="text-marca-700 underline">{v.titulo}</Link>
+                  <span className="text-xs text-slate-500">({v.origem ? "original" : v.regime === "COM_DESONERACAO" ? "com desoneração" : "sem desoneração"})</span>
+                  <Link href={`/orcamentos/comparar?a=${v.origem ? v.revisaoId : r.id}&b=${v.origem ? r.id : v.revisaoId}`} className="rounded bg-slate-100 px-2 py-0.5 text-xs hover:bg-slate-200">Comparar</Link>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
           {podeRelatorios && <Link href={`/orcamentos/revisao/${r.id}/relatorios`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Relatórios</Link>}
@@ -213,6 +225,8 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
             {aberta && <button disabled={pendente} onClick={() => { if (window.confirm("Fechar a revisão? Os valores ficarão registrados e não poderão mais ser alterados.")) rodar(() => acaoFechar(r.id, versao)); }} className="rounded-md bg-slate-800 px-3 py-1.5 text-white">Fechar revisão</button>}
             {r.status === "FECHADA" && !estado.revisoes.some((x) => x.status === "EM_ELABORACAO") && <NovaRevisao origem={r.id} bases={bases} padrao={estado.basesPadrao} aoCriar={(id) => router.push(`/orcamentos/revisao/${id}`)} setErro={setErro} />}
             <button disabled={pendente} onClick={() => { const t = window.prompt("Título do novo orçamento (cópia desta revisão):", `${estado.orcamento.titulo} — cópia`); if (t) rodar(() => acaoDuplicar(r.id, t), (d) => router.push(`/orcamentos/revisao/${d.revisaoId}`)); }} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Duplicar</button>
+            <VersaoRegime revisaoId={r.id} titulo={estado.orcamento.titulo} padrao={estado.basesPadrao} setErro={setErro}
+              aoCriar={(d) => router.push(`/orcamentos/comparar?a=${r.id}&b=${d.revisaoId}&gerada=${d.trocados}.${d.pendentes}`)} />
             {estado.revisoes.length > 1 && (
               <select aria-label="Comparar com" className="rounded-md border border-slate-300 px-2 py-1.5" value="" onChange={(e) => e.target.value && router.push(`/orcamentos/comparar?a=${e.target.value}&b=${r.id}`)}>
                 <option value="">Comparar com…</option>
@@ -596,6 +610,45 @@ function Configuracoes({ estado, versao, perfis, bases, rodar, aoFechar }: {
         <button className="rounded-md border border-slate-300 px-3 py-1.5" onClick={aoFechar}>Fechar painel</button>
       </div>
     </section>
+  );
+}
+
+/** Gera a versão com ou sem desoneração deste orçamento (cópia ligada, reprecificada). */
+function VersaoRegime({ revisaoId, titulo, padrao, setErro, aoCriar }: { revisaoId: string; titulo: string; padrao: EstadoRevisao["basesPadrao"]; setErro: (e: string | null) => void; aoCriar: (d: { revisaoId: string; trocados: number; pendentes: number }) => void }) {
+  const atualCom = padrao.length > 0 && padrao.every((b) => b.regime === "COM_DESONERACAO");
+  const alvoPadrao = atualCom ? "SEM_DESONERACAO" : "COM_DESONERACAO";
+  const nome = (g: string) => (g === "COM_DESONERACAO" ? "com desoneração" : "sem desoneração");
+  const [aberto, setAberto] = useState(false);
+  const [regime, setRegime] = useState(alvoPadrao);
+  const [novoTitulo, setNovoTitulo] = useState(`${titulo} — ${nome(alvoPadrao)}`);
+  const [pendente, iniciar] = useTransition();
+  if (!aberto) return <button onClick={() => setAberto(true)} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Versão com/sem desoneração</button>;
+  return (
+    <div className="w-full space-y-2 rounded-xl border border-marca-600 bg-white p-4 text-sm sm:w-[32rem]">
+      <p className="font-medium">Gerar versão em outro regime, para comparar</p>
+      <label className="block">Regime da nova versão
+        <select value={regime} aria-label="Regime da nova versão" className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
+          onChange={(e) => { setRegime(e.target.value); setNovoTitulo(`${titulo} — ${nome(e.target.value)}`); }}>
+          <option value="COM_DESONERACAO">Com desoneração (desonerado)</option>
+          <option value="SEM_DESONERACAO">Sem desoneração (onerado)</option>
+        </select>
+      </label>
+      <label className="block">Título da nova versão<input value={novoTitulo} onChange={(e) => setNovoTitulo(e.target.value)} aria-label="Título da nova versão" className="mt-1 w-full rounded border border-slate-300 px-2 py-1" /></label>
+      <p className="text-xs text-slate-500">
+        Cria um orçamento ligado a este, com os mesmos itens, quantidades e BDI, e as mesmas bases no regime escolhido. Na EMOP, cada código é trocado pelo seu par
+        (ex.: 01.001.0001-0 ↔ 01.001.0001-A). Itens sem preço no novo regime mantêm o preço anterior com pendência; itens com preço informado e próprios não mudam.
+        Este orçamento não é alterado.
+      </p>
+      <div className="flex gap-2">
+        <button disabled={pendente || novoTitulo.trim().length < 2} className="rounded-md bg-marca-600 px-3 py-1.5 text-white disabled:opacity-50" onClick={() => iniciar(async () => {
+          setErro(null);
+          const r = await acaoGerarVersaoRegime(revisaoId, regime, novoTitulo);
+          if (!r.ok) return setErro(r.erro);
+          aoCriar(r.dados);
+        })}>{pendente ? "Gerando…" : "Gerar e comparar"}</button>
+        <button onClick={() => setAberto(false)} className="rounded-md border border-slate-300 px-3 py-1.5">Cancelar</button>
+      </div>
+    </div>
   );
 }
 

@@ -610,9 +610,14 @@ model Orcamento {
   codigo   String? // número/processo interno
   titulo   String
   criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  /// versão deste orçamento em outro regime (com/sem desoneração), gerada a partir de `versaoDe`
+  versaoDeId   String? @map("versao_de_id") @db.Uuid
+  regimeVersao String? @map("regime_versao")
 
   obra     Obra               @relation(fields: [obraId], references: [id])
   revisoes OrcamentoRevisao[]
+  versaoDe Orcamento?         @relation("VersaoRegime", fields: [versaoDeId], references: [id], onDelete: SetNull)
+  versoes  Orcamento[]        @relation("VersaoRegime")
 
   @@index([obraId])
   @@map("orcamento")

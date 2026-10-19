@@ -78,7 +78,11 @@ export interface EstadoRevisao {
     bdiPerfilId: string | null; bdiPercentual: string | null; arredondamento: ModoArredondamento; dataReferencia: string;
     fechadaEm: string | null; fechadaPor: string | null; revisaoOrigemId: string | null; criadoEm: string;
   };
-  orcamento: { id: string; codigo: string | null; titulo: string; obraId: string; obraNome: string; obraCodigo: string | null; processo: string | null; orgaoSolicitante: string | null; endereco: string | null; municipio: string | null; uf: string };
+  orcamento: {
+    id: string; codigo: string | null; titulo: string; obraId: string; obraNome: string; obraCodigo: string | null; processo: string | null; orgaoSolicitante: string | null; endereco: string | null; municipio: string | null; uf: string;
+    /** Versões em outro regime ligadas a este orçamento (a de origem e as geradas), com a última revisão de cada. */
+    versoes: { orcamentoId: string; titulo: string; regime: string | null; revisaoId: string; origem: boolean }[];
+  };
   revisoes: { id: string; numero: number; status: string; descricao: string | null; fechadaEm: string | null; totalGeral: string | null }[];
   basesPadrao: BasePadrao[];
   etapas: EtapaLinha[];
@@ -447,7 +451,10 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
   );
   if (!r) throw new ErroOrcamento("Revisão não encontrada.");
   const [orc] = await ex.consulta<EstadoRevisao["orcamento"]>(
-    `SELECT oc.id, oc.codigo, oc.titulo, o.id AS "obraId", o.nome AS "obraNome", o.codigo AS "obraCodigo", o.processo, o.orgao_solicitante AS "orgaoSolicitante", o.endereco, o.municipio, o.uf
+    `SELECT oc.id, oc.codigo, oc.titulo, o.id AS "obraId", o.nome AS "obraNome", o.codigo AS "obraCodigo", o.processo, o.orgao_solicitante AS "orgaoSolicitante", o.endereco, o.municipio, o.uf,
+            coalesce((SELECT jsonb_agg(jsonb_build_object('orcamentoId', v.id, 'titulo', v.titulo, 'regime', v.regime_versao, 'origem', coalesce(v.id = oc.versao_de_id, false),
+                        'revisaoId', (SELECT r2.id FROM orcamento_revisao r2 WHERE r2.orcamento_id = v.id ORDER BY r2.numero DESC LIMIT 1)) ORDER BY v.criado_em)
+                        FROM orcamento v WHERE v.id <> oc.id AND (v.id = oc.versao_de_id OR v.versao_de_id = oc.id OR (oc.versao_de_id IS NOT NULL AND v.versao_de_id = oc.versao_de_id))), '[]'::jsonb) AS versoes
        FROM orcamento oc JOIN obra o ON o.id = oc.obra_id WHERE oc.id = $1`,
     [r.orcamentoId],
   );
@@ -1219,6 +1226,93 @@ export async function duplicarOrcamento(ex: Executor, revisaoId: string, d: { ti
   return { orcamentoId, revisaoId: novaId };
 }
 
+export const REGIMES_DESONERACAO = { COM_DESONERACAO: "com desoneração", SEM_DESONERACAO: "sem desoneração" } as const;
+export type RegimeDesoneracao = keyof typeof REGIMES_DESONERACAO;
+
+/**
+ * Gera uma versão do orçamento em outro regime (com ou sem desoneração) para
+ * comparação: copia a revisão, troca o regime de todas as bases e reprecifica.
+ * Na EMOP a desoneração é expressa por códigos diferentes (ex.: 01.001.0001-0
+ * sem e 01.001.0001-A com): o item é trocado pelo código par que tem preço no
+ * novo regime. Item sem preço no novo regime fica com o preço anterior e
+ * pendência; itens com preço informado e próprios não mudam.
+ */
+export async function gerarVersaoRegime(ex: Executor, revisaoId: string, d: { regime: RegimeDesoneracao; titulo: string }, usuarioId: string) {
+  if (!(d.regime in REGIMES_DESONERACAO)) throw new ErroOrcamento("Regime inválido.");
+  const origem = await carregarRevisao(ex, revisaoId);
+  // novas bases padrão: mesmo mês, regime trocado (se a base publica esse regime)
+  const regimesDaBase = await ex.consulta<{ id: string; regimes: string[] }>(
+    `SELECT r.id, ARRAY(SELECT DISTINCT g.codigo FROM preco p JOIN regime g ON g.id = p.regime_id WHERE p.base_revisao_id = r.id) AS regimes
+       FROM base_revisao r WHERE r.id = ANY($1::uuid[])`, [origem.basesPadrao.map((b) => b.baseRevisaoId)],
+  );
+  const semRegime: string[] = [];
+  const bases = origem.basesPadrao.map((b) => {
+    const tem = regimesDaBase.find((x) => x.id === b.baseRevisaoId)?.regimes.includes(d.regime);
+    if (!tem) semRegime.push(b.fonte);
+    return { baseRevisaoId: b.baseRevisaoId, regime: tem ? d.regime : b.regime };
+  });
+  if (semRegime.length === bases.length) throw new ErroOrcamento(`Nenhuma base deste orçamento publica preços ${REGIMES_DESONERACAO[d.regime]}.`);
+  const nova = await duplicarOrcamento(ex, revisaoId, { titulo: d.titulo }, usuarioId);
+  try {
+    await ex.transacao([
+      { sql: `UPDATE orcamento SET versao_de_id = $2, regime_versao = $3, codigo = (SELECT codigo FROM orcamento WHERE id = $2) WHERE id = $1`, params: [nova.orcamentoId, origem.orcamento.id, d.regime] },
+      { sql: `UPDATE orcamento_revisao SET descricao = $2 WHERE id = $1`, params: [nova.revisaoId, `Versão ${REGIMES_DESONERACAO[d.regime]} de "${origem.orcamento.titulo}" (revisão ${origem.revisao.numero})`] },
+      ...comandosBasesPadrao(nova.revisaoId, bases),
+    ]);
+    // itens sem preço no novo regime: procura o código par (mesmo código sem o sufixo de regime) com preço
+    const ctx = await contextoDaRevisao(ex, nova.revisaoId);
+    const copia = await carregarRevisao(ex, nova.revisaoId);
+    const comRef = copia.itens.filter((i): i is LinhaItem & { itemReferenciaId: string } => !!i.itemReferenciaId && i.fonte !== "PROPRIA");
+    const precos = await precificar(ex, [...new Set(comRef.map((i) => i.itemReferenciaId))], ctx);
+    const semPreco = comRef.filter((i) => !precos.get(i.itemReferenciaId)?.valor && /-[0-9A-Z]$/.test(i.codigo));
+    let trocados = 0;
+    if (semPreco.length) {
+      const pares = await ex.consulta<{ original: string; id: string; codigo: string; descricao: string; unidade: string | null }>(
+        `SELECT q.original, ir.id, ir.codigo, v.descricao, v.unidade
+           FROM unnest($1::uuid[]) AS q(original)
+           JOIN item_referencia o ON o.id = q.original
+           JOIN item_referencia ir ON ir.fonte_id = o.fonte_id AND ir.id <> o.id AND ir.tipo = o.tipo
+                AND left(ir.codigo, length(ir.codigo) - 1) = left(o.codigo, length(o.codigo) - 1) AND ir.codigo ~ '-[0-9A-Z]$'
+           JOIN revisao_base_padrao rbp ON rbp.revisao_id = $2
+           JOIN base_revisao br ON br.id = rbp.base_revisao_id JOIN base_mensal b ON b.id = br.base_id AND b.fonte_id = o.fonte_id
+           JOIN LATERAL (SELECT iv.descricao, iv.unidade FROM item_versao iv WHERE iv.item_id = ir.id
+                          ORDER BY (EXISTS (SELECT 1 FROM preco p WHERE p.item_versao_id = iv.id AND p.base_revisao_id = br.id)) DESC LIMIT 1) v ON true
+          WHERE EXISTS (SELECT 1 FROM base_item bi WHERE bi.base_revisao_id = br.id AND bi.item_id = ir.id)`,
+        [[...new Set(semPreco.map((i) => i.itemReferenciaId))], nova.revisaoId],
+      );
+      const precosPares = await precificar(ex, [...new Set(pares.map((p) => p.id))], ctx);
+      const escolhido = new Map<string, (typeof pares)[number]>();
+      for (const p of pares) if (precosPares.get(p.id)?.valor && !escolhido.has(p.original)) escolhido.set(p.original, p);
+      const trocas = semPreco.flatMap((i) => {
+        const p = escolhido.get(i.itemReferenciaId);
+        return p ? [{ id: i.id, item: p.id, codigo: p.codigo, descricao: p.descricao, unidade: p.unidade ?? "" }] : [];
+      });
+      trocados = trocas.length;
+      if (trocas.length) {
+        await ex.transacao([
+          {
+            sql: `UPDATE item_orcamento i SET item_referencia_id = x.item, codigo = x.codigo, descricao = x.descricao, unidade = x.unidade, analitico = NULL
+                    FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, item uuid, codigo text, descricao text, unidade text) WHERE i.id = x.id`,
+            params: [json(trocas)],
+          },
+          comandoAuditoria({ usuarioId, acao: "ITENS_REGIME_TROCADOS", entidade: "orcamento_revisao", entidadeId: nova.revisaoId, depois: { trocas: trocas.map((t) => t.codigo) } }),
+        ]);
+      }
+    }
+    const v = (await dadosRevisao(ex, nova.revisaoId)).versao;
+    const rep = await reprecificarRevisao(ex, nova.revisaoId, v, usuarioId);
+    await ex.transacao([comandoAuditoria({ usuarioId, acao: "VERSAO_REGIME_GERADA", entidade: "orcamento", entidadeId: nova.orcamentoId, depois: { origem: revisaoId, regime: d.regime, trocados, pendentes: rep.pendentes, semRegime } })]);
+    return { ...nova, trocados, pendentes: rep.pendentes, semRegime };
+  } catch (e) {
+    // não deixa cópia pela metade
+    await ex.transacao([
+      { sql: `DELETE FROM orcamento_revisao WHERE orcamento_id = $1`, params: [nova.orcamentoId] },
+      { sql: `DELETE FROM orcamento WHERE id = $1`, params: [nova.orcamentoId] },
+    ]).catch(() => {});
+    throw e;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Cronograma físico-financeiro (percentual de cada etapa principal por mês)
 // ---------------------------------------------------------------------------
@@ -1284,6 +1378,8 @@ export async function salvarCronograma(ex: Executor, revisaoId: string, versao: 
 export interface LinhaComparacao {
   chave: string;
   codigo: string;
+  /** Código na revisão B, quando difere (versões em outro regime). */
+  codigoB?: string;
   fonte: string;
   descricao: string;
   unidade: string;
@@ -1296,7 +1392,9 @@ export interface LinhaComparacao {
 
 export async function compararRevisoes(ex: Executor, revisaoA: string, revisaoB: string) {
   const [ea, eb] = await Promise.all([carregarRevisao(ex, revisaoA), carregarRevisao(ex, revisaoB)]);
-  if (ea.orcamento.id !== eb.orcamento.id) throw new ErroOrcamento("As revisões devem ser do mesmo orçamento.");
+  // versões em outro regime (orçamentos ligados): os itens se correspondem pela posição (o código pode mudar, ex.: EMOP -0 ↔ -A)
+  const entreVersoes = ea.orcamento.id !== eb.orcamento.id;
+  if (entreVersoes && !ea.orcamento.versoes.some((v) => v.orcamentoId === eb.orcamento.id)) throw new ErroOrcamento("As revisões devem ser do mesmo orçamento (ou de versões ligadas dele).");
   const tituloEtapa = (e: EstadoRevisao, id: string) => {
     const et = e.etapas.find((x) => x.id === id);
     return et ? `${et.numero} ${et.titulo}` : "";
@@ -1305,7 +1403,7 @@ export async function compararRevisoes(ex: Executor, revisaoA: string, revisaoB:
   const chaves = (e: EstadoRevisao) => {
     const cont = new Map<string, number>();
     return e.itens.map((it) => {
-      const base = `${it.itemReferenciaId ?? `informado:${it.codigo}:${it.descricao}`}|${e.etapas.find((x) => x.id === it.etapaId)?.titulo ?? ""}`;
+      const base = entreVersoes ? `pos:${it.numero}` : `${it.itemReferenciaId ?? `informado:${it.codigo}:${it.descricao}`}|${e.etapas.find((x) => x.id === it.etapaId)?.titulo ?? ""}`;
       const n = (cont.get(base) ?? 0) + 1;
       cont.set(base, n);
       return { k: `${base}|${n}`, it, etapa: tituloEtapa(e, it.etapaId) };
@@ -1321,15 +1419,16 @@ export async function compararRevisoes(ex: Executor, revisaoA: string, revisaoB:
     const b = y ? val(y.it) : null;
     const dif = dec(b?.precoTotal ?? 0).minus(a.precoTotal);
     const igual = b && dec(a.quantidade).eq(b.quantidade) && dec(a.precoUnitario).eq(b.precoUnitario);
-    linhas.push({ chave: x.k, codigo: x.it.codigo, fonte: x.it.fonte, descricao: x.it.descricao, unidade: x.it.unidade, etapa: y?.etapa ?? x.etapa, a, b, diferenca: dif.toFixed(2), situacao: !b ? "EXCLUIDO" : igual ? "IGUAL" : "ALTERADO" });
+    linhas.push({ chave: x.k, codigo: x.it.codigo, codigoB: y && y.it.codigo !== x.it.codigo ? y.it.codigo : undefined, fonte: x.it.fonte, descricao: x.it.descricao, unidade: x.it.unidade, etapa: y?.etapa ?? x.etapa, a, b, diferenca: dif.toFixed(2), situacao: !b ? "EXCLUIDO" : igual ? "IGUAL" : "ALTERADO" });
   }
   for (const y of cb) {
     if (ca.some((x) => x.k === y.k)) continue;
     linhas.push({ chave: y.k, codigo: y.it.codigo, fonte: y.it.fonte, descricao: y.it.descricao, unidade: y.it.unidade, etapa: y.etapa, a: null, b: val(y.it), diferenca: dec(y.it.precoTotal).toFixed(2), situacao: "INCLUIDO" });
   }
   return {
-    a: { id: revisaoA, numero: ea.revisao.numero, status: ea.revisao.status, total: ea.totais.total, bases: ea.basesPadrao },
-    b: { id: revisaoB, numero: eb.revisao.numero, status: eb.revisao.status, total: eb.totais.total, bases: eb.basesPadrao },
+    entreVersoes,
+    a: { id: revisaoA, numero: ea.revisao.numero, status: ea.revisao.status, total: ea.totais.total, bases: ea.basesPadrao, titulo: ea.orcamento.titulo },
+    b: { id: revisaoB, numero: eb.revisao.numero, status: eb.revisao.status, total: eb.totais.total, bases: eb.basesPadrao, titulo: eb.orcamento.titulo },
     diferencaTotal: dec(eb.totais.total).minus(ea.totais.total).toFixed(2),
     linhas,
   };

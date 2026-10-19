@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  atualizarBdi, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  atualizarBdi, gerarVersaoRegime, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { montarRelatorio } from "@/lib/relatorios/montar";
@@ -434,6 +434,46 @@ describe("BDI do item: sem BDI ou percentual digitado", () => {
     await alterarItem(ex, n.revisaoId, e2.revisao.versao, e2.itens[1].id, { bdiPerfilId: null }, u);
     e2 = await carregarRevisao(ex, n.revisaoId);
     expect(e2.itens[1]).toMatchObject({ bdiInformado: false, bdiPerfilId: null, precoUnitario: "275.56" });
+  });
+});
+
+describe("versão com/sem desoneração", () => {
+  it("gera orçamento ligado no outro regime, troca o código EMOP pelo par e compara item a item", async () => {
+    const obra = await criarObra(ex, { nome: "Obra regimes" }, u);
+    const ret = (await prisma.orcamentoRevisao.findFirstOrThrow({ where: { orcamento: { titulo: "Reforma geral" } }, orderBy: { numero: "desc" } }));
+    const sinapi = (await prisma.revisaoBasePadrao.findFirstOrThrow({ where: { revisaoId: ret.id, baseRevisao: { base: { fonte: { codigo: "SINAPI" } } } } })).baseRevisaoId;
+    const o = await criarOrcamento(ex, { obraId: obra, codigo: "R-1", titulo: "Onerado", bases: [basesPadrao()[0], { baseRevisaoId: sinapi, regime: "SEM_DESONERACAO" }] }, u);
+    let v = 1;
+    const et = await criarEtapa(ex, o.revisaoId, v, { titulo: "Etapa única" }, u); v = et.versao;
+    let a = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "2", memoriaQuantitativo: "1 + 1" }, u); v = a.versao;
+    a = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("104658"), quantidade: "3" }, u); v = a.versao;
+    v = await alterarItem(ex, o.revisaoId, v, a.id, { bdiInformado: "5" }, u);
+    const antes = await carregarRevisao(ex, o.revisaoId);
+
+    const g = await gerarVersaoRegime(ex, o.revisaoId, { regime: "COM_DESONERACAO", titulo: "Desonerado" }, u);
+    expect(g).toMatchObject({ trocados: 1, pendentes: 0, semRegime: [] });
+    const nova = await carregarRevisao(ex, g.revisaoId);
+    expect(nova.basesPadrao.map((b) => b.regime)).toEqual(["COM_DESONERACAO", "COM_DESONERACAO"]);
+    expect(nova.itens.map((i) => [i.codigo, i.quantidade, i.memoriaQuantitativo, i.bdiInformado])).toEqual([
+      ["01.001.0001-A", "2.0000", "1 + 1", false], ["104658", "3.0000", null, true],
+    ]);
+    expect(nova.itens[0].custoUnitario).toBe("202.6900");
+    expect(nova.itens[0].referenciaPreco).toMatch(/Com desoneração/);
+    expect(nova.orcamento).toMatchObject({ codigo: "R-1", titulo: "Desonerado" });
+    // o original não muda
+    expect((await carregarRevisao(ex, o.revisaoId)).itens.map((i) => i.precoTotal)).toEqual(antes.itens.map((i) => i.precoTotal));
+    // ligação nos dois sentidos
+    expect(nova.orcamento.versoes).toMatchObject([{ orcamentoId: o.orcamentoId, origem: true, revisaoId: o.revisaoId }]);
+    expect((await carregarRevisao(ex, o.revisaoId)).orcamento.versoes).toMatchObject([{ orcamentoId: g.orcamentoId, origem: false, regime: "COM_DESONERACAO" }]);
+    // comparação entre as versões, pela posição do item
+    const c = await compararRevisoes(ex, o.revisaoId, g.revisaoId);
+    expect(c.entreVersoes).toBe(true);
+    expect(c.linhas.map((l) => [l.situacao, l.codigo, l.codigoB ?? null])).toEqual([["ALTERADO", "01.001.0001-0", "01.001.0001-A"], ["ALTERADO", "104658", null]]);
+    expect(c.diferencaTotal).toBe((Number(nova.totais.total) - Number(antes.totais.total)).toFixed(2));
+    // revisões de orçamentos não ligados continuam recusadas
+    const solto = await criarOrcamento(ex, { obraId: obra, titulo: "Solto", bases: [basesPadrao()[0]] }, u);
+    await expect(compararRevisoes(ex, o.revisaoId, solto.revisaoId)).rejects.toThrow(/mesmo orçamento/);
+    expect(await prisma.auditoria.count({ where: { acao: "VERSAO_REGIME_GERADA", entidadeId: g.orcamentoId } })).toBe(1);
   });
 });
 

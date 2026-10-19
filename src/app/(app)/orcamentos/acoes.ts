@@ -6,7 +6,7 @@ import { ErroPermissao, exigirPermissao, temPermissao, type Permissao } from "@/
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
-  adicionarItem, alterarItem, alterarObra, atualizarBdi, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
+  adicionarItem, alterarItem, alterarObra, atualizarBdi, gerarVersaoRegime, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
   excluirEtapa, excluirItem, excluirObra, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
@@ -26,7 +26,7 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, caminho?: strin
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
     // mensagens de regras do banco (imp_exigir / gatilhos) são seguras para exibir
-    const regra = /(alterado por outra pessoa|fechada|não pode ser|BDI não pode|percentual de BDI|BDI com no máximo|BDI grande|BDI foi alterado|tem orçamentos|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
+    const regra = /(alterado por outra pessoa|fechada|não pode ser|Nenhuma base deste|BDI não pode|percentual de BDI|BDI com no máximo|BDI grande|BDI foi alterado|tem orçamentos|preço informado|vem da base|não encontrad|publicada|Etapa)/i.test(msg) ? msg.replace(/^.*?ERROR:\s*/, "") : null;
     if (!regra) console.error(e);
     return { ok: false, erro: regra ?? "Não foi possível concluir a operação. Tente novamente." };
   }
@@ -171,4 +171,11 @@ export async function acaoExcluirObra(obraId: string) {
     const u = await exigirPermissao("ORCAMENTOS_EDITAR");
     await excluirObra(await executor(), uuid.parse(obraId), { id: usuarioId, administrador: temPermissao(u, "USUARIOS") });
   }, "/orcamentos");
+}
+
+/** Gera a versão do orçamento com ou sem desoneração (outro orçamento ligado, para comparação). */
+export async function acaoGerarVersaoRegime(revisaoId: string, regime: string, titulo: string) {
+  return executar((u) => executor().then((ex) => gerarVersaoRegime(ex, uuid.parse(revisaoId), {
+    regime: z.enum(["COM_DESONERACAO", "SEM_DESONERACAO"]).parse(regime), titulo: z.string().max(200).parse(titulo),
+  }, u)), "/orcamentos");
 }
