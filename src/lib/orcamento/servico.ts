@@ -57,6 +57,8 @@ export interface LinhaItem {
   custoUnitario: string;
   custoTotal: string;
   bdiPerfilId: string | null;
+  /** BDI digitado no item (inclusive 0%): não segue o global nem um perfil. */
+  bdiInformado: boolean;
   bdiPercentual: string;
   precoUnitario: string;
   precoTotal: string;
@@ -117,6 +119,16 @@ export function lerCustoInformado(texto: string): string {
   if (c.decimalPlaces() > 4) throw new ErroOrcamento("Custo unitário com no máximo 4 casas decimais.");
   if (c.gte("1e14")) throw new ErroOrcamento("Custo unitário grande demais.");
   return c.toString();
+}
+
+/** BDI digitado no item, em % (0 = sem BDI; até 4 casas). */
+export function lerBdiInformado(texto: string): string {
+  const b = lerNumero(texto.replace("%", ""));
+  if (!b) throw new ErroOrcamento("Informe o percentual de BDI (0 para sem BDI).");
+  if (b.isNegative()) throw new ErroOrcamento("BDI não pode ser negativo.");
+  if (b.decimalPlaces() > 4) throw new ErroOrcamento("BDI com no máximo 4 casas decimais.");
+  if (b.gte(1000)) throw new ErroOrcamento("BDI grande demais.");
+  return b.toString();
 }
 
 export const REFERENCIA_INFORMADO = "Preço informado pelo orçamentista";
@@ -455,7 +467,7 @@ export async function carregarRevisao(ex: Executor, revisaoId: string): Promise<
               i.base_revisao_id AS "baseRevisaoId",
               CASE WHEN i.base_revisao_id IS NULL THEN NULL ELSE f.codigo || ' ' || to_char(b.competencia, 'MM/YYYY') || CASE WHEN br.numero > 0 THEN ' ret.' || br.numero ELSE '' END END AS "baseRotulo",
               g.codigo AS regime, i.codigo, i.descricao, i.unidade, i.quantidade::text AS quantidade, i.custo_unitario::text AS "custoUnitario",
-              i.custo_total::text AS "custoTotal", i.bdi_perfil_id AS "bdiPerfilId", i.bdi_percentual::text AS "bdiPercentual",
+              i.custo_total::text AS "custoTotal", i.bdi_perfil_id AS "bdiPerfilId", i.bdi_informado AS "bdiInformado", i.bdi_percentual::text AS "bdiPercentual",
               i.preco_unitario::text AS "precoUnitario", i.preco_total::text AS "precoTotal", i.origem_preco AS "origemPreco",
               i.referencia_preco AS "referenciaPreco", i.pendencia, i.memoria_quantitativo AS "memoriaQuantitativo",
               i.memoria_calculo AS "memoriaCalculo", i.analitico
@@ -532,11 +544,11 @@ export async function atualizarBdi(ex: Executor, revisaoId: string, versao: numb
   const [rev] = await ex.consulta<{ bdi_perfil_id: string | null }>(`SELECT bdi_perfil_id FROM orcamento_revisao WHERE id = $1`, [revisaoId]);
   const perfis = new Map((await listarPerfis(ex)).map((p) => [p.id, p.bdiAplicado]));
   const global = rev.bdi_perfil_id ? perfis.get(rev.bdi_perfil_id) ?? r.bdi_percentual : r.bdi_percentual;
-  const itens = await ex.consulta<{ id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; unidade: string; referencia_preco: string | null }>(
-    `SELECT id, quantidade::text, custo_unitario::text, bdi_perfil_id, unidade, referencia_preco FROM item_orcamento WHERE revisao_id = $1`, [revisaoId],
+  const itens = await ex.consulta<{ id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_informado: boolean; bdi_percentual: string; unidade: string; referencia_preco: string | null }>(
+    `SELECT id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_informado, bdi_percentual::text, unidade, referencia_preco FROM item_orcamento WHERE revisao_id = $1`, [revisaoId],
   );
   const novos = itens.map((i) => {
-    const bdi = i.bdi_perfil_id ? perfis.get(i.bdi_perfil_id) ?? "0" : (global ?? "0");
+    const bdi = i.bdi_informado ? i.bdi_percentual : i.bdi_perfil_id ? perfis.get(i.bdi_perfil_id) ?? "0" : (global ?? "0");
     return { id: i.id, ...serializar(valoresDoItem({ quantidade: i.quantidade, custoReferencia: i.custo_unitario, bdi, modo: r.arredondamento, unidade: i.unidade, referencia: i.referencia_preco })) };
   });
   await ex.transacao([
@@ -577,11 +589,11 @@ export async function configurarRevisao(
   if (d.arredondamento) cmds.push({ sql: `UPDATE orcamento_revisao SET arredondamento = $2::"Arredondamento" WHERE id = $1`, params: [revisaoId, d.arredondamento] });
   // BDI global ou arredondamento mudaram: recalcula os itens afetados
   if (d.bdiPerfilId !== undefined || d.arredondamento) {
-    const itens = await ex.consulta<{ id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null }>(
-      `SELECT id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_percentual::text, unidade, referencia_preco FROM item_orcamento WHERE revisao_id = $1`, [revisaoId],
+    const itens = await ex.consulta<{ id: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_informado: boolean; bdi_percentual: string; unidade: string; referencia_preco: string | null }>(
+      `SELECT id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_informado, bdi_percentual::text, unidade, referencia_preco FROM item_orcamento WHERE revisao_id = $1`, [revisaoId],
     );
     const novos = itens.map((i) => {
-      const bdi = i.bdi_perfil_id ? i.bdi_percentual : (bdiGlobal ?? "0");
+      const bdi = i.bdi_perfil_id || i.bdi_informado ? i.bdi_percentual : (bdiGlobal ?? "0");
       return { id: i.id, ...serializar(valoresDoItem({ quantidade: i.quantidade, custoReferencia: i.custo_unitario, bdi, modo, unidade: i.unidade, referencia: i.referencia_preco })) };
     });
     if (novos.length) cmds.push(comandoAtualizarValores(novos));
@@ -745,11 +757,11 @@ export async function adicionarItem(
 
 export async function alterarItem(
   ex: Executor, revisaoId: string, versao: number, itemId: string,
-  d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string; custoInformado?: string },
+  d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; bdiInformado?: string; base?: { baseRevisaoId: string; regime: string | null } | null; etapaId?: string; custoInformado?: string },
   usuarioId: string,
 ) {
-  const [i] = await ex.consulta<{ id: string; item_referencia_id: string | null; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null; memoria_quantitativo: string | null }>(
-    `SELECT id, item_referencia_id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_percentual::text, unidade, referencia_preco, memoria_quantitativo FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
+  const [i] = await ex.consulta<{ id: string; item_referencia_id: string | null; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_informado: boolean; bdi_percentual: string; unidade: string; referencia_preco: string | null; memoria_quantitativo: string | null }>(
+    `SELECT id, item_referencia_id, quantidade::text, custo_unitario::text, bdi_perfil_id, bdi_informado, bdi_percentual::text, unidade, referencia_preco, memoria_quantitativo FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
     [itemId, revisaoId],
   );
   if (!i) throw new ErroOrcamento("Item não encontrado nesta revisão.");
@@ -766,11 +778,17 @@ export async function alterarItem(
     cmds.push({ sql: `UPDATE item_orcamento SET memoria_quantitativo = $2 WHERE id = $1`, params: [itemId, memoriaQtd] });
   }
   let perfil = i.bdi_perfil_id;
-  let bdi = i.bdi_perfil_id ? i.bdi_percentual : (r.bdi_percentual ?? "0");
+  let bdi = i.bdi_perfil_id || i.bdi_informado ? i.bdi_percentual : (r.bdi_percentual ?? "0");
+  if (d.bdiPerfilId !== undefined && d.bdiInformado !== undefined) throw new ErroOrcamento("Escolha um perfil de BDI ou informe o percentual, não os dois.");
   if (d.bdiPerfilId !== undefined) {
     perfil = d.bdiPerfilId;
     bdi = (await bdiAplicavel(ex, r.bdi_percentual, perfil)).toString();
-    cmds.push({ sql: `UPDATE item_orcamento SET bdi_perfil_id = $2 WHERE id = $1`, params: [itemId, perfil] });
+    cmds.push({ sql: `UPDATE item_orcamento SET bdi_perfil_id = $2, bdi_informado = false WHERE id = $1`, params: [itemId, perfil] });
+  }
+  if (d.bdiInformado !== undefined) {
+    perfil = null;
+    bdi = lerBdiInformado(d.bdiInformado);
+    cmds.push({ sql: `UPDATE item_orcamento SET bdi_perfil_id = NULL, bdi_informado = true WHERE id = $1`, params: [itemId] });
   }
   let custo = i.custo_unitario;
   let referencia = i.referencia_preco;
@@ -810,8 +828,8 @@ export async function alterarItem(
  * revisão para a fonte do novo código.
  */
 export async function trocarItem(ex: Executor, revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string, usuarioId: string) {
-  const [i] = await ex.consulta<{ item_referencia_id: string | null; codigo: string; unidade: string; quantidade: string; bdi_perfil_id: string | null; bdi_percentual: string }>(
-    `SELECT item_referencia_id, codigo, unidade, quantidade::text, bdi_perfil_id, bdi_percentual::text FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
+  const [i] = await ex.consulta<{ item_referencia_id: string | null; codigo: string; unidade: string; quantidade: string; bdi_perfil_id: string | null; bdi_informado: boolean; bdi_percentual: string }>(
+    `SELECT item_referencia_id, codigo, unidade, quantidade::text, bdi_perfil_id, bdi_informado, bdi_percentual::text FROM item_orcamento WHERE id = $1 AND revisao_id = $2`,
     [itemId, revisaoId],
   );
   if (!i) throw new ErroOrcamento("Item não encontrado nesta revisão.");
@@ -821,7 +839,7 @@ export async function trocarItem(ex: Executor, revisaoId: string, versao: number
   if (!preco.valor) throw new ErroOrcamento(`O novo código não pode ser orçado nas bases/regimes desta revisão: ${preco.pendencia ?? "sem preço"}`);
   const cab = await cabecalhoItem(ex, novoItemReferenciaId, base?.baseRevisaoId);
   if (!cab) throw new ErroOrcamento("Item não encontrado.");
-  const bdi = i.bdi_perfil_id ? i.bdi_percentual : (r.bdi_percentual ?? "0");
+  const bdi = i.bdi_perfil_id || i.bdi_informado ? i.bdi_percentual : (r.bdi_percentual ?? "0");
   const v = valoresDoItem({ quantidade: i.quantidade, custoReferencia: arredondar(preco.valor, 4), bdi, modo: r.arredondamento, unidade: cab.unidade ?? "", referencia: preco.referencia });
   await ex.transacao([
     ...travarEdicao(revisaoId, versao),
@@ -869,11 +887,11 @@ export async function moverItem(ex: Executor, revisaoId: string, versao: number,
 // Reprecificação (bases padrão) — usada também na atualização de competência
 // ---------------------------------------------------------------------------
 
-interface ItemParaPrecificar { id: string; item_referencia_id: string; fonte: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_percentual: string; unidade: string; referencia_preco: string | null }
+interface ItemParaPrecificar { id: string; item_referencia_id: string; fonte: string; quantidade: string; custo_unitario: string; bdi_perfil_id: string | null; bdi_informado: boolean; bdi_percentual: string; unidade: string; referencia_preco: string | null }
 
 async function comandosReprecificar(ex: Executor, revisaoId: string, ctx: ContextoPreco, bdiGlobal: string | null, modo: ModoArredondamento, fontes: string[] | null) {
   const itens = await ex.consulta<ItemParaPrecificar>(
-    `SELECT i.id, i.item_referencia_id, f.codigo AS fonte, i.quantidade::text, i.custo_unitario::text, i.bdi_perfil_id, i.bdi_percentual::text, i.unidade, i.referencia_preco
+    `SELECT i.id, i.item_referencia_id, f.codigo AS fonte, i.quantidade::text, i.custo_unitario::text, i.bdi_perfil_id, i.bdi_informado, i.bdi_percentual::text, i.unidade, i.referencia_preco
        FROM item_orcamento i JOIN item_referencia ir ON ir.id = i.item_referencia_id JOIN fonte f ON f.id = ir.fonte_id WHERE i.revisao_id = $1`,
     [revisaoId],
   );
@@ -888,7 +906,7 @@ async function comandosReprecificar(ex: Executor, revisaoId: string, ctx: Contex
       continue;
     }
     const base = i.fonte === "PROPRIA" ? null : ctx.bases.find((b) => b.fonte === i.fonte) ?? null;
-    const bdi = i.bdi_perfil_id ? i.bdi_percentual : (bdiGlobal ?? "0");
+    const bdi = i.bdi_perfil_id || i.bdi_informado ? i.bdi_percentual : (bdiGlobal ?? "0");
     const v = valoresDoItem({ quantidade: i.quantidade, custoReferencia: arredondar(p.valor, 4), bdi, modo, unidade: i.unidade, referencia: p.referencia });
     atualizados.push({ id: i.id, base: base?.baseRevisaoId ?? null, regime: base?.regime ?? null, origem: p.origem, referencia: p.referencia, ...serializar(v) });
   }
@@ -1113,9 +1131,9 @@ function comandosCopiar(origemId: string, destinoId: string): Comando[] {
     },
     {
       sql: `INSERT INTO item_orcamento (revisao_id, etapa_id, ordem, item_referencia_id, base_revisao_id, regime_id, codigo, descricao, unidade, quantidade,
-                                        custo_unitario, bdi_perfil_id, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, pendencia, memoria_calculo, memoria_quantitativo)
+                                        custo_unitario, bdi_perfil_id, bdi_informado, bdi_percentual, preco_unitario, preco_total, custo_total, origem_preco, referencia_preco, pendencia, memoria_calculo, memoria_quantitativo)
             SELECT $2, m.novo, i.ordem, i.item_referencia_id, i.base_revisao_id, i.regime_id, i.codigo, i.descricao, i.unidade, i.quantidade,
-                   i.custo_unitario, i.bdi_perfil_id, i.bdi_percentual, i.preco_unitario, i.preco_total, i.custo_total, i.origem_preco, i.referencia_preco, i.pendencia, i.memoria_calculo, i.memoria_quantitativo
+                   i.custo_unitario, i.bdi_perfil_id, i.bdi_informado, i.bdi_percentual, i.preco_unitario, i.preco_total, i.custo_total, i.origem_preco, i.referencia_preco, i.pendencia, i.memoria_calculo, i.memoria_quantitativo
               FROM item_orcamento i JOIN tmp_mapa_etapa m ON m.antigo = i.etapa_id WHERE i.revisao_id = $1`,
       params: [origemId, destinoId],
     },

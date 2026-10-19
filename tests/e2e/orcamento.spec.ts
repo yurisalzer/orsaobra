@@ -403,4 +403,16 @@ test("perfil de BDI editado depois de aplicado: aviso no orçamento e “Atualiz
   await expect(page.getByText("BDI atualizado e itens recalculados.")).toBeVisible();
   await expect(aviso).toHaveCount(0);
   await expect(page.getByText("R$ 237,41").first()).toBeVisible(); // 211,97 × 1,12
+
+  // BDI do item: sem BDI e percentual digitado
+  await page.getByLabel("BDI 1.1").selectOption({ label: "Sem BDI (0%)" });
+  await expect(page.getByLabel("BDI 1.1")).toHaveValue("__zero");
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 211,97");
+  await page.getByLabel("BDI 1.1").selectOption({ label: "Informar percentual…" });
+  await page.getByLabel("BDI informado 1.1 (%)").fill("5");
+  await page.getByLabel("BDI informado 1.1 (%)").press("Enter");
+  await expect(page.getByLabel("BDI 1.1")).toHaveValue("__informado");
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 222,57"); // 211,97 × 1,05
+  await page.getByLabel("BDI 1.1").selectOption({ label: "Global (12,00%)" });
+  await expect(page.getByRole("row", { name: /01\.001\.0001-0/ })).toContainText("R$ 237,41");
 });

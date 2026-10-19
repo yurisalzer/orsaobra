@@ -145,13 +145,10 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios }: { 
           </td>
           <td className="text-xs">
             {aberta ? (
-              <select value={i.bdiPerfilId ?? ""} aria-label={`BDI ${i.numero}`} className="max-w-[9rem] rounded border border-slate-300 px-1 py-0.5"
-                onChange={(ev) => rodar(() => acaoAlterarItem(r.id, versao, i.id, { bdiPerfilId: ev.target.value || null }))}>
-                <option value="">Global ({pct(r.bdiPercentual ?? "0")})</option>
-                {perfis.map((p) => <option key={p.id} value={p.id}>{p.nome} ({pct(p.bdi)})</option>)}
-              </select>
+              <BdiDoItem item={i} perfis={perfis} bdiGlobal={r.bdiPercentual ?? "0"}
+                aoEscolher={(d) => rodar(() => acaoAlterarItem(r.id, versao, i.id, d))} />
             ) : pct(i.bdiPercentual)}
-            {aberta && i.bdiPerfilId && <div className="text-slate-500">{pct(i.bdiPercentual)}</div>}
+            {aberta && (i.bdiPerfilId || (i.bdiInformado && !dec(i.bdiPercentual).isZero())) && <div className="text-slate-500">{pct(i.bdiPercentual)}</div>}
           </td>
           <td className="num text-sm">{formatarMoeda(i.precoUnitario)}</td>
           <td className="num text-sm font-medium">{formatarMoeda(i.precoTotal)}</td>
@@ -283,6 +280,40 @@ function Total({ rotulo, valor, destaque }: { rotulo: string; valor: string; des
       <p className="text-xs text-slate-500">{rotulo}</p>
       <p className={`mt-1 font-semibold ${destaque ? "text-xl text-marca-900" : "text-lg"}`}>{valor}</p>
     </div>
+  );
+}
+
+/** BDI do item: global, um perfil cadastrado, sem BDI (0%) ou percentual digitado. */
+function BdiDoItem({ item, perfis, bdiGlobal, aoEscolher }: { item: LinhaItem; perfis: Perfil[]; bdiGlobal: string; aoEscolher: (d: { bdiPerfilId: string | null } | { bdiInformado: string }) => void }) {
+  const zero = item.bdiInformado && dec(item.bdiPercentual).isZero();
+  const atual = item.bdiPerfilId ?? (zero ? "__zero" : item.bdiInformado ? "__informado" : "");
+  const [digitando, setDigitando] = useState(false);
+  const [texto, setTexto] = useState("");
+  if (digitando) {
+    return (
+      <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); if (texto.trim()) { aoEscolher({ bdiInformado: texto }); setDigitando(false); } }}>
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} inputMode="decimal" autoFocus aria-label={`BDI informado ${item.numero} (%)`}
+          onKeyDown={(e) => { if (e.key === "Escape") setDigitando(false); }} className="w-16 rounded border border-slate-300 px-1 py-0.5 text-right" />
+        <span>%</span>
+        <button type="submit" className="text-marca-700 underline">ok</button>
+      </form>
+    );
+  }
+  return (
+    <select value={atual} aria-label={`BDI ${item.numero}`} className="max-w-[9rem] rounded border border-slate-300 px-1 py-0.5"
+      onChange={(ev) => {
+        const v = ev.target.value;
+        if (v === "__informar") { setTexto(item.bdiInformado ? formatarNumero(item.bdiPercentual, 2) : ""); setDigitando(true); return; }
+        if (v === "__zero") return aoEscolher({ bdiInformado: "0" });
+        if (v === "__informado") return;
+        aoEscolher({ bdiPerfilId: v || null });
+      }}>
+      <option value="">Global ({pct(bdiGlobal)})</option>
+      {perfis.map((p) => <option key={p.id} value={p.id}>{p.nome} ({pct(p.bdi)})</option>)}
+      <option value="__zero">Sem BDI (0%)</option>
+      {item.bdiInformado && !zero && <option value="__informado">Informado ({pct(item.bdiPercentual)})</option>}
+      <option value="__informar">Informar percentual…</option>
+    </select>
   );
 }
 

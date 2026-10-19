@@ -399,3 +399,41 @@ describe("perfil de BDI alterado depois de aplicado", () => {
   });
 });
 
+describe("BDI do item: sem BDI ou percentual digitado", () => {
+  it("zera ou informa o BDI do item; o global e o Atualizar BDI não mexem nele; perfil volta a valer ao escolher", async () => {
+    const global = await salvarPerfil(ex, { nome: "Global vinte", percentualInformado: "20", parcelas: [] }, u);
+    const obra = await criarObra(ex, { nome: "Obra BDI item" }, u);
+    const o = await criarOrcamento(ex, { obraId: obra, titulo: "BDI por item", bases: [basesPadrao()[0]], bdiPerfilId: global }, u);
+    let v = 1;
+    const et = await criarEtapa(ex, o.revisaoId, v, { titulo: "Etapa única" }, u); v = et.versao;
+    const ids: string[] = [];
+    for (let k = 0; k < 3; k++) { const a = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "1" }, u); v = a.versao; ids.push(a.id); }
+    v = await alterarItem(ex, o.revisaoId, v, ids[1], { bdiInformado: "0" }, u);
+    v = await alterarItem(ex, o.revisaoId, v, ids[2], { bdiInformado: "7,5" }, u);
+    await expect(alterarItem(ex, o.revisaoId, v, ids[2], { bdiInformado: "-1" }, u)).rejects.toThrow(/negativo/);
+    await expect(alterarItem(ex, o.revisaoId, v, ids[2], { bdiInformado: "abc" }, u)).rejects.toThrow(/Informe o percentual/);
+    let e = await carregarRevisao(ex, o.revisaoId);
+    // 211,97 × 1,20 = 254,36; × 1 = 211,97; × 1,075 = 227,867… → 227,87
+    expect(e.itens.map((i) => [i.precoUnitario, i.bdiInformado])).toEqual([["254.36", false], ["211.97", true], ["227.87", true]]);
+    // trocar o BDI global não altera os itens com BDI digitado
+    const outro = await salvarPerfil(ex, { nome: "Global trinta", percentualInformado: "30", parcelas: [] }, u);
+    v = await configurarRevisao(ex, o.revisaoId, v, { bdiPerfilId: outro }, u);
+    v = await atualizarBdi(ex, o.revisaoId, v, u);
+    e = await carregarRevisao(ex, o.revisaoId);
+    expect(e.itens.map((i) => i.precoUnitario)).toEqual(["275.56", "211.97", "227.87"]);
+    expect(e.divergenciasBdi).toEqual([]);
+    // relatório de BDI lista os itens com BDI informado
+    const rel = JSON.stringify(await montarRelatorio(ex, o.revisaoId, "bdi", { emitidoPor: "Teste", agora: new Date() }));
+    expect(rel).toContain("Itens com BDI informado no item");
+    // nova revisão copia o BDI digitado
+    await fecharRevisao(ex, o.revisaoId, v, u);
+    const n = await novaRevisao(ex, o.revisaoId, { descricao: "R2" }, u);
+    let e2 = await carregarRevisao(ex, n.revisaoId);
+    expect(e2.itens.map((i) => [i.bdiInformado, i.bdiPercentual])).toEqual([[false, "30.000000"], [true, "0.000000"], [true, "7.500000"]]);
+    // voltar ao global
+    await alterarItem(ex, n.revisaoId, e2.revisao.versao, e2.itens[1].id, { bdiPerfilId: null }, u);
+    e2 = await carregarRevisao(ex, n.revisaoId);
+    expect(e2.itens[1]).toMatchObject({ bdiInformado: false, bdiPerfilId: null, precoUnitario: "275.56" });
+  });
+});
+

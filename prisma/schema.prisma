@@ -719,6 +719,7 @@ model ItemOrcamento {
   custoUnitario       Decimal @map("custo_unitario") @db.Decimal(18, 4) // snapshot do custo de referência
   bdiPerfilId         String? @map("bdi_perfil_id") @db.Uuid // BDI individual (ex.: diferenciado)
   bdiPercentual       Decimal @map("bdi_percentual") @db.Decimal(9, 6) // BDI efetivamente aplicado
+  bdiInformado        Boolean @default(false) @map("bdi_informado") // BDI digitado no item (ex.: 0%), sem perfil
   precoUnitario       Decimal @map("preco_unitario") @db.Decimal(18, 2)
   precoTotal          Decimal @map("preco_total") @db.Decimal(18, 2)
   custoTotal          Decimal @default(0) @map("custo_total") @db.Decimal(18, 2) // quantidade × custo unitário (sem BDI)

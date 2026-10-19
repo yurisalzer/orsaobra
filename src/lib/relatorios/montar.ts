@@ -80,13 +80,15 @@ async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tip
   const idsPerfis = [...new Set([r.bdiPerfilId, ...estado.itens.map((i) => i.bdiPerfilId)].filter((x): x is string => !!x))];
   const nomesPerfis = new Map((snapBdi?.bdi ?? (idsPerfis.length ? await ex.consulta<{ id: string; nome: string }>(`SELECT id, nome FROM bdi_perfil WHERE id = ANY($1::uuid[])`, [idsPerfis]) : [])).map((p) => [p.id, p.nome]));
   const bdis: string[] = [];
-  if (!estado.itens.length || estado.itens.some((i) => !i.bdiPerfilId)) {
+  if (!estado.itens.length || estado.itens.some((i) => !i.bdiPerfilId && !i.bdiInformado)) {
     bdis.push(r.bdiPercentual ? `${fmtPct(r.bdiPercentual)}${r.bdiPerfilId && nomesPerfis.get(r.bdiPerfilId) ? ` (${nomesPerfis.get(r.bdiPerfilId)})` : ""}${idsPerfis.some((id) => id !== r.bdiPerfilId) ? " global" : ""}` : "sem BDI");
   }
   for (const id of idsPerfis) {
     const pcts = [...new Set(estado.itens.filter((i) => i.bdiPerfilId === id).map((i) => fmtPct(i.bdiPercentual)))];
     if (pcts.length) bdis.push(`${pcts.join(" / ")} (${nomesPerfis.get(id) ?? "perfil"})`);
   }
+  const informados = [...new Set(estado.itens.filter((i) => i.bdiInformado).map((i) => fmtPct(i.bdiPercentual)))];
+  if (informados.length) bdis.push(`${informados.join(" / ")} (informado no item)`);
   const par = (rotulo: string, valor: string | null | undefined) => (valor ? [{ rotulo, valor }] : []);
   const identificacao = [
     [...par("Obra", obra.codigo ?? obra.nome), ...par("Processo", obra.processo), ...par("Órgão solicitante", obra.orgaoSolicitante)],
@@ -429,13 +431,15 @@ async function bdi(c: Contexto): Promise<Documento> {
   const [snap] = await c.ex.consulta<{ bdi: PerfilSnap[] | null }>(`SELECT bdi_snapshot AS bdi FROM orcamento_revisao WHERE id = $1`, [e.revisao.id]);
   const perfis: PerfilSnap[] = snap?.bdi ?? (c.fechada ? (await listarPerfis(c.ex)).filter((p) => p.id === e.revisao.bdiPerfilId || e.itens.some((i) => i.bdiPerfilId === p.id)) : await perfisDaRevisao(c.ex, e.revisao.id));
   const secoes: Secao[] = [];
-  const usoGlobal = e.itens.filter((i) => !i.bdiPerfilId);
+  const usoGlobal = e.itens.filter((i) => !i.bdiPerfilId && !i.bdiInformado);
+  const informados = e.itens.filter((i) => i.bdiInformado);
   secoes.push({
     titulo: "BDI aplicado no orçamento",
     campos: [
       { rotulo: "BDI global", valor: e.revisao.bdiPercentual ? `${fmtPct(e.revisao.bdiPercentual)}${e.revisao.bdiPerfilId ? ` — perfil "${perfis.find((p) => p.id === e.revisao.bdiPerfilId)?.nome ?? "?"}"` : ""}` : "sem BDI (somente custo direto)" },
       { rotulo: "Itens com BDI global", valor: usoGlobal.length ? usoGlobal.map((i) => i.numero).join(", ") : "nenhum" },
       ...perfis.filter((p) => e.itens.some((i) => i.bdiPerfilId === p.id)).map((p) => ({ rotulo: `Itens com BDI "${p.nome}"`, valor: e.itens.filter((i) => i.bdiPerfilId === p.id).map((i) => i.numero).join(", ") })),
+      ...(informados.length ? [{ rotulo: "Itens com BDI informado no item", valor: informados.map((i) => `${i.numero} (${fmtPct(i.bdiPercentual)})`).join(", ") }] : []),
       { rotulo: "Valor do BDI no orçamento", valor: fmtMoeda(e.totais.bdi) },
     ],
   });
