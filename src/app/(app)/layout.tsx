@@ -13,6 +13,7 @@ const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
   { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
   { href: "/importacao", rotulo: "Importação", permissao: "IMPORTACAO" },
   { href: "/usuarios", rotulo: "Usuários", permissao: "USUARIOS" },
+  { href: "/contato", rotulo: "Contato" },
 ];
 
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {

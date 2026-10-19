@@ -17,6 +17,8 @@ export interface Email {
   /** Por que o e-mail foi gerado (CONFIRMACAO, NOVO_CADASTRO, ACESSO_LIBERADO…). */
   motivo: string;
   usuarioId?: string | null;
+  /** Endereço para a resposta (ex.: o e-mail de quem preencheu o formulário de contato). */
+  responderPara?: string | null;
 }
 
 export type StatusEnvio = "ENVIADO" | "FALHOU" | "NAO_CONFIGURADO";
@@ -44,7 +46,7 @@ export async function enviarEmail(ex: Executor, e: Email): Promise<StatusEnvio> 
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: process.env.EMAIL_REMETENTE, to: [e.para], subject: e.assunto, text: e.texto, html }),
+        body: JSON.stringify({ from: process.env.EMAIL_REMETENTE, to: [e.para], subject: e.assunto, text: e.texto, html, ...(e.responderPara ? { reply_to: e.responderPara } : {}) }),
       });
       const corpo = (await r.json().catch(() => ({}))) as { id?: string; message?: string };
       if (r.ok) { status = "ENVIADO"; idProvedor = corpo.id ?? null; }
