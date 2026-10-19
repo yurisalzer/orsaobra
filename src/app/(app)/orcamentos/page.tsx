@@ -65,7 +65,7 @@ export default async function Orcamentos({ searchParams }: { searchParams: Promi
                   <td className="text-slate-600">{l.criadoPor ?? "—"}</td>
                   {editor && (
                     <td className="whitespace-nowrap text-right">
-                      {podeExcluirOrcamento(l, quem) && <ExcluirOrcamento orcamentoId={l.orcamentoId!} titulo={l.titulo ?? ""} />}
+                      {podeExcluirOrcamento(l, quem) && <ExcluirOrcamento orcamentoId={l.orcamentoId!} titulo={l.titulo ?? ""} temFechada={!l.emElaboracao} />}
                     </td>
                   )}
                 </tr>

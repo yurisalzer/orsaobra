@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  atualizarBdi, gerarVersaoRegime, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  atualizarBdi, desbloquearRevisao, gerarVersaoRegime, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { montarRelatorio } from "@/lib/relatorios/montar";
@@ -297,16 +297,15 @@ describe("pesquisar e excluir orçamentos", () => {
     expect((await listarOrcamentos(ex, "")).length).toBe((await listarOrcamentos(ex)).length);
   });
 
-  it("só quem criou (ou o administrador) exclui, e só em elaboração", async () => {
+  it("só quem criou (ou o administrador) exclui", async () => {
     const copia = await linha("Reforma geral — cópia");
     const original = await linha("Reforma geral");
     expect(copia).toMatchObject({ criadoPorId: u, emElaboracao: true });
     expect(original.emElaboracao).toBe(false);
     expect(podeExcluirOrcamento(copia, { id: outro, administrador: false })).toBe(false);
     expect(podeExcluirOrcamento(copia, { id: outro, administrador: true })).toBe(true);
-    expect(podeExcluirOrcamento(original, { id: u, administrador: true })).toBe(false);
+    expect(podeExcluirOrcamento(original, { id: u, administrador: true })).toBe(true); // com revisão fechada também
     await expect(excluirOrcamento(ex, copia.orcamentoId!, { id: outro, administrador: false })).rejects.toThrow(/Só quem criou/);
-    await expect(excluirOrcamento(ex, original.orcamentoId!, { id: u, administrador: true })).rejects.toThrow(/revisão fechada/);
 
     // orçamento do outro usuário, com etapas, itens e cronograma: o administrador exclui
     const obra = (await prisma.orcamento.findUniqueOrThrow({ where: { id: original.orcamentoId! } })).obraId;
@@ -474,6 +473,44 @@ describe("versão com/sem desoneração", () => {
     const solto = await criarOrcamento(ex, { obraId: obra, titulo: "Solto", bases: [basesPadrao()[0]] }, u);
     await expect(compararRevisoes(ex, o.revisaoId, solto.revisaoId)).rejects.toThrow(/mesmo orçamento/);
     expect(await prisma.auditoria.count({ where: { acao: "VERSAO_REGIME_GERADA", entidadeId: g.orcamentoId } })).toBe(1);
+  });
+});
+
+describe("desbloquear revisão fechada e excluir orçamento fechado", () => {
+  it("criador ou administrador desbloqueia a última revisão fechada; depois exclui o orçamento com revisões fechadas", async () => {
+    const outro2 = (await prisma.usuario.create({ data: { email: "terceiro.orc@t.com", nome: "Terceiro", senhaHash: "x" } })).id;
+    const obra = await criarObra(ex, { nome: "Obra desbloqueio" }, u);
+    const o = await criarOrcamento(ex, { obraId: obra, titulo: "Fechado e reaberto", bases: [basesPadrao()[0]] }, u);
+    let v = 1;
+    const et = await criarEtapa(ex, o.revisaoId, v, { titulo: "Etapa única" }, u); v = et.versao;
+    const a = await adicionarItem(ex, o.revisaoId, v, { etapaId: et.id, itemReferenciaId: await idDe("01.001.0001-0"), quantidade: "2" }, u); v = a.versao;
+    await fecharRevisao(ex, o.revisaoId, v, u);
+    // o banco continua barrando alteração direta em revisão fechada
+    await expect(prisma.itemOrcamento.update({ where: { id: a.id }, data: { quantidade: 5 } })).rejects.toThrow(/fechada/);
+    await expect(desbloquearRevisao(ex, o.revisaoId, { id: outro2, administrador: false })).rejects.toThrow(/Só quem criou/);
+    const n = await novaRevisao(ex, o.revisaoId, { descricao: "R2" }, u);
+    await expect(desbloquearRevisao(ex, o.revisaoId, { id: u, administrador: false })).rejects.toThrow(/Só a última revisão|Já existe uma revisão/);
+    const e2 = await carregarRevisao(ex, n.revisaoId);
+    await fecharRevisao(ex, n.revisaoId, e2.revisao.versao, u);
+    // o administrador desbloqueia a revisão 2
+    await desbloquearRevisao(ex, n.revisaoId, { id: outro2, administrador: true });
+    const r2 = await prisma.orcamentoRevisao.findUniqueOrThrow({ where: { id: n.revisaoId } });
+    expect(r2).toMatchObject({ status: "EM_ELABORACAO", fechadaEm: null, totalGeral: null, obraSnapshot: null });
+    await expect(desbloquearRevisao(ex, n.revisaoId, { id: u, administrador: false })).rejects.toThrow(/já está em elaboração/);
+    // editável de novo
+    const e3 = await carregarRevisao(ex, n.revisaoId);
+    await alterarItem(ex, n.revisaoId, e3.revisao.versao, e3.itens[0].id, { quantidade: "3" }, u);
+    expect((await carregarRevisao(ex, n.revisaoId)).itens[0].quantidade).toBe("3.0000");
+    // a revisão 1 continua fechada e imutável
+    expect((await prisma.orcamentoRevisao.findUniqueOrThrow({ where: { id: o.revisaoId } })).status).toBe("FECHADA");
+    await expect(prisma.orcamentoRevisao.delete({ where: { id: o.revisaoId } })).rejects.toThrow(/fechada/);
+    expect(await prisma.auditoria.count({ where: { acao: "REVISAO_DESBLOQUEADA", entidadeId: n.revisaoId, usuarioId: outro2 } })).toBe(1);
+    // exclusão do orçamento com revisão fechada: só criador/administrador
+    await expect(excluirOrcamento(ex, o.orcamentoId, { id: outro2, administrador: false })).rejects.toThrow(/Só quem criou/);
+    await excluirOrcamento(ex, o.orcamentoId, { id: u, administrador: false });
+    expect(await prisma.orcamento.findUnique({ where: { id: o.orcamentoId } })).toBeNull();
+    expect(await prisma.orcamentoRevisao.count({ where: { orcamentoId: o.orcamentoId } })).toBe(0);
+    expect(await prisma.auditoria.findFirstOrThrow({ where: { acao: "ORCAMENTO_EXCLUIDO", entidadeId: o.orcamentoId } })).toMatchObject({ antes: { tinhaRevisaoFechada: true, revisoes: 2 } });
   });
 });
 

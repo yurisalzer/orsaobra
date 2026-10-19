@@ -16,7 +16,12 @@ export default async function PaginaRevisao({ params }: { params: Promise<{ id: 
   const ex = await executor();
   const estado = await carregarRevisao(ex, id).catch((e) => { if (e instanceof ErroOrcamento) return null; throw e; });
   if (!estado) notFound();
-  const [perfis, bases] = await Promise.all([listarPerfis(ex, true), basesDisponiveis(ex)]);
+  const [perfis, bases, [criador]] = await Promise.all([
+    listarPerfis(ex, true), basesDisponiveis(ex),
+    ex.consulta<{ id: string | null }>(`SELECT criado_por_id AS id FROM orcamento_revisao WHERE orcamento_id = $1 ORDER BY numero LIMIT 1`, [estado.orcamento.id]),
+  ]);
+  // criador do orçamento ou administrador: desbloquear revisão fechada e excluir o orçamento
+  const dono = temPermissao(u, "ORCAMENTOS_EDITAR") && (temPermissao(u, "USUARIOS") || criador?.id === u.id);
   return (
     <Editor
       estado={estado}
@@ -24,6 +29,7 @@ export default async function PaginaRevisao({ params }: { params: Promise<{ id: 
       bases={bases.filter((b) => b.publicada).map((b) => ({ revisaoId: b.revisaoId, fonte: b.fonte, rotulo: rotuloBase(b), regimes: b.regimes }))}
       podeEditar={temPermissao(u, "ORCAMENTOS_EDITAR")}
       podeRelatorios={temPermissao(u, "RELATORIOS")}
+      podeGerenciar={dono}
     />
   );
 }

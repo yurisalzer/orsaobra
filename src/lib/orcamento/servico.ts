@@ -404,14 +404,56 @@ export async function excluirObra(ex: Executor, obraId: string, u: { id: string;
   ]);
 }
 
-/** Regra de exclusão: só em elaboração (nenhuma revisão fechada), pelo criador ou pelo administrador. */
-export function podeExcluirOrcamento(o: { criadoPorId: string | null; emElaboracao: boolean }, u: { id: string; administrador: boolean }): boolean {
-  return o.emElaboracao && (u.administrador || o.criadoPorId === u.id);
+/** Excluir o orçamento (mesmo com revisão fechada) ou desbloquear revisão fechada: quem o criou ou o administrador. */
+export function podeExcluirOrcamento(o: { criadoPorId: string | null }, u: { id: string; administrador: boolean }): boolean {
+  return u.administrador || o.criadoPorId === u.id;
+}
+
+/** Libera, só nesta transação, a alteração de revisões fechadas (gatilhos do banco). */
+const LIBERAR_FECHADA: Comando = { sql: `SELECT set_config('orcamento.liberar_fechada', 'on', true)` };
+
+/** Quem criou o orçamento (autor da revisão 1). */
+async function criadorDoOrcamento(ex: Executor, orcamentoId: string) {
+  const [r] = await ex.consulta<{ criado_por_id: string | null }>(
+    `SELECT criado_por_id FROM orcamento_revisao WHERE orcamento_id = $1 ORDER BY numero LIMIT 1`, [orcamentoId],
+  );
+  return r?.criado_por_id ?? null;
 }
 
 /**
- * Exclui o orçamento com todas as revisões, etapas, itens e cronograma. A obra
- * continua cadastrada. A verificação é repetida dentro da transação.
+ * Desbloqueia a revisão fechada para edição (volta a "em elaboração"). Só a
+ * última revisão do orçamento, sem outra em elaboração; pelo criador ou pelo
+ * administrador. Os registros do fechamento (totais, dados da obra, BDI,
+ * cabeçalho e analíticos) são descartados e refeitos no próximo fechamento.
+ */
+export async function desbloquearRevisao(ex: Executor, revisaoId: string, u: { id: string; administrador: boolean }) {
+  const [r] = await ex.consulta<{ orcamento_id: string; numero: number; status: string; ultima: number; abertas: number; fechada_em: string | null; total_geral: string | null }>(
+    `SELECT r.orcamento_id, r.numero, r.status::text, r.fechada_em::text, r.total_geral::text,
+            (SELECT max(numero) FROM orcamento_revisao x WHERE x.orcamento_id = r.orcamento_id) AS ultima,
+            (SELECT count(*)::int FROM orcamento_revisao x WHERE x.orcamento_id = r.orcamento_id AND x.status = 'EM_ELABORACAO') AS abertas
+       FROM orcamento_revisao r WHERE r.id = $1`, [revisaoId],
+  );
+  if (!r) throw new ErroOrcamento("Revisão não encontrada.");
+  if (r.status !== "FECHADA") throw new ErroOrcamento("Esta revisão já está em elaboração.");
+  if (!u.administrador && (await criadorDoOrcamento(ex, r.orcamento_id)) !== u.id) throw new ErroOrcamento("Só quem criou o orçamento (ou o administrador) pode desbloqueá-lo.");
+  if (r.numero !== r.ultima) throw new ErroOrcamento("Só a última revisão do orçamento pode ser desbloqueada.");
+  if (r.abertas > 0) throw new ErroOrcamento("Já existe uma revisão em elaboração neste orçamento.");
+  await ex.transacao([
+    LIBERAR_FECHADA,
+    {
+      sql: `UPDATE orcamento_revisao SET status = 'EM_ELABORACAO', fechada_em = NULL, fechada_por_id = NULL, total_custo_direto = NULL, total_geral = NULL,
+                   obra_snapshot = NULL, bdi_snapshot = NULL, cabecalho_snapshot = NULL, versao = versao + 1, atualizado_em = now()
+             WHERE id = $1 AND status = 'FECHADA'`,
+      params: [revisaoId],
+    },
+    { sql: `UPDATE item_orcamento SET analitico = NULL WHERE revisao_id = $1`, params: [revisaoId] },
+    comandoAuditoria({ usuarioId: u.id, acao: "REVISAO_DESBLOQUEADA", entidade: "orcamento_revisao", entidadeId: revisaoId, antes: { status: "FECHADA", fechadaEm: r.fechada_em, totalGeral: r.total_geral } }),
+  ]);
+}
+
+/**
+ * Exclui DEFINITIVAMENTE o orçamento com todas as revisões (inclusive as
+ * fechadas), etapas, itens e cronograma. A obra continua cadastrada.
  */
 export async function excluirOrcamento(ex: Executor, orcamentoId: string, u: { id: string; administrador: boolean }) {
   const [o] = await ex.consulta<{ titulo: string; codigo: string | null; obra_id: string; criado_por_id: string | null; em_elaboracao: boolean; revisoes: number }>(
@@ -422,17 +464,13 @@ export async function excluirOrcamento(ex: Executor, orcamentoId: string, u: { i
        FROM orcamento oc WHERE oc.id = $1`, [orcamentoId],
   );
   if (!o) throw new ErroOrcamento("Orçamento não encontrado.");
-  if (!o.em_elaboracao) throw new ErroOrcamento("Este orçamento tem revisão fechada e não pode ser excluído.");
   if (!u.administrador && o.criado_por_id !== u.id) throw new ErroOrcamento("Só quem criou o orçamento (ou o administrador) pode excluí-lo.");
   await ex.transacao([
-    {
-      sql: `SELECT imp_exigir(NOT EXISTS (SELECT 1 FROM orcamento_revisao WHERE orcamento_id = $1 AND status = 'FECHADA'),
-                              'Este orçamento tem revisão fechada e não pode ser excluído.')`,
-      params: [orcamentoId],
-    },
+    // revisões fechadas também são excluídas (decisão do criador/administrador, confirmada na tela)
+    LIBERAR_FECHADA,
     { sql: `DELETE FROM orcamento_revisao WHERE orcamento_id = $1`, params: [orcamentoId] },
     { sql: `DELETE FROM orcamento WHERE id = $1`, params: [orcamentoId] },
-    comandoAuditoria({ usuarioId: u.id, acao: "ORCAMENTO_EXCLUIDO", entidade: "orcamento", entidadeId: orcamentoId, antes: { titulo: o.titulo, codigo: o.codigo, obraId: o.obra_id, revisoes: o.revisoes } }),
+    comandoAuditoria({ usuarioId: u.id, acao: "ORCAMENTO_EXCLUIDO", entidade: "orcamento", entidadeId: orcamentoId, antes: { titulo: o.titulo, codigo: o.codigo, obraId: o.obra_id, revisoes: o.revisoes, tinhaRevisaoFechada: !o.em_elaboracao } }),
   ]);
 }
 

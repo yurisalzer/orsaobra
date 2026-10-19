@@ -328,8 +328,8 @@ test("pesquisa na lista de orçamentos e exclusão de orçamento em elaboração
   await page.getByRole("link", { name: "Limpar" }).click();
   await expect(pesquisa).toHaveValue("");
 
-  // orçamento com revisão fechada não oferece exclusão
-  await expect(page.getByLabel("Excluir orçamento Reforma da cobertura")).toHaveCount(0);
+  // orçamento com revisão fechada também pode ser excluído pelo criador (com aviso de exclusão definitiva)
+  await expect(page.getByLabel("Excluir orçamento Reforma da cobertura")).toBeVisible();
 
   // novo orçamento em elaboração na mesma obra: quem criou pode excluir
   await page.goto("/orcamentos/novo");
@@ -437,3 +437,34 @@ test("gera a versão com desoneração e compara com a original", async ({ page 
   await page.getByRole("link", { name: "Comparar", exact: true }).click();
   await expect(page.getByRole("heading", { name: /Comparação: Reforma da cobertura ×/ })).toBeVisible();
 });
+
+test("desbloquear revisão fechada e excluir orçamento fechado, com confirmação", async ({ page }) => {
+  const mensagens: string[] = [];
+  page.on("dialog", (d) => { mensagens.push(d.message()); d.type() === "prompt" ? d.accept("Etapa única") : d.accept(); });
+  await entrar(page);
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption({ label: "Creche Municipal" });
+  await page.getByLabel("Título").fill("Orçamento para fechar");
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Orçamento para fechar" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Nova etapa" }).click();
+  await adicionar(page, "Etapa única", "01.001.0001", /01\.001\.0001/, "2");
+  await page.getByRole("button", { name: "Fechar revisão" }).click();
+  await expect(page.getByText(/Fechada em/)).toBeVisible();
+  await expect(page.getByLabel("Quantidade 1.1")).toHaveCount(0);
+  // desbloquear
+  await page.getByRole("button", { name: "Desbloquear para edição" }).click();
+  await expect(page.getByText("Revisão 1 desbloqueada para edição.")).toBeVisible();
+  await expect(page.getByLabel("Quantidade 1.1")).toBeVisible();
+  expect(mensagens.at(-1)).toContain("Desbloquear a revisão 1 para edição?");
+  // fecha de novo e exclui de vez
+  await page.getByRole("button", { name: "Fechar revisão" }).click();
+  await expect(page.getByText(/Fechada em/)).toBeVisible();
+  await page.getByRole("button", { name: "Excluir orçamento Orçamento para fechar" }).click();
+  await expect(page.getByRole("heading", { name: "Obras e orçamentos" })).toBeVisible();
+  expect(mensagens.at(-1)).toContain("EXCLUI EM DEFINITIVO");
+  expect(mensagens.at(-1)).toContain("inclusive as FECHADAS");
+  expect(mensagens.at(-1)).toContain("Deseja realmente excluir?");
+  await expect(page.getByRole("link", { name: "Orçamento para fechar" })).toHaveCount(0);
+});
+
