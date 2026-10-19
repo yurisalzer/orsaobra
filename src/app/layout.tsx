@@ -9,7 +9,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body className="flex min-h-screen flex-col">
+        {children}
+        <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center text-xs text-slate-500 print:hidden">
+          <p>Desenvolvido por: Yuri Salzer</p>
+          <p>© 2026 - Todos os direitos reservados.</p>
+        </footer>
+      </body>
     </html>
   );
 }

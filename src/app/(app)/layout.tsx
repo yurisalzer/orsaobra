@@ -19,7 +19,7 @@ const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const u = await exigirUsuario();
   return (
-    <div className="min-h-screen">
+    <div className="flex-1">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link href="/" className="font-semibold text-marca-900">Orçamento de Obras</Link>
