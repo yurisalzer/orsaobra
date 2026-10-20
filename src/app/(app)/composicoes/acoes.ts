@@ -41,7 +41,7 @@ const esquemaComp = z.object({
   descricao: z.string().max(1000),
   unidade: z.string().max(10),
   observacao: z.string().max(1000).nullable(),
-  componentes: z.array(z.object({ itemId: z.string().uuid(), coeficiente: z.string().max(40) })).max(300),
+  componentes: z.array(z.object({ itemId: z.string().uuid(), coeficiente: z.string().max(40), memoria: z.string().max(2000).nullable().optional() })).max(300),
 });
 
 export async function acaoSalvarComposicao(d: z.infer<typeof esquemaComp>) {

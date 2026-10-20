@@ -1,11 +1,37 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
+import { formatarNumero } from "@/lib/calculo/decimal";
+import { avaliarMemoria } from "@/lib/calculo/expressao";
 import { acaoBuscarComponentes, acaoSalvarComposicao, acaoSalvarInsumo } from "./acoes";
 
-interface Componente { itemId: string; fonte: string; tipo: string; codigo: string; descricao: string; unidade: string | null; coeficiente: string }
-type Achado = Omit<Componente, "coeficiente">;
+interface Componente { itemId: string; fonte: string; tipo: string; codigo: string; descricao: string; unidade: string | null; coeficiente: string; memoria: string }
+type Achado = Omit<Componente, "coeficiente" | "memoria">;
+
+/**
+ * Coeficiente a partir da memória de cálculo (ex.: "1 h / 30 m² = 0,0333").
+ * Mesmo padrão da memória do quantitativo do orçamento; o coeficiente continua
+ * editável à mão (a memória pode ser só texto).
+ */
+export function coeficienteDaMemoria(texto: string): { coeficiente: string | null; aviso: string | null; erro: string | null } {
+  try {
+    const r = avaliarMemoria(texto);
+    if (!r) return { coeficiente: null, aviso: null, erro: null };
+    if (!r.valor.gt(0)) return { coeficiente: null, aviso: null, erro: "O resultado da conta precisa ser maior que zero." };
+    // resultado escrito após "=" que é o calculado arredondado (ex.: 1 ÷ 30 = 0,0333) prevalece: é o coeficiente adotado
+    if (r.escrito?.gt(0) && r.valor.toDecimalPlaces(r.escrito.decimalPlaces()).eq(r.escrito)) {
+      return { coeficiente: formatarNumero(r.escrito, r.escrito.decimalPlaces()), aviso: r.escrito.eq(r.valor) ? null : "adotado o resultado escrito (calculado arredondado)", erro: null };
+    }
+    const c = r.valor.toDecimalPlaces(10);
+    const avisos: string[] = [];
+    if (!c.eq(r.valor)) avisos.push("resultado arredondado para 10 casas decimais");
+    if (r.escrito && !r.escrito.eq(r.valor)) avisos.push(`o resultado escrito após "=" (${formatarNumero(r.escrito, Math.min(r.escrito.decimalPlaces(), 10))}) difere do calculado`);
+    return { coeficiente: formatarNumero(c, c.decimalPlaces()), aviso: avisos.length ? avisos.join("; ") : null, erro: null };
+  } catch (e) {
+    return { coeficiente: null, aviso: null, erro: `Não foi possível calcular a conta: ${(e as Error).message}` };
+  }
+}
 
 export interface DadosEditor {
   tipo: "INSUMO" | "COMPOSICAO";
@@ -38,7 +64,7 @@ export function EditorProprio({ inicial }: { inicial: DadosEditor }) {
   const adicionar = (a: Achado) => {
     if (d.componentes.some((c) => c.itemId === a.itemId)) return setErro(`${a.codigo} já está na composição.`);
     setErro(null);
-    setD({ ...d, componentes: [...d.componentes, { ...a, coeficiente: "" }] });
+    setD({ ...d, componentes: [...d.componentes, { ...a, coeficiente: "", memoria: "" }] });
     setBusca("");
     setAchados([]);
   };
@@ -50,11 +76,17 @@ export function EditorProprio({ inicial }: { inicial: DadosEditor }) {
     setD({ ...d, componentes: c });
   };
 
+  const alterar = (i: number, m: Partial<Componente>) => setD({ ...d, componentes: d.componentes.map((x, j) => (j === i ? { ...x, ...m } : x)) });
+  const alterarMemoria = (i: number, memoria: string) => {
+    const r = coeficienteDaMemoria(memoria);
+    alterar(i, r.coeficiente ? { memoria, coeficiente: r.coeficiente } : { memoria });
+  };
+
   const salvar = () => iniciar(async () => {
     setErro(null);
     const base = { itemId: d.itemId, versaoEsperada: d.versao, codigo: d.codigo, descricao: d.descricao, unidade: d.unidade };
     const r = d.tipo === "COMPOSICAO"
-      ? await acaoSalvarComposicao({ ...base, observacao: null, componentes: d.componentes.map((c) => ({ itemId: c.itemId, coeficiente: c.coeficiente })) })
+      ? await acaoSalvarComposicao({ ...base, observacao: null, componentes: d.componentes.map((c) => ({ itemId: c.itemId, coeficiente: c.coeficiente, memoria: c.memoria.trim() || null })) })
       : await acaoSalvarInsumo(base);
     if (!r.ok) return setErro(r.erro);
     router.push(`/consulta/item/${r.dados}`);
@@ -92,25 +124,49 @@ export function EditorProprio({ inicial }: { inicial: DadosEditor }) {
             <table className="w-full text-sm">
               <thead className="text-left text-slate-500"><tr><th className="py-1">#</th><th>Fonte</th><th>Código</th><th>Descrição</th><th>Unid.</th><th>Coeficiente</th><th /></tr></thead>
               <tbody>
-                {d.componentes.map((c, i) => (
-                  <tr key={c.itemId} className="border-t border-slate-100">
-                    <td className="py-1">{i + 1}</td>
-                    <td className="text-xs">{c.fonte === "PROPRIA" ? "PRÓPRIA" : c.fonte}</td>
-                    <td className="font-mono">{c.codigo}</td>
-                    <td>{c.descricao}</td>
-                    <td>{c.unidade ?? "—"}</td>
-                    <td>
-                      <input value={c.coeficiente} inputMode="decimal" aria-label={`Coeficiente de ${c.codigo}`} placeholder="0,0000"
-                        onChange={(e) => setD({ ...d, componentes: d.componentes.map((x, j) => (j === i ? { ...x, coeficiente: e.target.value } : x)) })}
-                        className="w-32 rounded border border-slate-300 px-2 py-1 text-right" />
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <button type="button" onClick={() => mover(i, -1)} className="px-1 text-slate-500" aria-label="Subir">↑</button>
-                      <button type="button" onClick={() => mover(i, 1)} className="px-1 text-slate-500" aria-label="Descer">↓</button>
-                      <button type="button" onClick={() => setD({ ...d, componentes: d.componentes.filter((_, j) => j !== i) })} className="ml-2 text-xs text-red-700 underline">remover</button>
-                    </td>
-                  </tr>
-                ))}
+                {d.componentes.map((c, i) => {
+                  const calc = coeficienteDaMemoria(c.memoria);
+                  return (
+                    <Fragment key={c.itemId}>
+                      <tr className="border-t border-slate-100">
+                        <td className="py-1">{i + 1}</td>
+                        <td className="text-xs">{c.fonte === "PROPRIA" ? "PRÓPRIA" : c.fonte}</td>
+                        <td className="font-mono">{c.codigo}</td>
+                        <td>{c.descricao}</td>
+                        <td>{c.unidade ?? "—"}</td>
+                        <td>
+                          <input value={c.coeficiente} inputMode="decimal" aria-label={`Coeficiente de ${c.codigo}`} placeholder="0,0000"
+                            onChange={(e) => alterar(i, { coeficiente: e.target.value })}
+                            className="w-32 rounded border border-slate-300 px-2 py-1 text-right" />
+                        </td>
+                        <td className="whitespace-nowrap">
+                          <button type="button" onClick={() => mover(i, -1)} className="px-1 text-slate-500" aria-label="Subir">↑</button>
+                          <button type="button" onClick={() => mover(i, 1)} className="px-1 text-slate-500" aria-label="Descer">↓</button>
+                          <button type="button" onClick={() => setD({ ...d, componentes: d.componentes.filter((_, j) => j !== i) })} className="ml-2 text-xs text-red-700 underline">remover</button>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td />
+                        <td colSpan={6} className="pb-2">
+                          <label className="flex flex-col gap-1 text-xs text-slate-600">
+                            Memória de cálculo
+                            <textarea value={c.memoria} rows={1} maxLength={2000} aria-label={`Memória de cálculo de ${c.codigo}`}
+                              onChange={(e) => alterarMemoria(i, e.target.value)}
+                              placeholder="Ex.: 8 h ÷ 240 m² (produção diária) = 0,0333 — a conta preenche o coeficiente; texto livre também é aceito"
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+                          </label>
+                          {calc.erro ? <span role="alert" className="text-xs text-red-700">{calc.erro}</span>
+                            : calc.coeficiente ? (
+                              <span className="text-xs">
+                                <span className="font-medium text-green-800">Resultado: {calc.coeficiente}</span> <span className="text-slate-500">(usado como coeficiente)</span>
+                                {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
+                              </span>
+                            ) : null}
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

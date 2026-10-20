@@ -121,15 +121,20 @@ test("cria insumo próprio, registra cotação e monta composição própria mis
   await page.getByLabel("Unidade").fill("UN");
   await page.getByLabel("Buscar componente").fill("01.001.0001");
   await page.getByRole("option", { name: /01\.001\.0001-0/ }).click();
-  await page.getByLabel("Coeficiente de 01.001.0001-0").fill("2");
+  // a memória de cálculo preenche o coeficiente
+  await page.getByLabel("Memória de cálculo de 01.001.0001-0").fill("8 h ÷ 4 m² (produção diária) = 2");
+  await expect(page.getByLabel("Coeficiente de 01.001.0001-0")).toHaveValue("2");
   await page.getByLabel("Buscar componente").fill("andaime");
   await page.getByRole("option", { name: /P-ANDAIME/ }).click();
+  await page.getByLabel("Memória de cálculo de P-ANDAIME").fill("1 ÷ 3 = 0,3333");
+  await expect(page.getByLabel("Coeficiente de P-ANDAIME")).toHaveValue("0,3333");
   await page.getByLabel("Coeficiente de P-ANDAIME").fill("1");
   await page.getByRole("button", { name: "Salvar" }).click();
   await expect(page.getByRole("heading", { name: /Composição própria \(não oficial\) — versão 1/ })).toBeVisible();
   // 2 × 211,97 + 1 × 50,25 = 474,19
   await expect(page.getByText("Custo calculado da composição própria")).toBeVisible();
   await expect(page.locator("dd").filter({ hasText: "R$ 474,19" }).first()).toBeVisible();
+  await expect(page.getByText("Memória de cálculo: 8 h ÷ 4 m² (produção diária) = 2")).toBeVisible();
   await page.screenshot({ path: "test-results/composicao-propria.png", fullPage: true });
 
   // editar gera versão 2; código oficial é recusado
@@ -138,6 +143,7 @@ test("cria insumo próprio, registra cotação e monta composição própria mis
   await page.getByRole("button", { name: "Salvar nova versão" }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText(/base oficial EMOP/);
   await page.getByLabel("Código").fill("P-SERV-01");
+  await expect(page.getByLabel("Memória de cálculo de 01.001.0001-0")).toHaveValue("8 h ÷ 4 m² (produção diária) = 2");
   await page.getByLabel("Coeficiente de P-ANDAIME").fill("3");
   await page.getByRole("button", { name: "Salvar nova versão" }).click();
   await expect(page.getByRole("heading", { name: /versão 2/ })).toBeVisible();

@@ -5,7 +5,7 @@ import { identificar, lerEmLotes } from "@/lib/importacao/processar";
 import { confirmarImportacao, gravarLote, iniciarImportacao, publicarBase, validarBase, validarImportacao } from "@/lib/importacao/servico";
 import { basePadraoPorFonte, basesDisponiveis } from "@/lib/referencia/bases";
 import { buscarItens } from "@/lib/referencia/busca";
-import { analiticaOficial, cabecalhoItem, historicoPrecos, usadoEm } from "@/lib/referencia/item";
+import { analiticaOficial, cabecalhoItem, historicoPrecos, linhasDaVersao, usadoEm } from "@/lib/referencia/item";
 import { precificar, type ContextoPreco } from "@/lib/referencia/precificacao";
 import { ErroProprio, listarProprios, registrarCotacao, salvarComposicaoPropria, salvarInsumoProprio } from "@/lib/referencia/proprios";
 import { arquivo, EMOP_DBFS, SINAPI_ZIP } from "../importacao/ajuda";
@@ -171,6 +171,13 @@ describe("itens e composições próprios", () => {
     const id = await salvarComposicaoPropria(ex, { codigo: "VERS-1", descricao: "Versão 1", unidade: "M2", componentes: [{ itemId: e, coeficiente: "1" }] }, usuarioId);
     await salvarComposicaoPropria(ex, { itemId: id, versaoEsperada: 1, codigo: "VERS-1", descricao: "Versão 2", unidade: "M2", componentes: [{ itemId: e, coeficiente: "3" }] }, usuarioId);
     expect(await prisma.composicaoVersao.count({ where: { itemId: id } })).toBe(2);
+    // memória de cálculo por componente: gravada na versão e mudança só na memória gera nova versão
+    await salvarComposicaoPropria(ex, { itemId: id, versaoEsperada: 2, codigo: "VERS-1", descricao: "Versão 2", unidade: "M2", componentes: [{ itemId: e, coeficiente: "3", memoria: "  1,5 h × 2 (equipe) = 3  " }] }, usuarioId);
+    const v3 = await prisma.composicaoVersao.findFirstOrThrow({ where: { itemId: id }, orderBy: { criadoEm: "desc" } });
+    expect(await prisma.composicaoVersao.count({ where: { itemId: id } })).toBe(3);
+    expect((await linhasDaVersao(ex, v3.id, null)).map((l) => l.memoria)).toEqual(["1,5 h × 2 (equipe) = 3"]);
+    await expect(salvarComposicaoPropria(ex, { itemId: id, versaoEsperada: 3, codigo: "VERS-1", descricao: "Versão 2", unidade: "M2", componentes: [{ itemId: e, coeficiente: "3", memoria: "x".repeat(2001) }] }, usuarioId))
+      .rejects.toThrow(/2\.000 caracteres/);
     expect(await prisma.itemVersao.count({ where: { itemId: id } })).toBe(2);
     await expect(salvarComposicaoPropria(ex, { itemId: id, versaoEsperada: 1, codigo: "VERS-1", descricao: "Edição antiga", unidade: "M2", componentes: [{ itemId: e, coeficiente: "9" }] }, usuarioId))
       .rejects.toThrow(/alterado por outra pessoa/);
@@ -178,7 +185,7 @@ describe("itens e composições próprios", () => {
     await expect(salvarInsumoProprio(ex, { codigo: "VERS-1", descricao: "Duplicado", unidade: "M3" }, usuarioId)).rejects.toThrow(ErroProprio);
     await expect(salvarComposicaoPropria(ex, { codigo: "X1", descricao: "Coef", unidade: "UN", componentes: [{ itemId: e, coeficiente: "0" }] }, usuarioId)).rejects.toThrow(/Coeficiente inválido/);
     const lista = await listarProprios(ex);
-    expect(lista.find((x) => x.codigo === "VERS-1")).toMatchObject({ descricao: "Versão 2", versao: 2, componentes: 1 });
+    expect(lista.find((x) => x.codigo === "VERS-1")).toMatchObject({ descricao: "Versão 2", versao: 3, componentes: 1 });
     // busca encontra itens próprios
     const r = await buscarItens(ex, { texto: "Versão", revisoes: [], incluirProprios: true });
     expect(r.itens.map((i) => `${i.fonte}:${i.codigo}`)).toContain("PROPRIA:VERS-1");

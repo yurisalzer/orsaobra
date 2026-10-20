@@ -121,6 +121,8 @@ export async function registrarCotacao(
 export interface ComponenteInformado {
   itemId: string;
   coeficiente: string; // aceita "0,1234" ou "0.1234"
+  /** como se chegou ao coeficiente (texto livre) */
+  memoria?: string | null;
 }
 
 export async function salvarComposicaoPropria(
@@ -138,7 +140,9 @@ export async function salvarComposicaoPropria(
     if (coef.decimalPlaces() > 10) throw new ErroProprio(`Coeficiente com mais de 10 casas decimais na linha ${i + 1}.`);
     if (vistos.has(x.itemId)) throw new ErroProprio(`Componente repetido na linha ${i + 1}.`);
     vistos.add(x.itemId);
-    return { itemId: x.itemId, coeficiente: coef.toString() };
+    const memoria = x.memoria?.trim() || null;
+    if (memoria && memoria.length > 2000) throw new ErroProprio(`Memória de cálculo com mais de 2.000 caracteres na linha ${i + 1}.`);
+    return { itemId: x.itemId, coeficiente: coef.toString(), memoria };
   });
   const existentes = await ex.consulta<{ id: string; fonte: string; tipo: string }>(
     `SELECT ir.id, f.codigo AS fonte, ir.tipo::text AS tipo FROM item_referencia ir JOIN fonte f ON f.id = ir.fonte_id WHERE ir.id = ANY($1::uuid[])`,
@@ -167,16 +171,17 @@ export async function salvarComposicaoPropria(
 
   const fonteId = await fontePropria(ex);
   const hv = await hash(c.descricao, c.unidade);
-  const hc = await hash(...comps.map((x, i) => `${i + 1}|${x.itemId}|${x.coeficiente}`));
+  // a memória entra no hash só quando informada (versões antigas, sem memória, mantêm o mesmo hash)
+  const hc = await hash(...comps.map((x, i) => `${i + 1}|${x.itemId}|${x.coeficiente}${x.memoria ? `|${x.memoria}` : ""}`));
   const cvSql = `(SELECT id FROM composicao_versao WHERE item_id = '${itemId}' AND hash = '${hc}')`;
   const cmds: Comando[] = [];
   if (!d.itemId) cmds.push({ sql: `INSERT INTO item_referencia (id, fonte_id, tipo, codigo) VALUES ($1, $2, 'COMPOSICAO', $3)`, params: [itemId, fonteId, c.codigo] });
   cmds.push(
     { sql: `INSERT INTO composicao_versao (item_id, origem, hash, observacao) VALUES ($1, 'PROPRIA', $2, $3) ON CONFLICT (item_id, hash) DO NOTHING`, params: [itemId, hc, d.observacao ?? null] },
     {
-      sql: `INSERT INTO composicao_componente (composicao_versao_id, componente_item_id, coeficiente, ordem, tipo_original)
-            SELECT v.id, x."itemId"::uuid, x.coeficiente::numeric, x.ordem, ir.tipo::text
-              FROM jsonb_to_recordset($3::jsonb) AS x("itemId" text, coeficiente text, ordem int)
+      sql: `INSERT INTO composicao_componente (composicao_versao_id, componente_item_id, coeficiente, ordem, tipo_original, memoria_calculo)
+            SELECT v.id, x."itemId"::uuid, x.coeficiente::numeric, x.ordem, ir.tipo::text, x.memoria
+              FROM jsonb_to_recordset($3::jsonb) AS x("itemId" text, coeficiente text, ordem int, memoria text)
               JOIN composicao_versao v ON v.item_id = $1 AND v.hash = $2
               JOIN item_referencia ir ON ir.id = x."itemId"::uuid
              WHERE NOT EXISTS (SELECT 1 FROM composicao_componente cc WHERE cc.composicao_versao_id = v.id)`,

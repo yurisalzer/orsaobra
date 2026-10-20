@@ -475,6 +475,8 @@ model ComposicaoComponente {
   ordem              Int
   tipoOriginal       String?  @map("tipo_original") // ex.: "INSUMO"/"COMPOSICAO" como publicado
   situacao           String? // situação publicada (SINAPI: COM PREÇO, SEM PREÇO...)
+  /// memória de cálculo do coeficiente (composições próprias)
+  memoriaCalculo     String?  @map("memoria_calculo")
 
   composicaoVersao ComposicaoVersao @relation(fields: [composicaoVersaoId], references: [id], onDelete: Cascade)
   componente       ItemReferencia   @relation(fields: [componenteItemId], references: [id])

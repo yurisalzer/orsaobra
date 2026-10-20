@@ -22,7 +22,7 @@ export default async function Editar({ params }: { params: Promise<{ id: string 
       <p className="text-sm text-slate-600">Salvar cria a versão {item.proprio.versao + 1}. A versão atual fica guardada (orçamentos já fechados não mudam).</p>
       <EditorProprio inicial={{
         tipo: item.tipo, itemId: id, versao: item.proprio.versao, codigo: item.codigo, descricao: item.descricao, unidade: item.unidade ?? "",
-        componentes: linhas.map((l) => ({ itemId: l.itemId, fonte: l.fonte, tipo: l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade, coeficiente: paraEdicao(l.coeficiente) })),
+        componentes: linhas.map((l) => ({ itemId: l.itemId, fonte: l.fonte, tipo: l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade, coeficiente: paraEdicao(l.coeficiente), memoria: l.memoria ?? "" })),
       }} />
     </div>
   );

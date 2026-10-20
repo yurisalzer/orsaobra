@@ -148,7 +148,7 @@ export default async function DetalheItem({ params, searchParams }: { params: Pr
                       <td><SeloFonte fonte={l.fonte} /></td>
                       <td className="text-xs">{l.tipoOriginal ?? l.tipo}</td>
                       <td className="whitespace-nowrap font-mono"><Link className="text-marca-700 hover:underline" href={`/consulta/item/${l.itemId}?${ctxUrl}`}>{l.codigo}</Link></td>
-                      <td>{l.descricao}</td>
+                      <td>{l.descricao}{l.memoria && <span className="mt-0.5 block whitespace-pre-wrap text-xs text-slate-500">Memória de cálculo: {l.memoria}</span>}</td>
                       <td>{l.unidade ?? "—"}</td>
                       <td className="num">{formatarCoeficiente(l.coeficiente)}</td>
                       {linhas.some((x) => x.percentual && Number(x.percentual)) ? <td className="num">{l.percentual && Number(l.percentual) ? formatarCoeficiente(l.percentual) : ""}</td> : null}

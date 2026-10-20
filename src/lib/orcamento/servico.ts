@@ -993,6 +993,8 @@ export interface LinhaAnaliticoItem {
   ordem: number; itemId?: string; fonte: string; natureza?: "INSUMO" | "COMPOSICAO"; tipo: string; codigo: string; descricao: string; unidade: string | null;
   coeficiente: string; percentual: string | null; precoUnitario: string | null; referenciaPreco: string | null; custo: string | null;
   situacao?: string | null;
+  /** memória de cálculo do coeficiente (composições próprias) */
+  memoria?: string | null;
 }
 export interface AnaliticoItem {
   tipo: "INSUMO" | "OFICIAL" | "PROPRIA" | "SEM_ANALITICA" | "SICRO";
@@ -1060,7 +1062,7 @@ export async function montarAnaliticos(ex: Executor, revisaoId: string, itens: L
           return {
             ordem: l.ordem, itemId: l.itemId, fonte: l.fonte, natureza: l.tipo, tipo: l.tipoOriginal ?? l.tipo, codigo: l.codigo, descricao: l.descricao, unidade: l.unidade,
             coeficiente: l.coeficiente, percentual: l.percentual, precoUnitario: p?.valor?.toString() ?? null, referenciaPreco: p?.referencia ?? null, custo: custo?.toString() ?? null,
-            situacao: l.situacao,
+            situacao: l.situacao, memoria: l.memoria,
           };
         }),
       },
@@ -1098,7 +1100,7 @@ export async function linhasDasVersoes(ex: Executor, versoes: string[]) {
   if (!versoes.length) return r;
   const linhas = await ex.consulta<LinhaAnalitica & { versao: string }>(
     `SELECT cc.composicao_versao_id AS versao, cc.ordem, ir.id AS "itemId", f.codigo AS fonte, ir.tipo::text AS tipo, cc.tipo_original AS "tipoOriginal", ir.codigo,
-            v.descricao, v.unidade, cc.coeficiente::text AS coeficiente, cc.percentual::text AS percentual, cc.situacao
+            v.descricao, v.unidade, cc.coeficiente::text AS coeficiente, cc.percentual::text AS percentual, cc.situacao, cc.memoria_calculo AS memoria
        FROM composicao_componente cc JOIN item_referencia ir ON ir.id = cc.componente_item_id JOIN fonte f ON f.id = ir.fonte_id
        LEFT JOIN item_proprio ip ON ip.item_id = ir.id
        JOIN LATERAL (

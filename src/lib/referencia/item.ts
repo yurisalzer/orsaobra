@@ -78,6 +78,8 @@ export interface LinhaAnalitica {
   coeficiente: string;
   percentual: string | null;
   situacao: string | null;
+  /** memória de cálculo do coeficiente (composições próprias) */
+  memoria: string | null;
 }
 
 /**
@@ -99,7 +101,7 @@ export async function analiticaOficial(ex: Executor, itemId: string, revisaoId: 
 export function linhasDaVersao(ex: Executor, versaoId: string, revisaoId: string | null) {
   return ex.consulta<LinhaAnalitica>(
     `SELECT cc.ordem, ir.id AS "itemId", f.codigo AS fonte, ir.tipo::text AS tipo, cc.tipo_original AS "tipoOriginal", ir.codigo,
-            v.descricao, v.unidade, cc.coeficiente::text AS coeficiente, cc.percentual::text AS percentual, cc.situacao
+            v.descricao, v.unidade, cc.coeficiente::text AS coeficiente, cc.percentual::text AS percentual, cc.situacao, cc.memoria_calculo AS memoria
        FROM composicao_componente cc JOIN item_referencia ir ON ir.id = cc.componente_item_id JOIN fonte f ON f.id = ir.fonte_id
        LEFT JOIN item_proprio ip ON ip.item_id = ir.id
        JOIN LATERAL (

@@ -208,6 +208,7 @@ async function orcamento(c: Contexto, analitico: boolean): Promise<Documento> {
             { valor: l.coeficiente, tipo: "coeficiente" }, l.precoUnitario ? { valor: l.precoUnitario, tipo: "preco" } : l.situacao === "% sobre a mão de obra" ? "% s/ MO" : "sem preço", l.custo ? moeda2(l.custo) : "", "", "", ""],
           estilo: "detalhe",
         });
+        if (l.memoria) linhas.push({ celulas: ["", "", span(`Memória de cálculo: ${l.memoria}`, n - 2)], estilo: "detalhe" });
       }
       linhas.push({ celulas: ["", span(`Soma dos componentes: R$ ${formatarNumero(soma, 2)} · custo unitário adotado: R$ ${formatarNumero(cu, 2)} (${referenciaDoItem(it)})`, n - 1)], estilo: "detalhe" });
     }
@@ -302,6 +303,7 @@ async function cpu(c: Contexto): Promise<Documento> {
     for (const l of an?.linhas ?? []) {
       if (l.custo) soma = soma.plus(l.custo);
       linhas.push({ celulas: [rotuloFonte(l.fonte), l.codigo, l.descricao, NATUREZA[l.tipo] ?? l.tipo, l.unidade ?? "", l.coeficiente, l.percentual && !dec(l.percentual).isZero() ? l.percentual : null, l.precoUnitario ?? (l.situacao === "% sobre a mão de obra" ? `${formatarNumero(l.coeficiente, 2)}% s/ MO` : "sem preço"), l.custo ? moeda2(l.custo) : ""] });
+      if (l.memoria) linhas.push({ celulas: ["", span(`Memória de cálculo: ${l.memoria}`, 8)], estilo: "detalhe" });
     }
     const custo = dec(it.custoUnitario);
     const preco = dec(it.precoUnitario);
