@@ -34,21 +34,21 @@ enum Papel {
 }
 
 model Usuario {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
-  nome         String
-  senhaHash    String    @map("senha_hash")
-  papel        Papel     @default(LEITOR) // legado: o acesso é dado por usuario_permissao
-  ativo        Boolean   @default(true)
-  tentativas   Int       @default(0) // falhas de login consecutivas
-  bloqueadoAte DateTime? @map("bloqueado_ate") @db.Timestamptz
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String    @unique
+  nome              String
+  senhaHash         String    @map("senha_hash")
+  papel             Papel     @default(LEITOR) // legado: o acesso é dado por usuario_permissao
+  ativo             Boolean   @default(true)
+  tentativas        Int       @default(0) // falhas de login consecutivas
+  bloqueadoAte      DateTime? @map("bloqueado_ate") @db.Timestamptz
   cpf               String?   @unique // somente dígitos
   telefone          String?
   emailConfirmadoEm DateTime? @map("email_confirmado_em") @db.Timestamptz
   aprovadoEm        DateTime? @map("aprovado_em") @db.Timestamptz // liberado pelo administrador
   origem            String    @default("ADMINISTRADOR") // ADMINISTRADOR | AUTOCADASTRO
-  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz
-  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
+  criadoEm          DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm      DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
 
   sessoes      Sessao[]
   permissoes   UsuarioPermissao[]
@@ -57,8 +57,9 @@ model Usuario {
   auditorias   Auditoria[]
   importacoes  Importacao[]
   membroObras  ObraMembro[]
-  obrasCriadas Obra[]      @relation("ObraCriadaPor")
-  revisoesFech OrcamentoRevisao[] @relation("RevisaoFechadaPor")
+  obrasCriadas Obra[]               @relation("ObraCriadaPor")
+  revisoesFech OrcamentoRevisao[]   @relation("RevisaoFechadaPor")
+  memoriais    MemorialDescritivo[] @relation("MemorialAtualizadoPor")
 
   @@map("usuario")
 }
@@ -571,7 +572,7 @@ model Obra {
 
   orcamentos Orcamento[]
   membros    ObraMembro[]
-  criadoPor  Usuario?    @relation("ObraCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  criadoPor  Usuario?            @relation("ObraCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
   cabecalho  CabecalhoRelatorio? @relation(fields: [cabecalhoId], references: [id], onDelete: SetNull)
 
   @@map("obra")
@@ -607,14 +608,14 @@ model ObraMembro {
 }
 
 model Orcamento {
-  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  obraId   String   @map("obra_id") @db.Uuid
-  codigo   String? // número/processo interno
-  titulo   String
-  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  obraId       String   @map("obra_id") @db.Uuid
+  codigo       String? // número/processo interno
+  titulo       String
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz
   /// versão deste orçamento em outro regime (com/sem desoneração), gerada a partir de `versaoDe`
-  versaoDeId   String? @map("versao_de_id") @db.Uuid
-  regimeVersao String? @map("regime_versao")
+  versaoDeId   String?  @map("versao_de_id") @db.Uuid
+  regimeVersao String?  @map("regime_versao")
 
   obra     Obra               @relation(fields: [obraId], references: [id])
   revisoes OrcamentoRevisao[]
@@ -669,9 +670,23 @@ model OrcamentoRevisao {
   etapas        Etapa[]
   itens         ItemOrcamento[]
   cronograma    CronogramaParcela[]
+  memorial      MemorialDescritivo?
 
   @@unique([orcamentoId, numero])
   @@map("orcamento_revisao")
+}
+
+/// Memorial descritivo da revisão (texto sugerido pelo sistema e editado pelo usuário).
+model MemorialDescritivo {
+  revisaoId       String   @id @map("revisao_id") @db.Uuid
+  conteudo        Json
+  atualizadoPorId String?  @map("atualizado_por_id") @db.Uuid
+  atualizadoEm    DateTime @default(now()) @map("atualizado_em") @db.Timestamptz
+
+  revisao       OrcamentoRevisao @relation(fields: [revisaoId], references: [id], onDelete: Cascade)
+  atualizadoPor Usuario?         @relation("MemorialAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  @@map("memorial_descritivo")
 }
 
 /// Base/regime padrão de cada fonte para uma revisão do orçamento

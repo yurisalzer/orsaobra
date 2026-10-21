@@ -495,3 +495,56 @@ test("desbloquear revisão fechada e excluir orçamento fechado, com confirmaç�
   await expect(page.getByRole("link", { name: "Orçamento para fechar" })).toHaveCount(0);
 });
 
+
+test("memorial descritivo: só com revisão fechada e cronograma pronto; edita e gera .docx e PDF", async ({ page }) => {
+  page.on("dialog", (d) => (d.type() === "prompt" ? d.accept("Serviços preliminares") : d.accept()));
+  await entrar(page);
+  await page.goto("/orcamentos/novo");
+  await page.getByLabel("Obra", { exact: true }).selectOption({ label: "Creche Municipal" });
+  await page.getByLabel("Título").fill("Orçamento do memorial");
+  await page.getByRole("button", { name: "Criar orçamento" }).click();
+  await expect(page.getByRole("heading", { name: "Orçamento do memorial" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Nova etapa" }).click();
+  await adicionar(page, "Serviços preliminares", "01.001.0001", /01\.001\.0001/, "2");
+  const editor = page.url();
+  // em elaboração e sem cronograma: botão desabilitado, com as pendências
+  await page.getByRole("link", { name: "Relatórios" }).click();
+  await expect(page.getByText("A revisão precisa estar concluída e bloqueada")).toBeVisible();
+  await expect(page.getByText("O cronograma físico-financeiro não foi preenchido.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Gerar memorial descritivo" })).toHaveCount(0);
+  // cronograma e fechamento
+  await page.goto(editor);
+  await page.getByRole("link", { name: "Cronograma" }).click();
+  await page.getByLabel("Prazo em meses").fill("1");
+  await page.getByLabel("Percentual 1 mês 1").fill("100");
+  await page.getByRole("button", { name: "Salvar cronograma" }).click();
+  await expect(page.getByRole("status")).toContainText("Cronograma salvo");
+  await page.goto(editor);
+  await page.getByRole("button", { name: "Fechar revisão" }).click();
+  await expect(page.getByText(/Fechada em/)).toBeVisible();
+  await page.getByRole("link", { name: "Relatórios" }).click();
+  await page.getByRole("link", { name: "Gerar memorial descritivo" }).click();
+  await expect(page.getByRole("heading", { name: "Memorial descritivo" })).toBeVisible();
+  await expect(page.getByLabel("Título da seção 1", { exact: true })).toHaveValue("1) OBJETO");
+  await expect(page.getByText(/Complete os trechos entre colchetes/)).toBeVisible();
+  await page.getByLabel("Texto de 1.1) JUSTIFICATIVA").fill("Necessidade de reforma da creche, conforme vistoria da Secretaria.");
+  await expect(page.getByText(/Complete os trechos entre colchetes/)).toHaveCount(0);
+  await page.screenshot({ path: "test-results/memorial-editor.png", fullPage: true });
+  // gerar salva o texto editado
+  const [docx] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Gerar .docx" }).click()]);
+  expect(docx.suggestedFilename()).toBe("Memorial_descritivo_Orcamento_do_memorial_rev1.docx");
+  const fs = await import("node:fs");
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const xml = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(await docx.path())))["word/document.xml"]);
+  expect(xml).toContain("Necessidade de reforma da creche, conforme vistoria da Secretaria.");
+  expect(xml).toContain("ESCOPO DOS SERVIÇOS");
+  await expect(page.getByText(/Texto editado salvo/)).toBeVisible();
+  const [pdf] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Gerar PDF" }).click()]);
+  expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
+  const bytes = fs.readFileSync(await pdf.path());
+  expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  fs.copyFileSync(await pdf.path(), "test-results/memorial.pdf");
+  // texto salvo volta ao reabrir
+  await page.reload();
+  await expect(page.getByLabel("Texto de 1.1) JUSTIFICATIVA")).toHaveValue("Necessidade de reforma da creche, conforme vistoria da Secretaria.");
+});

@@ -34,7 +34,7 @@ export interface OpcoesRelatorio {
   agora?: Date;
 }
 
-interface ObraDados { nome: string; codigo: string | null; processo: string | null; descricao: string | null; endereco: string | null; municipio: string | null; uf: string | null; orgaoSolicitante: string | null }
+export interface ObraDados { nome: string; codigo: string | null; processo: string | null; descricao: string | null; endereco: string | null; municipio: string | null; uf: string | null; orgaoSolicitante: string | null }
 
 interface Contexto {
   ex: Executor;
@@ -61,10 +61,9 @@ function arquivo(s: string) {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^\w.-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 80);
 }
 
-async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tipo: TipoRelatorio): Promise<Contexto> {
-  const estado = await carregarRevisao(ex, revisaoId).catch((e) => { if (e instanceof ErroOrcamento) throw new ErroRelatorio(e.message); throw e; });
-  const r = estado.revisao;
-  const fechada = r.status === "FECHADA";
+/** Dados da obra como registrados no fechamento (ou os atuais, se a revisão está em elaboração). */
+export async function obraDaRevisao(ex: Executor, estado: EstadoRevisao): Promise<ObraDados> {
+  const revisaoId = estado.revisao.id;
   const [snap] = await ex.consulta<{ obra: Record<string, string | null> | null }>(`SELECT obra_snapshot AS obra FROM orcamento_revisao WHERE id = $1`, [revisaoId]);
   const oc = estado.orcamento;
   const obra: ObraDados = snap?.obra
@@ -74,6 +73,15 @@ async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tip
     const [d] = await ex.consulta<{ descricao: string | null }>(`SELECT descricao FROM obra WHERE id = $1`, [oc.obraId]);
     obra.descricao = d?.descricao ?? null;
   }
+  return obra;
+}
+
+async function contexto(ex: Executor, revisaoId: string, o: OpcoesRelatorio, tipo: TipoRelatorio): Promise<Contexto> {
+  const estado = await carregarRevisao(ex, revisaoId).catch((e) => { if (e instanceof ErroOrcamento) throw new ErroRelatorio(e.message); throw e; });
+  const r = estado.revisao;
+  const fechada = r.status === "FECHADA";
+  const oc = estado.orcamento;
+  const obra = await obraDaRevisao(ex, estado);
   const local = [obra.endereco, [obra.municipio, obra.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
   // BDIs usados na planilha: global (nos itens sem BDI próprio) e os diferenciados
   const [snapBdi] = await ex.consulta<{ bdi: { id: string; nome: string }[] | null }>(`SELECT bdi_snapshot AS bdi FROM orcamento_revisao WHERE id = $1`, [revisaoId]);
