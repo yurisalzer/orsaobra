@@ -7,7 +7,7 @@ import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, atualizarBdi, desbloquearRevisao, gerarVersaoRegime, basesDaRevisao, configurarRevisao, criarEtapa, criarObra, criarOrcamento, duplicarOrcamento, ErroOrcamento,
-  excluirEtapa, excluirItem, excluirObra, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, reprecificarRevisao, salvarCronograma, trocarItem,
+  excluirEtapa, excluirItem, excluirObra, excluirOrcamento, fecharRevisao, moverEtapa, moverItem, novaRevisao, renomearEtapa, renomearOrcamento, reprecificarRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { buscarItens } from "@/lib/referencia/busca";
 
@@ -181,6 +181,14 @@ export async function acaoGerarVersaoRegime(revisaoId: string, regime: string, t
 }
 
 /** Desbloqueia a revisão fechada para edição: quem criou o orçamento ou o administrador. */
+/** Altera o nome do orçamento: quem o criou ou o administrador. */
+export async function acaoRenomearOrcamento(orcamentoId: string, titulo: string) {
+  return executar(async (usuarioId) => {
+    const u = await exigirPermissao("ORCAMENTOS_EDITAR");
+    await renomearOrcamento(await executor(), uuid.parse(orcamentoId), z.string().max(400).parse(titulo), { id: usuarioId, administrador: temPermissao(u, "USUARIOS") });
+  }, "/orcamentos");
+}
+
 export async function acaoDesbloquearRevisao(revisaoId: string) {
   return executar(async (usuarioId) => {
     const u = await exigirPermissao("ORCAMENTOS_EDITAR");

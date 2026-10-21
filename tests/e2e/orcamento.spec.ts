@@ -209,6 +209,20 @@ test("conflito de edição entre duas abas é detectado", async ({ page, browser
   void respostas;
 });
 
+test("criador altera o nome do orçamento na lista e no editor", async ({ page }) => {
+  const respostas = dialogos(page);
+  await entrar(page);
+  await page.goto("/orcamentos");
+  respostas.push("Reforma da cobertura do bloco A");
+  await page.getByRole("button", { name: "Alterar nome do orçamento Reforma da cobertura" }).first().click();
+  await expect(page.getByRole("link", { name: "Reforma da cobertura do bloco A" })).toBeVisible();
+  await page.getByRole("link", { name: "Reforma da cobertura do bloco A" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Reforma da cobertura do bloco A");
+  respostas.push("Reforma da cobertura");
+  await page.getByRole("button", { name: "Alterar nome do orçamento Reforma da cobertura do bloco A" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Reforma da cobertura$/);
+});
+
 test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
   dialogos(page);
   await entrar(page);

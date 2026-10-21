@@ -3,7 +3,7 @@ import { executorPg, type Executor } from "@/lib/banco/executor";
 import { listarPerfis, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
   adicionarItem, alterarItem, alterarObra, carregarRevisao, compararRevisoes, configurarRevisao, criarEtapa, criarObra, criarOrcamento,
-  atualizarBdi, desbloquearRevisao, gerarVersaoRegime, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
+  atualizarBdi, desbloquearRevisao, gerarVersaoRegime, duplicarOrcamento, excluirItem, excluirObra, excluirOrcamento, renomearOrcamento, podeExcluirObra, fecharRevisao, listarOrcamentos, podeExcluirOrcamento, lerCronograma, moverEtapa, novaRevisao, salvarCronograma, trocarItem,
 } from "@/lib/orcamento/servico";
 import { arquivo, SINAPI_ZIP } from "../importacao/ajuda";
 import { montarRelatorio } from "@/lib/relatorios/montar";
@@ -505,6 +505,14 @@ describe("desbloquear revisão fechada e excluir orçamento fechado", () => {
     expect((await prisma.orcamentoRevisao.findUniqueOrThrow({ where: { id: o.revisaoId } })).status).toBe("FECHADA");
     await expect(prisma.orcamentoRevisao.delete({ where: { id: o.revisaoId } })).rejects.toThrow(/fechada/);
     expect(await prisma.auditoria.count({ where: { acao: "REVISAO_DESBLOQUEADA", entidadeId: n.revisaoId, usuarioId: outro2 } })).toBe(1);
+    // nome do orçamento: criador ou administrador, mesmo com revisão fechada
+    await expect(renomearOrcamento(ex, o.orcamentoId, "Nome alheio", { id: outro2, administrador: false })).rejects.toThrow(/Só quem criou/);
+    await expect(renomearOrcamento(ex, o.orcamentoId, " x ", { id: u, administrador: false })).rejects.toThrow(/Informe o nome/);
+    await renomearOrcamento(ex, o.orcamentoId, "  Demolições -  Defesa Civil  ", { id: u, administrador: false });
+    expect((await prisma.orcamento.findUniqueOrThrow({ where: { id: o.orcamentoId } })).titulo).toBe("Demolições - Defesa Civil");
+    await renomearOrcamento(ex, o.orcamentoId, "Renomeado pelo admin", { id: outro2, administrador: true });
+    expect((await carregarRevisao(ex, o.revisaoId)).orcamento.titulo).toBe("Renomeado pelo admin");
+    expect(await prisma.auditoria.count({ where: { acao: "ORCAMENTO_RENOMEADO", entidadeId: o.orcamentoId } })).toBe(2);
     // exclusão do orçamento com revisão fechada: só criador/administrador
     await expect(excluirOrcamento(ex, o.orcamentoId, { id: outro2, administrador: false })).rejects.toThrow(/Só quem criou/);
     await excluirOrcamento(ex, o.orcamentoId, { id: u, administrador: false });

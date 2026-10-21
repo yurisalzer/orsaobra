@@ -3,7 +3,7 @@ import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { formatarMoeda } from "@/lib/calculo/decimal";
 import { listarOrcamentos, podeExcluirObra, podeExcluirOrcamento } from "@/lib/orcamento/servico";
-import { ExcluirObra, ExcluirOrcamento } from "./ExcluirOrcamento";
+import { ExcluirObra, ExcluirOrcamento, RenomearOrcamento } from "./ExcluirOrcamento";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +65,7 @@ export default async function Orcamentos({ searchParams }: { searchParams: Promi
                   <td className="text-slate-600">{l.criadoPor ?? "—"}</td>
                   {editor && (
                     <td className="whitespace-nowrap text-right">
-                      {podeExcluirOrcamento(l, quem) && <ExcluirOrcamento orcamentoId={l.orcamentoId!} titulo={l.titulo ?? ""} temFechada={!l.emElaboracao} />}
+                      {podeExcluirOrcamento(l, quem) && <span className="inline-flex gap-3"><RenomearOrcamento orcamentoId={l.orcamentoId!} titulo={l.titulo ?? ""} /><ExcluirOrcamento orcamentoId={l.orcamentoId!} titulo={l.titulo ?? ""} temFechada={!l.emElaboracao} /></span>}
                     </td>
                   )}
                 </tr>

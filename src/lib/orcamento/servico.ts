@@ -451,6 +451,21 @@ export async function desbloquearRevisao(ex: Executor, revisaoId: string, u: { i
   ]);
 }
 
+/** Renomeia o orçamento (título): pelo criador ou pelo administrador, em qualquer situação das revisões. */
+export async function renomearOrcamento(ex: Executor, orcamentoId: string, titulo: string, u: { id: string; administrador: boolean }) {
+  const novo = titulo.replace(/\s+/g, " ").trim();
+  if (novo.length < 2) throw new ErroOrcamento("Informe o nome do orçamento.");
+  if (novo.length > 300) throw new ErroOrcamento("Nome do orçamento com mais de 300 caracteres.");
+  const [o] = await ex.consulta<{ titulo: string }>(`SELECT titulo FROM orcamento WHERE id = $1`, [orcamentoId]);
+  if (!o) throw new ErroOrcamento("Orçamento não encontrado.");
+  if (!u.administrador && (await criadorDoOrcamento(ex, orcamentoId)) !== u.id) throw new ErroOrcamento("Só quem criou o orçamento (ou o administrador) pode alterar o nome.");
+  if (o.titulo === novo) return;
+  await ex.transacao([
+    { sql: `UPDATE orcamento SET titulo = $2 WHERE id = $1`, params: [orcamentoId, novo] },
+    comandoAuditoria({ usuarioId: u.id, acao: "ORCAMENTO_RENOMEADO", entidade: "orcamento", entidadeId: orcamentoId, antes: { titulo: o.titulo }, depois: { titulo: novo } }),
+  ]);
+}
+
 /**
  * Exclui DEFINITIVAMENTE o orçamento com todas as revisões (inclusive as
  * fechadas), etapas, itens e cronograma. A obra continua cadastrada.
