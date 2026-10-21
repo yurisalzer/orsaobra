@@ -7,6 +7,7 @@ import {
 } from "@/lib/orcamento/servico";
 import { celula, type Documento, type Linha } from "@/lib/relatorios/documento";
 import { montarRelatorio } from "@/lib/relatorios/montar";
+import { salvarComposicaoPropria } from "@/lib/referencia/proprios";
 import { arquivarCabecalho, listarCabecalhos, salvarCabecalho, validarLogo } from "@/lib/relatorios/cabecalhos";
 import { readFileSync } from "node:fs";
 import { prisma } from "./ajuda";
@@ -104,6 +105,33 @@ describe("relatórios (revisão em elaboração)", () => {
     // 88309 não tem analítica publicada nas amostras: aparece como componente, sem ser explodido
     expect(vals.some((x) => x[1] === "88309")).toBe(true);
     for (const sec of cpu.secoes) for (const l of sec.tabela?.linhas ?? []) expect(l.celulas.reduce((n, c) => n + celula(c).span, 0)).toBe(sec.tabela!.colunas.length);
+  });
+
+  it("composições próprias: só os serviços criados no sistema, com memória de cálculo", async () => {
+    // sem composição própria: aviso
+    const vazio = await montarRelatorio(ex, r1, "composicoes-proprias", opc);
+    expect(vazio.titulo).toBe("Composições próprias");
+    expect(vazio.secoes[0].paragrafos?.[0]).toMatch(/não tem composições próprias/);
+    const propria = await salvarComposicaoPropria(ex, {
+      codigo: "P-REL-01", descricao: "Serviço próprio do relatório", unidade: "M2",
+      componentes: [{ itemId: await idDe("01.001.0001-0"), coeficiente: "0,5", memoria: "4 h ÷ 8 m² (produção diária) = 0,5" }, { itemId: await idDe("36178"), coeficiente: "2" }],
+    }, u);
+    const obra = await criarObra(ex, { nome: "Obra das próprias" }, u);
+    const o = await criarOrcamento(ex, { obraId: obra, titulo: "Com própria", bases: [{ baseRevisaoId: rev.EMOP, regime: "SEM_DESONERACAO" }, { baseRevisaoId: rev.SINAPI, regime: "SEM_DESONERACAO" }] }, u);
+    let w = 1;
+    const et = await criarEtapa(ex, o.revisaoId, w, { titulo: "Única" }, u); w = et.versao;
+    w = (await adicionarItem(ex, o.revisaoId, w, { etapaId: et.id, itemReferenciaId: await idDe("104658"), quantidade: "1" }, u)).versao;
+    w = (await adicionarItem(ex, o.revisaoId, w, { etapaId: et.id, itemReferenciaId: propria, quantidade: "3" }, u)).versao;
+    const d = await montarRelatorio(ex, o.revisaoId, "composicoes-proprias", opc);
+    expect(d.secoes.map((x) => x.titulo)).toEqual(["CPU — P-REL-01"]);
+    expect(d.secoes[0].campos!.find((c) => c.rotulo === "Composição")!.valor).toBe("Composição própria");
+    const vals = d.secoes[0].tabela!.linhas.map(valores);
+    expect(vals.map((x) => x[1])).toEqual(expect.arrayContaining(["01.001.0001-0", "36178"]));
+    expect(vals.some((x) => x[1] === "Memória de cálculo: 4 h ÷ 8 m² (produção diária) = 0,5")).toBe(true);
+    expect(d.avisos.join(" ")).toMatch(/não são oficiais/);
+    for (const l of d.secoes[0].tabela!.linhas) expect(l.celulas.reduce((n, c) => n + celula(c).span, 0)).toBe(d.secoes[0].tabela!.colunas.length);
+    // a CPU completa continua trazendo também a composição oficial
+    expect((await montarRelatorio(ex, o.revisaoId, "cpu", opc)).secoes.map((x) => x.titulo)).toEqual(["CPU — 104658", "CPU — P-REL-01"]);
   });
 
   it("curva ABC de serviços: percentuais somam 100% e classes", async () => {

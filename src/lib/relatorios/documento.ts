@@ -8,7 +8,7 @@ import { dec, formatarNumero } from "../calculo/decimal";
 
 export type TipoRelatorio =
   | "sintetico" | "analitico" | "cpu" | "abc-servicos" | "abc-insumos"
-  | "bdi" | "cronograma" | "comparativo" | "historico" | "memoria";
+  | "bdi" | "cronograma" | "comparativo" | "historico" | "memoria" | "composicoes-proprias";
 
 export const RELATORIOS: { tipo: TipoRelatorio; nome: string; descricao: string }[] = [
   { tipo: "sintetico", nome: "Orçamento sintético", descricao: "Etapas e itens com quantidades, custos, BDI e preços." },
@@ -21,6 +21,7 @@ export const RELATORIOS: { tipo: TipoRelatorio; nome: string; descricao: string 
   { tipo: "comparativo", nome: "Comparativo entre revisões", descricao: "Itens incluídos, excluídos e alterados entre duas revisões." },
   { tipo: "historico", nome: "Histórico de preços", descricao: "Preço de referência de cada item nas competências publicadas." },
   { tipo: "memoria", nome: "Memória de cálculo", descricao: "Memória do quantitativo e cálculo do preço de cada item." },
+  { tipo: "composicoes-proprias", nome: "Composições próprias", descricao: "Só as composições criadas no sistema (não oficiais), com componentes, coeficientes e memória de cálculo." },
 ];
 
 /** moeda = 2 casas; preco = preço de referência como publicado (2 a 4 casas, ex.: insumos EMOP) */

@@ -270,13 +270,15 @@ function linhasSicro(a: AnaliticaSicro): LinhaSicro[] {
 // 3. CPU
 // ---------------------------------------------------------------------------
 
-async function cpu(c: Contexto): Promise<Documento> {
+/** CPU de todos os serviços, ou só das composições próprias (criadas no sistema, não vinculadas a catálogo oficial). */
+async function cpu(c: Contexto, apenasProprias = false): Promise<Documento> {
   const e = c.estado;
-  const comps = e.itens.filter((i) => i.tipo === "COMPOSICAO");
+  const escolhido = (i: LinhaItem) => i.tipo === "COMPOSICAO" && (!apenasProprias || i.fonte === "PROPRIA");
+  const comps = e.itens.filter(escolhido);
   const analiticos = !c.fechada ? new Map((await montarAnaliticos(c.ex, e.revisao.id, comps)).map((a) => [a.id, a.analitico])) : null;
   const vistos = new Set<string>();
   const secoes: Secao[] = [];
-  const ordem = etapasEmOrdem(e).flatMap(({ etapa }) => itensDaEtapa(e, etapa.id)).filter((i) => i.tipo === "COMPOSICAO");
+  const ordem = etapasEmOrdem(e).flatMap(({ etapa }) => itensDaEtapa(e, etapa.id)).filter(escolhido);
   for (const it of ordem) {
     // uma CPU por serviço/base/regime/custo (o mesmo serviço em vários itens aparece uma vez)
     const k = `${it.itemReferenciaId}|${it.baseRevisaoId}|${it.regime}|${it.custoUnitario}|${it.bdiPercentual}`;
@@ -331,8 +333,9 @@ async function cpu(c: Contexto): Promise<Documento> {
       },
     });
   }
-  if (!secoes.length) secoes.push({ paragrafos: ["O orçamento não tem serviços com composição (somente insumos)."] });
-  return documento(c, "cpu", "paisagem", secoes);
+  if (!secoes.length) secoes.push({ paragrafos: [apenasProprias ? "O orçamento não tem composições próprias (todos os serviços vêm de catálogos oficiais)." : "O orçamento não tem serviços com composição (somente insumos)."] });
+  return documento(c, apenasProprias ? "composicoes-proprias" : "cpu", "paisagem", secoes,
+    apenasProprias && comps.length ? ["Composições próprias não são oficiais: foram montadas no sistema a partir de insumos e composições das bases de referência."] : []);
 }
 
 // ---------------------------------------------------------------------------
@@ -657,5 +660,6 @@ export async function montarRelatorio(ex: Executor, revisaoId: string, tipo: Tip
     case "comparativo": return comparativo(c, o.outraRevisaoId);
     case "historico": return historico(c);
     case "memoria": return memoria(c);
+    case "composicoes-proprias": return cpu(c, true);
   }
 }

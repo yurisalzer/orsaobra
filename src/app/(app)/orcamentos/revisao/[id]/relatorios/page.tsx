@@ -28,7 +28,8 @@ export default async function PaginaRelatorios({ params }: { params: Promise<{ i
             : "Revisão em elaboração: os relatórios saem marcados como PRÉVIA."}
         </p>
       </div>
-      <Relatorios revisaoId={id} outras={estado.revisoes.filter((x) => x.id !== id).map((x) => ({ id: x.id, numero: x.numero }))} />
+      <Relatorios revisaoId={id} outras={estado.revisoes.filter((x) => x.id !== id).map((x) => ({ id: x.id, numero: x.numero }))}
+        proprias={new Set(estado.itens.filter((i) => i.tipo === "COMPOSICAO" && i.fonte === "PROPRIA").map((i) => i.itemReferenciaId)).size} />
     </div>
   );
 }

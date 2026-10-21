@@ -39,7 +39,7 @@ async function gerarPlanilha(doc: Documento): Promise<Blob> {
   return new Blob([await gerarXlsx(ExcelJS, doc)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
-export function Relatorios({ revisaoId, outras }: { revisaoId: string; outras: { id: string; numero: number }[] }) {
+export function Relatorios({ revisaoId, outras, proprias = 0 }: { revisaoId: string; outras: { id: string; numero: number }[]; proprias?: number }) {
   const [outra, setOutra] = useState<string>(outras.at(-1)?.id ?? "");
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -65,13 +65,14 @@ export function Relatorios({ revisaoId, outras }: { revisaoId: string; outras: {
       {erro && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <ul className="grid gap-3 sm:grid-cols-2">
         {RELATORIOS.map((r) => {
-          const semOutra = r.tipo === "comparativo" && outras.length === 0;
+          const semOutra = (r.tipo === "comparativo" && outras.length === 0) || (r.tipo === "composicoes-proprias" && proprias === 0);
           return (
             <li key={r.tipo} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4">
               <div>
                 <h2 className="font-medium">{r.nome}</h2>
                 <p className="text-sm text-slate-500">{r.descricao}</p>
               </div>
+              {r.tipo === "composicoes-proprias" && proprias === 0 && <p className="text-xs text-amber-800">Este orçamento não tem composições próprias.</p>}
               {r.tipo === "comparativo" && (
                 semOutra ? <p className="text-xs text-amber-800">Este orçamento tem uma só revisão.</p> : (
                   <label className="text-sm">Comparar com{" "}
