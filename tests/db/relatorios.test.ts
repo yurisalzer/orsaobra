@@ -191,11 +191,14 @@ describe("relatórios (revisão em elaboração)", () => {
     expect(d.avisos.filter((a) => /deveria somar/.test(a))).toEqual([]);
   });
 
-  it("memória de cálculo: quantitativo com resultado e cálculo do preço", async () => {
+  it("memória de cálculo: quantitativo com resultado, sem a coluna de cálculo do preço, A4 paisagem", async () => {
     const d = await montarRelatorio(ex, r1, "memoria", opc);
+    expect(d.orientacao).toBe("paisagem");
+    expect(d.secoes[0].tabela!.colunas.map((c) => c.titulo)).toEqual(["Item", "Código", "Descrição", "Quant.", "Memória do quantitativo"]);
     const l = valores(acharLinha(d, "1.1")!);
+    expect(l).toHaveLength(5);
     expect(l[4]).toBe("2 x 5 — resultado: 10,00");
-    expect(l[5]).toMatch(/Preço unitário = 211,97 × \(1 \+ 22,23% de BDI\) = R\$ 259,09/);
+    for (const x of linhas(d)) expect(x.celulas.reduce((n, c) => n + celula(c).span, 0)).toBe(5);
   });
 
   it("histórico de preços: competências publicadas no regime do item", async () => {

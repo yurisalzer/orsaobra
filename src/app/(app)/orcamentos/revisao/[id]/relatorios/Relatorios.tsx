@@ -103,7 +103,20 @@ const FUNDO: Record<string, string> = { grupo1: "bg-slate-200 font-semibold", gr
 
 function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void }) {
   return (
-    <section aria-label={`Visualização — ${doc.titulo}`} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+    <section aria-label={`Visualização — ${doc.titulo}`} className="area-impressao space-y-3 rounded-xl border border-slate-200 bg-white p-5 print:rounded-none print:border-0 print:p-0">
+      {/* impressão direto da tela: só o relatório, em A4 na orientação do relatório */}
+      <style>{`@media print {
+        @page { size: A4 ${doc.orientacao === "paisagem" ? "landscape" : "portrait"}; margin: 10mm; }
+        html, body { background: #fff !important; }
+        /* esconde tudo que não é o relatório (irmãos em cada nível até a raiz) — sem sobrar páginas em branco */
+        *:has(.area-impressao) > *:not(.area-impressao):not(:has(.area-impressao)) { display: none !important; }
+        *:has(.area-impressao) { margin: 0 !important; padding: 0 !important; border: 0 !important; max-width: none !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; }
+        .area-impressao { font-size: 9pt; }
+        .area-impressao td { overflow-wrap: anywhere; }
+        .area-impressao thead { display: table-header-group; }
+        .area-impressao tr { break-inside: avoid; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }`}</style>
       {doc.cabecalho && (doc.cabecalho.linhas.length > 0 || doc.cabecalho.logo) && (
         <div className="flex items-center gap-3 border-b border-marca-700 pb-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- imagem em data URL vinda do cadastro */}
@@ -113,7 +126,10 @@ function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void 
       )}
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-lg font-semibold uppercase text-marca-700">{doc.titulo}</h2>
-        <button onClick={aoFechar} className="rounded-md border border-slate-300 px-3 py-1 text-sm">Fechar</button>
+        <div className="flex gap-2 print:hidden">
+          <button onClick={() => window.print()} className="rounded-md border border-slate-300 px-3 py-1 text-sm">Imprimir</button>
+          <button onClick={aoFechar} className="rounded-md border border-slate-300 px-3 py-1 text-sm">Fechar</button>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-sm">
         {doc.identificacao.map((linha) => {
@@ -133,8 +149,9 @@ function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void 
             </dl>
           )}
           {s.tabela && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
+            <div className="overflow-x-auto print:overflow-visible">
+              <table className="w-full border-collapse text-sm print:table-fixed print:text-[8pt]">
+                <colgroup>{(() => { const t = s.tabela!.colunas.reduce((n, c) => n + c.largura, 0); return s.tabela!.colunas.map((c) => <col key={c.titulo} style={{ width: `${(100 * c.largura) / t}%` }} />); })()}</colgroup>
                 <thead><tr>{s.tabela.colunas.map((c) => <th key={c.titulo} className={`border border-slate-300 bg-marca-700 px-1.5 py-1 text-xs font-medium text-white ${ehNumerica(c.tipo) ? "text-right" : "text-left"}`}>{c.titulo}</th>)}</tr></thead>
                 <tbody>
                   {s.tabela.linhas.map((l, j) => {
@@ -146,7 +163,7 @@ function Visualizacao({ doc, aoFechar }: { doc: Documento; aoFechar: () => void 
                           const t = tipo ?? s.tabela!.colunas[col]?.tipo ?? "texto";
                           col += span;
                           const num = ehNumerica(t) && span === 1;
-                          return <td key={k} colSpan={span} className={`border border-slate-200 px-1.5 py-0.5 align-top ${num ? "whitespace-nowrap text-right tabular-nums" : t === "codigo" ? "whitespace-nowrap font-mono text-xs" : ""}`}>{formatarCelula(valor, t)}</td>;
+                          return <td key={k} colSpan={span} className={`border border-slate-200 px-1.5 py-0.5 align-top ${num ? "whitespace-nowrap text-right tabular-nums" : t === "codigo" ? "whitespace-nowrap font-mono text-xs print:whitespace-normal" : ""}`}>{formatarCelula(valor, t)}</td>;
                         })}
                       </tr>
                     );

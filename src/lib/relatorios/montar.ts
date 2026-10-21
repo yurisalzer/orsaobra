@@ -622,7 +622,7 @@ function memoria(c: Contexto): Documento {
   const e = c.estado;
   const linhas: Linha[] = [];
   for (const { etapa, nivel } of etapasEmOrdem(e)) {
-    linhas.push({ celulas: [etapa.numero, span(etapa.titulo, 5)], estilo: estiloEtapa(nivel) });
+    linhas.push({ celulas: [etapa.numero, span(etapa.titulo, 4)], estilo: estiloEtapa(nivel) });
     for (const it of itensDaEtapa(e, etapa.id)) {
       let mq = it.memoriaQuantitativo ?? "—";
       if (it.memoriaQuantitativo) {
@@ -631,14 +631,14 @@ function memoria(c: Contexto): Documento {
           if (r) mq += ` — resultado: ${formatarNumero(r.valor.toDecimalPlaces(4), Math.min(Math.max(r.valor.toDecimalPlaces(4).decimalPlaces(), 2), 4))}${r.valor.toDecimalPlaces(4).eq(it.quantidade) ? "" : " (difere da quantidade lançada)"}`;
         } catch { /* texto sem conta */ }
       }
-      linhas.push({ celulas: [it.numero, `${rotuloFonte(it.fonte)} ${it.codigo}`, `${it.descricao} (${it.unidade || "s/ unid."})`, it.quantidade, mq, it.memoriaCalculo ?? ""] });
+      linhas.push({ celulas: [it.numero, `${rotuloFonte(it.fonte)} ${it.codigo}`, `${it.descricao} (${it.unidade || "s/ unid."})`, it.quantidade, mq] });
     }
   }
   return documento(c, "memoria", "paisagem", [{
     tabela: {
       colunas: [
-        { titulo: "Item", tipo: "texto", largura: 4 }, { titulo: "Código", tipo: "codigo", largura: 9 }, { titulo: "Descrição", tipo: "texto", largura: 24 },
-        { titulo: "Quant.", tipo: "quantidade", largura: 7 }, { titulo: "Memória do quantitativo", tipo: "texto", largura: 26 }, { titulo: "Cálculo do preço", tipo: "texto", largura: 30 },
+        { titulo: "Item", tipo: "texto", largura: 4 }, { titulo: "Código", tipo: "codigo", largura: 12 }, { titulo: "Descrição", tipo: "texto", largura: 31 },
+        { titulo: "Quant.", tipo: "quantidade", largura: 7 }, { titulo: "Memória do quantitativo", tipo: "texto", largura: 46 },
       ],
       linhas,
     },

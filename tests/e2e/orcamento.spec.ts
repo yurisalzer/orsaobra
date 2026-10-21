@@ -272,6 +272,19 @@ test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
   ws.eachRow((r) => { if (r.getCell(1).value === "% acumulado do orçamento") valores.push(r.getCell(5).value); });
   expect(valores).toEqual([100]);
 
+  // memória de cálculo: sem a coluna "Cálculo do preço"; impressão da tela em A4 paisagem, só o relatório
+  await page.getByRole("button", { name: "Visualizar — Memória de cálculo" }).click();
+  const mem = page.getByRole("region", { name: "Visualização — Memória de cálculo" });
+  await expect(mem.locator("thead th")).toHaveText(["Item", "Código", "Descrição", "Quant.", "Memória do quantitativo"]);
+  await expect(mem.getByRole("button", { name: "Imprimir" })).toBeVisible();
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("button", { name: "Visualizar — Orçamento sintético" })).toBeHidden();
+  const impresso = await page.pdf({ preferCSSPageSize: true, path: "test-results/memoria-impressao.pdf" });
+  // A4 paisagem: 842 × 595 pt
+  expect(impresso.toString("latin1")).toMatch(/MediaBox \[0 0 841\.\d+ 59[45]\.\d+\]/);
+  await page.emulateMedia({ media: "screen" });
+  await mem.getByRole("button", { name: "Fechar" }).click();
+
   // comparativo com a revisão 1
   await page.getByRole("button", { name: "Visualizar — Comparativo entre revisões" }).click();
   await expect(page.getByRole("region", { name: "Visualização — Comparativo entre revisões" }).getByText(/Rev\. 1 \(fechada\)/)).toBeVisible();
