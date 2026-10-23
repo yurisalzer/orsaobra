@@ -35,7 +35,9 @@ const uuid = z.string().uuid();
 const data = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).nullable().optional();
 const dadosContrato = z.object({
   numero: z.string().max(60), objeto: z.string().max(2000), empresa: z.string().max(300).nullable().optional(), cnpj: z.string().max(30).nullable().optional(),
-  dataAssinatura: data, dataOs: data, prazoDias: z.number().int().nullable().optional(),
+  dataAssinatura: data, dataOs: data, prazoExecucaoDias: z.number().int().nullable().optional(), prazoVigenciaDias: z.number().int().nullable().optional(),
+  endereco: z.string().max(300).nullable().optional(), responsavelTecnico: z.string().max(200).nullable().optional(), artRrt: z.string().max(60).nullable().optional(),
+  emailContato: z.string().max(200).nullable().optional(), telefoneContato: z.string().max(30).nullable().optional(),
 });
 const novaObra = z.object({
   nome: z.string().max(200), codigo: z.string().max(60), processo: z.string().max(100), descricao: z.string().max(4000),

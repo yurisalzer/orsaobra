@@ -5,6 +5,7 @@ import {
   alterarDadosContrato, alterarPrecoContratado, aplicarDescontoLinear, carregarContrato, confirmarContrato, criarContratoDaPlanilha, criarContratoDoOrcamento,
   excluirContrato, listarContratos, reabrirContrato, revisoesParaContrato,
 } from "@/lib/contratos/servico";
+import { calcularPrazos } from "@/lib/contratos/prazos";
 import { prisma } from "./ajuda";
 import { carregarAmostras } from "./carga";
 
@@ -36,6 +37,14 @@ beforeAll(async () => {
 afterAll(async () => { await ex.encerrar?.(); await prisma.$disconnect(); });
 
 describe("contratos — planilha contratual", () => {
+  it("prazos: término = início + prazo − 1 dia; aviso quando a execução passa da vigência", () => {
+    // O.S. em 14/08/2023 com 360 + 300 dias termina em 03/06/2025 (planilha de medição do contrato 045/2023)
+    expect(calcularPrazos({ dataOs: "2023-08-14", prazoExecucaoDias: 660 }).terminoExecucao).toBe("2025-06-03");
+    expect(calcularPrazos({ dataAssinatura: "2026-01-31", prazoVigenciaDias: 30 }).terminoVigencia).toBe("2026-03-01");
+    expect(calcularPrazos({ dataAssinatura: "2026-05-15", prazoVigenciaDias: 10, dataOs: "2026-05-19", prazoExecucaoDias: 30 }).execucaoAlemDaVigencia).toBe(true);
+    expect(calcularPrazos({ dataOs: "2026-05-19" }).terminoExecucao).toBeNull();
+  });
+
   let contrato: string;
 
   it("do orçamento: exige revisão fechada e copia todas as características, com preço contratado = orçado", async () => {
@@ -43,11 +52,17 @@ describe("contratos — planilha contratual", () => {
     const e = await carregarRevisao(ex, r1);
     await fecharRevisao(ex, r1, e.revisao.versao, u);
     expect((await revisoesParaContrato(ex)).map((x) => x.revisaoId)).toContain(r1);
-    contrato = await criarContratoDoOrcamento(ex, r1, { numero: "017/2026", objeto: "Ponte Regalo (Sana) — emergencial", empresa: "Construtora X", cnpj: "12345678000190", dataOs: "2026-05-19", prazoDias: 30 }, u);
+    contrato = await criarContratoDoOrcamento(ex, r1, { numero: "017/2026", objeto: "Ponte Regalo (Sana) — emergencial", empresa: "Construtora X", cnpj: "12345678000190", dataOs: "2026-05-19", prazoExecucaoDias: 30,
+      dataAssinatura: "2026-05-15", prazoVigenciaDias: 120, endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
+      emailContato: "Obra@Construtora.com.br", telefoneContato: "22999998888" }, u);
     await expect(criarContratoDoOrcamento(ex, r1, { numero: "017/2026", objeto: "Duplicado" }, u)).rejects.toThrow(/Já existe o contrato nº 017\/2026/);
     const c = await carregarContrato(ex, contrato);
     const orc = await carregarRevisao(ex, r1);
-    expect(c.contrato).toMatchObject({ numero: "017/2026", origem: "ORCAMENTO", situacao: "EM_CADASTRO", cnpj: "12.345.678/0001-90", obraNome: "Ponte Regalo", prazoDias: 30, dataOs: "2026-05-19" });
+    expect(c.contrato).toMatchObject({ numero: "017/2026", origem: "ORCAMENTO", situacao: "EM_CADASTRO", cnpj: "12.345.678/0001-90", obraNome: "Ponte Regalo", prazoExecucaoDias: 30, dataOs: "2026-05-19",
+      prazoVigenciaDias: 120, dataAssinatura: "2026-05-15", endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
+      emailContato: "obra@construtora.com.br", telefoneContato: "(22) 99999-8888" });
+    await expect(criarContratoDoOrcamento(ex, r1, { numero: "018/2026", objeto: "x x x", emailContato: "invalido" }, u)).rejects.toThrow(/E-mail de contato inválido/);
+    await expect(criarContratoDoOrcamento(ex, r1, { numero: "018/2026", objeto: "x x x", telefoneContato: "123" }, u)).rejects.toThrow(/Telefone de contato inválido/);
     expect(c.grupos.map((g) => `${g.numero} ${g.titulo}`)).toEqual(["1 Serviços preliminares", "2 Ponte", "2.1 Infraestrutura"]);
     expect(c.itens.map((i) => i.numero)).toEqual(orc.itens.map((i) => i.numero).sort());
     const emop = c.itens.find((i) => i.codigo === "01.001.0001-0")!;

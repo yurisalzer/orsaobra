@@ -14,6 +14,7 @@
 import type { Comando, Executor } from "@/lib/banco/executor";
 import { arredondar, dec, formatarNumero, lerNumero, type Dec, type ModoArredondamento } from "@/lib/calculo/decimal";
 import { comandoAuditoria } from "@/lib/auditoria";
+import { normalizarTelefone } from "@/lib/auth/cadastro";
 import { carregarRevisao, ErroOrcamento } from "@/lib/orcamento/servico";
 
 export class ErroContrato extends Error {}
@@ -29,7 +30,13 @@ export interface DadosContrato {
   cnpj?: string | null;
   dataAssinatura?: string | null;
   dataOs?: string | null;
-  prazoDias?: number | null;
+  prazoExecucaoDias?: number | null;
+  prazoVigenciaDias?: number | null;
+  endereco?: string | null;
+  responsavelTecnico?: string | null;
+  artRrt?: string | null;
+  emailContato?: string | null;
+  telefoneContato?: string | null;
 }
 
 function limpar(d: DadosContrato) {
@@ -47,11 +54,21 @@ function limpar(d: DadosContrato) {
     if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ErroContrato(`${nome} inválida.`);
     return v;
   };
-  const prazo = d.prazoDias ?? null;
-  if (prazo !== null && (!Number.isInteger(prazo) || prazo < 1 || prazo > 36500)) throw new ErroContrato("Prazo em dias inválido.");
+  const prazo = (v: number | null | undefined, nome: string) => {
+    const x = v ?? null;
+    if (x !== null && (!Number.isInteger(x) || x < 1 || x > 36500)) throw new ErroContrato(`${nome} em dias inválido.`);
+    return x;
+  };
+  const email = t(d.emailContato)?.toLowerCase() ?? null;
+  if (email && (email.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new ErroContrato("E-mail de contato inválido.");
+  const telefone = t(d.telefoneContato) ? normalizarTelefone(t(d.telefoneContato)!) : null;
+  if (telefone === null && t(d.telefoneContato)) throw new ErroContrato("Telefone de contato inválido (informe DDD e número).");
   return {
     numero, objeto, empresa: t(d.empresa)?.slice(0, 300) ?? null, cnpj: cnpj ? formatarCnpj(cnpj) : null,
-    dataAssinatura: data(d.dataAssinatura, "Data de assinatura"), dataOs: data(d.dataOs, "Data da ordem de serviço"), prazoDias: prazo,
+    dataAssinatura: data(d.dataAssinatura, "Data de assinatura"), dataOs: data(d.dataOs, "Data da ordem de serviço"),
+    prazoExecucaoDias: prazo(d.prazoExecucaoDias, "Prazo de execução"), prazoVigenciaDias: prazo(d.prazoVigenciaDias, "Prazo contratual"),
+    endereco: t(d.endereco)?.slice(0, 300) ?? null, responsavelTecnico: t(d.responsavelTecnico)?.slice(0, 200) ?? null, artRrt: t(d.artRrt)?.slice(0, 60) ?? null,
+    emailContato: email, telefoneContato: telefone || null,
   };
 }
 
@@ -63,6 +80,15 @@ export function formatarCnpj(c: string) {
 async function numeroLivre(ex: Executor, numero: string, exceto: string | null = null) {
   const [r] = await ex.consulta<{ id: string }>(`SELECT id FROM contrato WHERE lower(numero) = lower($1) AND ($2::uuid IS NULL OR id <> $2)`, [numero, exceto]);
   if (r) throw new ErroContrato(`Já existe o contrato nº ${numero}.`);
+}
+
+/** Dados complementares do contrato (empresa, datas, prazos, endereço e responsável técnico). */
+function comandoDados(id: string, d: ReturnType<typeof limpar>): Comando {
+  return {
+    sql: `UPDATE contrato SET empresa = $2, cnpj = $3, data_assinatura = $4, data_os = $5, prazo_execucao_dias = $6, prazo_vigencia_dias = $7,
+                 endereco = $8, responsavel_tecnico = $9, art_rrt = $10, email_contato = $11, telefone_contato = $12 WHERE id = $1`,
+    params: [id, d.empresa, d.cnpj, d.dataAssinatura, d.dataOs, d.prazoExecucaoDias, d.prazoVigenciaDias, d.endereco, d.responsavelTecnico, d.artRrt, d.emailContato, d.telefoneContato],
+  };
 }
 
 const totalItem = (q: Dec | string, p: Dec | string, modo: ModoArredondamento) => arredondar(dec(q).times(p), 2, modo);
@@ -96,10 +122,11 @@ export async function criarContratoDoOrcamento(ex: Executor, revisaoId: string, 
   const referencia = e.basesPadrao.map((b) => `${b.fonte} RJ ${competencia(b.competencia)}${b.regimeNome ? ` — ${b.regimeNome}` : ""}`).join("; ") || null;
   await ex.transacao([
     {
-      sql: `INSERT INTO contrato (id, obra_id, numero, objeto, empresa, cnpj, data_assinatura, data_os, prazo_dias, origem, revisao_id, referencia, bdi_percentual, arredondamento, criado_por_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ORCAMENTO', $10, $11, $12, $13, $14)`,
-      params: [id, e.orcamento.obraId, dados.numero, dados.objeto, dados.empresa, dados.cnpj, dados.dataAssinatura, dados.dataOs, dados.prazoDias, revisaoId, referencia, e.revisao.bdiPercentual, e.revisao.arredondamento, usuarioId],
+      sql: `INSERT INTO contrato (id, obra_id, numero, objeto, origem, revisao_id, referencia, bdi_percentual, arredondamento, criado_por_id)
+            VALUES ($1, $2, $3, $4, 'ORCAMENTO', $5, $6, $7, $8, $9)`,
+      params: [id, e.orcamento.obraId, dados.numero, dados.objeto, revisaoId, referencia, e.revisao.bdiPercentual, e.revisao.arredondamento, usuarioId],
     },
+    comandoDados(id, dados),
     ...comandosPlanilha(id, grupos, itens),
     comandoAuditoria({ usuarioId, acao: "CONTRATO_CRIADO", entidade: "contrato", entidadeId: id, depois: { numero: dados.numero, origem: "ORCAMENTO", revisaoId, itens: itens.length, total: e.totais.total } }),
   ]);
@@ -191,10 +218,11 @@ export async function criarContratoDaPlanilha(
   const total = itens.reduce((a, i) => a.plus(i.valorTotal), dec(0));
   await ex.transacao([
     {
-      sql: `INSERT INTO contrato (id, obra_id, numero, objeto, empresa, cnpj, data_assinatura, data_os, prazo_dias, origem, arquivo_origem, arredondamento, criado_por_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PLANILHA', $10, $11, $12)`,
-      params: [id, d.obraId, dados.numero, dados.objeto, dados.empresa, dados.cnpj, dados.dataAssinatura, dados.dataOs, dados.prazoDias, p.arquivo.slice(0, 200), modo, usuarioId],
+      sql: `INSERT INTO contrato (id, obra_id, numero, objeto, origem, arquivo_origem, arredondamento, criado_por_id)
+            VALUES ($1, $2, $3, $4, 'PLANILHA', $5, $6, $7)`,
+      params: [id, d.obraId, dados.numero, dados.objeto, p.arquivo.slice(0, 200), modo, usuarioId],
     },
+    comandoDados(id, dados),
     ...comandosPlanilha(id, grupos, itens),
     comandoAuditoria({ usuarioId, acao: "CONTRATO_CRIADO", entidade: "contrato", entidadeId: id, depois: { numero: dados.numero, origem: "PLANILHA", arquivo: p.arquivo, itens: itens.length, total: total.toFixed(2) } }),
   ]);
@@ -234,7 +262,9 @@ export interface ItemContrato {
 }
 export interface EstadoContrato {
   contrato: {
-    id: string; numero: string; objeto: string; empresa: string | null; cnpj: string | null; dataAssinatura: string | null; dataOs: string | null; prazoDias: number | null;
+    id: string; numero: string; objeto: string; empresa: string | null; cnpj: string | null; dataAssinatura: string | null; dataOs: string | null;
+    prazoExecucaoDias: number | null; prazoVigenciaDias: number | null; endereco: string | null; responsavelTecnico: string | null; artRrt: string | null;
+    emailContato: string | null; telefoneContato: string | null;
     origem: "ORCAMENTO" | "PLANILHA"; revisaoId: string | null; orcamento: string | null; arquivoOrigem: string | null; referencia: string | null; bdiPercentual: string | null;
     arredondamento: ModoArredondamento; situacao: "EM_CADASTRO" | "VIGENTE"; versao: number; criadoPorId: string | null; criadoPor: string | null; criadoEm: string;
     confirmadoEm: string | null; confirmadoPor: string | null; obraId: string; obraNome: string; obraCodigo: string | null; processo: string | null;
@@ -246,7 +276,8 @@ export interface EstadoContrato {
 
 export async function carregarContrato(ex: Executor, contratoId: string): Promise<EstadoContrato> {
   const [c] = await ex.consulta<EstadoContrato["contrato"]>(
-    `SELECT c.id, c.numero, c.objeto, c.empresa, c.cnpj, c.data_assinatura::text AS "dataAssinatura", c.data_os::text AS "dataOs", c.prazo_dias AS "prazoDias",
+    `SELECT c.id, c.numero, c.objeto, c.empresa, c.cnpj, c.data_assinatura::text AS "dataAssinatura", c.data_os::text AS "dataOs", c.prazo_execucao_dias AS "prazoExecucaoDias", c.prazo_vigencia_dias AS "prazoVigenciaDias", c.endereco,
+            c.responsavel_tecnico AS "responsavelTecnico", c.art_rrt AS "artRrt", c.email_contato AS "emailContato", c.telefone_contato AS "telefoneContato",
             c.origem, c.revisao_id AS "revisaoId",
             (SELECT concat_ws(' — ', oc.codigo, oc.titulo) || ' (revisão ' || r.numero || ')' FROM orcamento_revisao r JOIN orcamento oc ON oc.id = r.orcamento_id WHERE r.id = c.revisao_id) AS orcamento,
             c.arquivo_origem AS "arquivoOrigem", c.referencia, c.bdi_percentual::text AS "bdiPercentual", c.arredondamento, c.situacao, c.versao,
@@ -325,11 +356,8 @@ export async function alterarDadosContrato(ex: Executor, contratoId: string, ver
   if (c.versao !== versao) throw new ErroContrato("O contrato foi alterado por outra pessoa. Recarregue a página.");
   await numeroLivre(ex, dados.numero, contratoId);
   await ex.transacao([
-    {
-      sql: `UPDATE contrato SET numero = $2, objeto = $3, empresa = $4, cnpj = $5, data_assinatura = $6, data_os = $7, prazo_dias = $8, versao = versao + 1, atualizado_em = now()
-             WHERE id = $1 AND versao = $9`,
-      params: [contratoId, dados.numero, dados.objeto, dados.empresa, dados.cnpj, dados.dataAssinatura, dados.dataOs, dados.prazoDias, versao],
-    },
+    { sql: `UPDATE contrato SET numero = $2, objeto = $3, versao = versao + 1, atualizado_em = now() WHERE id = $1 AND versao = $4`, params: [contratoId, dados.numero, dados.objeto, versao] },
+    comandoDados(contratoId, dados),
     comandoAuditoria({ usuarioId, acao: "CONTRATO_ALTERADO", entidade: "contrato", entidadeId: contratoId, depois: dados }),
   ]);
   return versao + 1;

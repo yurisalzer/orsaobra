@@ -5,14 +5,16 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useState, useTransition } from "react";
 import type { EstadoContrato, ItemContrato } from "@/lib/contratos/servico";
 import { acaoAlterarDadosContrato, acaoAlterarPreco, acaoConfirmarContrato, acaoDescontoLinear, acaoExcluirContrato, acaoReabrirContrato } from "../acoes";
+import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
 import { CamposContrato, paraAcao, type FormContrato } from "../CamposContrato";
 
 const moeda = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }));
 const preco = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }));
 const qtd = (v: string) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-const dataBr = (d: string | null) => (d ? d.split("-").reverse().join("/") : "—");
 const paraForm = (c: EstadoContrato["contrato"]): FormContrato => ({
-  numero: c.numero, objeto: c.objeto, empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "", prazoDias: c.prazoDias ? String(c.prazoDias) : "",
+  numero: c.numero, objeto: c.objeto, empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "",
+  prazoExecucaoDias: c.prazoExecucaoDias ? String(c.prazoExecucaoDias) : "", prazoVigenciaDias: c.prazoVigenciaDias ? String(c.prazoVigenciaDias) : "",
+  endereco: c.endereco ?? "", responsavelTecnico: c.responsavelTecnico ?? "", artRrt: c.artRrt ?? "", emailContato: c.emailContato ?? "", telefoneContato: c.telefoneContato ?? "",
 });
 
 export function PlanilhaContrato({ estado, podeEditar, podeGerenciar }: { estado: EstadoContrato; podeEditar: boolean; podeGerenciar: boolean }) {
@@ -29,6 +31,7 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar }: { estado
   useEffect(() => { setVersao(c.versao); setForm(paraForm(c)); }, [c]);
 
   const emCadastro = c.situacao === "EM_CADASTRO";
+  const prazos = calcularPrazos(c);
   const editaPreco = podeEditar && emCadastro && c.origem === "ORCAMENTO";
   const rodar = <T,>(f: () => Promise<{ ok: true; dados: T } | { ok: false; erro: string }>, depois?: (d: T) => void, msg?: string) => iniciar(async () => {
     setErro(null);
@@ -103,10 +106,18 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar }: { estado
         ) : (
           <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
             <div><dt className="inline font-medium">Empresa: </dt><dd className="inline">{c.empresa ?? "—"}{c.cnpj ? ` (CNPJ ${c.cnpj})` : ""}</dd></div>
-            <div><dt className="inline font-medium">Assinatura: </dt><dd className="inline">{dataBr(c.dataAssinatura)}</dd></div>
-            <div><dt className="inline font-medium">Ordem de serviço: </dt><dd className="inline">{dataBr(c.dataOs)}</dd></div>
-            <div><dt className="inline font-medium">Prazo: </dt><dd className="inline">{c.prazoDias ? `${c.prazoDias} dias` : "—"}</dd></div>
             <div><dt className="inline font-medium">Processo: </dt><dd className="inline">{c.processo ?? "—"}</dd></div>
+            <div><dt className="inline font-medium">Endereço: </dt><dd className="inline">{c.endereco ?? "—"}</dd></div>
+            <div><dt className="inline font-medium">Assinatura: </dt><dd className="inline">{dataBr(c.dataAssinatura)}</dd></div>
+            <div><dt className="inline font-medium">Prazo contratual: </dt><dd className="inline">{c.prazoVigenciaDias ? `${c.prazoVigenciaDias} dias` : "—"}</dd></div>
+            <div><dt className="inline font-medium">Término da vigência: </dt><dd className="inline">{dataBr(prazos.terminoVigencia)}</dd></div>
+            <div><dt className="inline font-medium">Ordem de serviço: </dt><dd className="inline">{dataBr(c.dataOs)}</dd></div>
+            <div><dt className="inline font-medium">Prazo de execução: </dt><dd className="inline">{c.prazoExecucaoDias ? `${c.prazoExecucaoDias} dias` : "—"}</dd></div>
+            <div><dt className="inline font-medium">Término da execução: </dt><dd className="inline">{dataBr(prazos.terminoExecucao)}</dd></div>
+            {prazos.execucaoAlemDaVigencia && <p className="text-amber-800 sm:col-span-3">⚠ A execução termina depois do fim da vigência do contrato.</p>}
+            <div><dt className="inline font-medium">Responsável técnico: </dt><dd className="inline">{c.responsavelTecnico ?? "—"}</dd></div>
+            <div><dt className="inline font-medium">ART/RRT: </dt><dd className="inline">{c.artRrt ?? "—"}</dd></div>
+            <div><dt className="inline font-medium">Contato: </dt><dd className="inline">{[c.emailContato, c.telefoneContato].filter(Boolean).join(" · ") || "—"}</dd></div>
             <div className="sm:col-span-3"><dt className="inline font-medium">Origem da planilha: </dt><dd className="inline">
               {c.origem === "ORCAMENTO"
                 ? <>orçamento {c.revisaoId ? <Link href={`/orcamentos/revisao/${c.revisaoId}`} className="text-marca-700 underline">{c.orcamento}</Link> : "(excluído)"}{c.referencia ? ` · ${c.referencia}` : ""}{c.bdiPercentual ? ` · BDI ${Number(c.bdiPercentual).toLocaleString("pt-BR")}%` : ""}</>

@@ -40,9 +40,28 @@ test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e to
   await expect(page.getByLabel("Empresa contratada")).toHaveValue("CONSÓRCIO EXEMPLO");
   await page.getByLabel("Nome da obra", { exact: true }).fill("Praça e CRAS no Miramar");
   await page.getByLabel("Objeto (nome da obra)").fill("CONSTRUÇÃO DE PRAÇA E CRAS NO MIRAMAR");
+  await page.getByLabel("Endereço da obra").fill("Rua Exemplo, 100 — Miramar, Macaé/RJ");
+  // prazos: términos calculados na hora (dias corridos, contando o início)
+  await page.getByLabel("Data de assinatura").fill("2023-08-10");
+  await page.getByLabel("Prazo contratual (dias)").fill("365");
+  await page.getByLabel("Ordem de serviço (início)").fill("2023-08-14");
+  await page.getByLabel("Prazo de execução (dias)").fill("660");
+  await expect(page.getByText("Término da vigência: 08/08/2024")).toBeVisible();
+  await expect(page.getByText("Término da execução: 03/06/2025")).toBeVisible();
+  await expect(page.getByText("A execução termina depois do fim da vigência do contrato.")).toBeVisible();
+  await page.getByLabel("Prazo contratual (dias)").fill("720");
+  await expect(page.getByText("A execução termina depois do fim da vigência do contrato.")).toHaveCount(0);
+  await page.getByLabel("Nome do responsável técnico").fill("Eng. Maria Souza");
+  await page.getByLabel("ART / RRT").fill("ART RJ20230012345");
+  await page.getByLabel("E-mail de contato").fill("obra@consorcio.com.br");
+  await page.getByLabel("Telefone de contato").fill("22988887777");
   await page.getByRole("button", { name: "Criar contrato com 3 itens" }).click();
   await expect(page.getByRole("heading", { name: "Contrato 045/2023" })).toBeVisible();
   await expect(page.getByText(/planilha importada da proposta \(proposta\.xlsx\)/)).toBeVisible();
+  await expect(page.getByText("Término da execução: 03/06/2025")).toBeVisible();
+  await expect(page.getByText("Término da vigência: 29/07/2025")).toBeVisible();
+  await expect(page.getByText("Eng. Maria Souza")).toBeVisible();
+  await expect(page.getByText("obra@consorcio.com.br · (22) 98888-7777")).toBeVisible();
   await expect(page.getByRole("row", { name: /^2\.2 / })).toContainText("1.000,1234");
   await expect(page.getByRole("row", { name: /^2\.2 / })).toContainText("24.002,96");
   await expect(page.getByRole("row", { name: /TOTAL CONTRATADO/ })).toContainText("460.402,96");

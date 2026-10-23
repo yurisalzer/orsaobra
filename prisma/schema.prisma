@@ -796,7 +796,13 @@ model Contrato {
   cnpj            String?
   dataAssinatura  DateTime? @map("data_assinatura") @db.Date
   dataOs          DateTime? @map("data_os") @db.Date
-  prazoDias       Int?      @map("prazo_dias")
+  prazoExecucaoDias  Int?    @map("prazo_execucao_dias")
+  prazoVigenciaDias  Int?    @map("prazo_vigencia_dias")
+  endereco           String?
+  responsavelTecnico String? @map("responsavel_tecnico")
+  artRrt             String? @map("art_rrt")
+  emailContato       String? @map("email_contato")
+  telefoneContato    String? @map("telefone_contato")
   origem          String
   revisaoId       String?   @map("revisao_id") @db.Uuid
   arquivoOrigem   String?   @map("arquivo_origem")
