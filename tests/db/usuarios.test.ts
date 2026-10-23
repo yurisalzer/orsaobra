@@ -39,7 +39,7 @@ describe("usuários e permissões", () => {
     expect(await definirPermissao(ex, maria, "ORCAMENTOS_VER", false, admin)).toEqual(["CONSULTA", "COMPOSICOES"]);
     const aud = await prisma.auditoria.findFirstOrThrow({ where: { acao: "PERMISSOES_ALTERADAS", entidadeId: maria }, orderBy: { criadoEm: "desc" } });
     expect(aud.depois).toEqual({ permissoes: ["CONSULTA", "COMPOSICOES"] });
-    expect(await substituirPermissoes(ex, maria, MODELOS[0].permissoes, admin)).toEqual(["CONSULTA", "ORCAMENTOS_VER", "RELATORIOS"]);
+    expect(await substituirPermissoes(ex, maria, MODELOS[0].permissoes, admin)).toEqual(["CONSULTA", "ORCAMENTOS_VER", "RELATORIOS", "MEDICOES_VER"]);
   });
 
   it("protege o administrador: não retira de si, não se desativa, sempre resta um", async () => {

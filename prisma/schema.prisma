@@ -50,16 +50,18 @@ model Usuario {
   criadoEm          DateTime  @default(now()) @map("criado_em") @db.Timestamptz
   atualizadoEm      DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz
 
-  sessoes      Sessao[]
-  permissoes   UsuarioPermissao[]
-  confirmacoes ConfirmacaoEmail[]
-  emails       EmailSaida[]
-  auditorias   Auditoria[]
-  importacoes  Importacao[]
-  membroObras  ObraMembro[]
-  obrasCriadas Obra[]               @relation("ObraCriadaPor")
-  revisoesFech OrcamentoRevisao[]   @relation("RevisaoFechadaPor")
-  memoriais    MemorialDescritivo[] @relation("MemorialAtualizadoPor")
+  sessoes              Sessao[]
+  permissoes           UsuarioPermissao[]
+  confirmacoes         ConfirmacaoEmail[]
+  emails               EmailSaida[]
+  auditorias           Auditoria[]
+  importacoes          Importacao[]
+  membroObras          ObraMembro[]
+  obrasCriadas         Obra[]               @relation("ObraCriadaPor")
+  revisoesFech         OrcamentoRevisao[]   @relation("RevisaoFechadaPor")
+  memoriais            MemorialDescritivo[] @relation("MemorialAtualizadoPor")
+  contratosCriados     Contrato[]           @relation("ContratoCriadoPor")
+  contratosConfirmados Contrato[]           @relation("ContratoConfirmadoPor")
 
   @@map("usuario")
 }
@@ -337,6 +339,7 @@ model ItemReferencia {
   itensOrc        ItemOrcamento[]
   proprio         ItemProprio?
   bases           BaseItem[]
+  contratoItens   ContratoItem[]
 
   @@unique([fonteId, tipo, codigo])
   @@index([codigo])
@@ -571,6 +574,7 @@ model Obra {
   criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz
 
   orcamentos Orcamento[]
+  contratos  Contrato[]
   membros    ObraMembro[]
   criadoPor  Usuario?            @relation("ObraCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
   cabecalho  CabecalhoRelatorio? @relation(fields: [cabecalhoId], references: [id], onDelete: SetNull)
@@ -671,6 +675,7 @@ model OrcamentoRevisao {
   itens         ItemOrcamento[]
   cronograma    CronogramaParcela[]
   memorial      MemorialDescritivo?
+  contratos     Contrato[]
 
   @@unique([orcamentoId, numero])
   @@map("orcamento_revisao")
@@ -778,4 +783,90 @@ model CronogramaParcela {
 
   @@unique([etapaId, periodo])
   @@map("cronograma_parcela")
+}
+
+/// Contrato da obra (módulo de medições). A planilha contratual vem de uma revisão
+/// do orçamento ou da planilha importada da proposta vencedora.
+model Contrato {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  obraId          String    @map("obra_id") @db.Uuid
+  numero          String
+  objeto          String
+  empresa         String?
+  cnpj            String?
+  dataAssinatura  DateTime? @map("data_assinatura") @db.Date
+  dataOs          DateTime? @map("data_os") @db.Date
+  prazoDias       Int?      @map("prazo_dias")
+  origem          String
+  revisaoId       String?   @map("revisao_id") @db.Uuid
+  arquivoOrigem   String?   @map("arquivo_origem")
+  referencia      String?
+  bdiPercentual   Decimal?  @map("bdi_percentual") @db.Decimal(9, 4)
+  arredondamento  String    @default("ARREDONDAR")
+  situacao        String    @default("EM_CADASTRO")
+  versao          Int       @default(1)
+  criadoPorId     String?   @map("criado_por_id") @db.Uuid
+  criadoEm        DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm    DateTime  @default(now()) @map("atualizado_em") @db.Timestamptz
+  confirmadoEm    DateTime? @map("confirmado_em") @db.Timestamptz
+  confirmadoPorId String?   @map("confirmado_por_id") @db.Uuid
+
+  obra          Obra              @relation(fields: [obraId], references: [id], onDelete: Restrict)
+  revisao       OrcamentoRevisao? @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
+  criadoPor     Usuario?          @relation("ContratoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  confirmadoPor Usuario?          @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  grupos        ContratoGrupo[]
+  itens         ContratoItem[]
+
+  @@index([obraId], map: "contrato_obra_idx")
+  @@map("contrato")
+}
+
+model ContratoGrupo {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contratoId String  @map("contrato_id") @db.Uuid
+  paiId      String? @map("pai_id") @db.Uuid
+  ordem      Int
+  titulo     String
+
+  contrato Contrato        @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  pai      ContratoGrupo?  @relation("GrupoPai", fields: [paiId], references: [id], onDelete: Cascade)
+  filhos   ContratoGrupo[] @relation("GrupoPai")
+  itens    ContratoItem[]
+
+  @@index([contratoId], map: "contrato_grupo_contrato_idx")
+  @@map("contrato_grupo")
+}
+
+model ContratoItem {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contratoId          String   @map("contrato_id") @db.Uuid
+  grupoId             String   @map("grupo_id") @db.Uuid
+  ordem               Int
+  numero              String?
+  codigo              String?
+  fonte               String?
+  descricao           String
+  unidade             String?
+  quantidade          Decimal  @db.Decimal(18, 4)
+  precoUnitario       Decimal  @map("preco_unitario") @db.Decimal(18, 4)
+  valorTotal          Decimal  @map("valor_total") @db.Decimal(18, 2)
+  itemOrcamentoId     String?  @map("item_orcamento_id") @db.Uuid
+  itemReferenciaId    String?  @map("item_referencia_id") @db.Uuid
+  precoOrcado         Decimal? @map("preco_orcado") @db.Decimal(18, 4)
+  custoUnitario       Decimal? @map("custo_unitario") @db.Decimal(18, 4)
+  bdiPercentual       Decimal? @map("bdi_percentual") @db.Decimal(9, 4)
+  baseRotulo          String?  @map("base_rotulo")
+  regime              String?
+  referenciaPreco     String?  @map("referencia_preco")
+  memoriaQuantitativo String?  @map("memoria_quantitativo")
+  memoriaCalculo      String?  @map("memoria_calculo")
+  valorTotalArquivo   Decimal? @map("valor_total_arquivo") @db.Decimal(18, 2)
+
+  contrato       Contrato        @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  grupo          ContratoGrupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  itemReferencia ItemReferencia? @relation(fields: [itemReferenciaId], references: [id], onDelete: SetNull)
+
+  @@index([contratoId, ordem], map: "contrato_item_contrato_idx")
+  @@map("contrato_item")
 }

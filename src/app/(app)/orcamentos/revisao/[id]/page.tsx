@@ -30,6 +30,7 @@ export default async function PaginaRevisao({ params }: { params: Promise<{ id: 
       podeEditar={temPermissao(u, "ORCAMENTOS_EDITAR")}
       podeRelatorios={temPermissao(u, "RELATORIOS")}
       podeGerenciar={dono}
+      podeContrato={temPermissao(u, "MEDICOES_EDITAR")}
     />
   );
 }

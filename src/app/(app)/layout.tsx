@@ -7,6 +7,7 @@ import { acaoSair } from "./acoes";
 const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
   { href: "/", rotulo: "Início" },
   { href: "/orcamentos", rotulo: "Orçamentos", permissao: "ORCAMENTOS_VER" },
+  { href: "/contratos", rotulo: "Contratos", permissao: "MEDICOES_VER" },
   { href: "/consulta", rotulo: "Consulta de preços", permissao: "CONSULTA" },
   { href: "/composicoes", rotulo: "Composições", permissao: "CONSULTA" },
   { href: "/bdi", rotulo: "BDI", permissao: "BDI" },

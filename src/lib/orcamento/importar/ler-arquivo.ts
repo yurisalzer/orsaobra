@@ -105,7 +105,9 @@ export function gradeDoPdf(paginas: TextoPdf[][]): { grade: Grade; texto: string
     const chave = (l: LinhaPdf) => normalizar(l.segmentos.map((s) => s.texto).join(" ")).replace(/\d+/g, "#");
     const paginasDe = new Map<string, Set<number>>();
     for (const l of todas) paginasDe.set(chave(l), (paginasDe.get(chave(l)) ?? new Set()).add(l.pagina));
-    const repetidas = (l: LinhaPdf) => (paginasDe.get(chave(l))?.size ?? 0) >= Math.min(3, paginas.length) && camposDoCabecalho(l.segmentos) === 0;
+    // linha de item (vários valores numéricos) nunca é timbre, mesmo que se repita (itens iguais em páginas diferentes)
+    const numericos = (l: LinhaPdf) => l.segmentos.filter((x) => /^-?[\d.,%\s]+$/.test(x.texto) && /\d/.test(x.texto)).length;
+    const repetidas = (l: LinhaPdf) => (paginasDe.get(chave(l))?.size ?? 0) >= Math.min(3, paginas.length) && camposDoCabecalho(l.segmentos) === 0 && numericos(l) < 4;
     const primeira = new Set<string>();
     todas = todas.filter((l) => {
       if (!repetidas(l)) return true;
@@ -140,6 +142,28 @@ export function gradeDoPdf(paginas: TextoPdf[][]): { grade: Grade; texto: string
     while (k + 1 < limites.length && centro >= limites[k + 1]) k++;
     return k;
   };
+  // Ajuste pelos dados: títulos centralizados em colunas largas (ex.: "Descrição") deslocam o limite
+  // calculado pelos títulos, e textos curtos alinhados à esquerda caem na coluna anterior. Nas linhas
+  // completas (item com todos os campos), o início de cada coluna é a menor posição x de seus dados.
+  const corpo = todas.slice(melhor.fim + 1);
+  const completas = corpo.filter((l) => new Set(l.segmentos.map(colunaDe)).size >= Math.max(4, colunas.length - 3));
+  if (completas.length >= 3) {
+    const inicio = colunas.map((_, k) => Math.min(...completas.flatMap((l) => l.segmentos.filter((x) => colunaDe(x) === k).map((x) => x.x0))));
+    // só colunas de texto alinhado à esquerda: o início dos dados fica à esquerda do limite pelos títulos
+    for (let k = 1; k < colunas.length; k++) {
+      if (Number.isFinite(inicio[k]) && inicio[k] < limites[k] && (!Number.isFinite(inicio[k - 1]) || inicio[k] > inicio[k - 1] + 2)) {
+        const fimAnterior = Math.max(...completas.flatMap((l) => l.segmentos.filter((x) => colunaDe(x) === k - 1).map((x) => x.x1)));
+        if (!Number.isFinite(fimAnterior) || fimAnterior < inicio[k]) limites[k] = Math.max(fimAnterior + 1, inicio[k] - 3);
+      }
+    }
+  }
+  // texto (alinhado à esquerda) vai pela posição inicial; números (alinhados à direita), pelo centro
+  const colunaFinal = (s: Segmento) => {
+    if (/\d/.test(s.texto) && /^[-\d.,%\s]+$/.test(s.texto)) return colunaDe(s);
+    let k = 0;
+    while (k + 1 < limites.length && s.x0 + 1 >= limites[k + 1]) k++;
+    return k;
+  };
   const grade: Grade = [];
   const titulosNorm = normalizar(colunas.map((c) => c.texto).join(" "));
   let ignorarAteCabecalho = false;
@@ -166,7 +190,7 @@ export function gradeDoPdf(paginas: TextoPdf[][]): { grade: Grade; texto: string
     if (normalizar(textoLinha) === titulosNorm) continue;
     const linha: (string | null)[] = colunas.map(() => null);
     for (const s of l.segmentos) {
-      const k = colunaDe(s);
+      const k = colunaFinal(s);
       linha[k] = linha[k] ? `${linha[k]} ${s.texto}` : s.texto;
     }
     grade.push(linha);

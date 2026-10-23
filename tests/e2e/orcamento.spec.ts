@@ -548,3 +548,37 @@ test("memorial descritivo: só com revisão fechada e cronograma pronto; edita e
   await page.reload();
   await expect(page.getByLabel("Texto de 1.1) JUSTIFICATIVA")).toHaveValue("Necessidade de reforma da creche, conforme vistoria da Secretaria.");
 });
+
+test("contrato a partir do orçamento: preço contratado editável, desconto linear e confirmação", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Orçamento do memorial" }).click();
+  await page.getByRole("link", { name: "Criar contrato" }).click();
+  await expect(page.getByRole("heading", { name: "Novo contrato a partir do orçamento" })).toBeVisible();
+  await expect(page.getByLabel("Revisão do orçamento")).not.toHaveValue("");
+  await page.getByLabel("Nº do contrato").fill("017/2026");
+  await page.getByLabel("Empresa contratada").fill("Construtora Exemplo Ltda");
+  await page.getByLabel("Objeto (nome da obra)").fill("PONTE REGALO (SANA) - EMERGENCIAL");
+  await page.getByRole("button", { name: "Criar contrato e planilha" }).click();
+  await expect(page.getByRole("heading", { name: "Contrato 017/2026" })).toBeVisible();
+  await expect(page.getByText("Em cadastro — confira a planilha e confirme")).toBeVisible();
+  // preço contratado começa igual ao orçado; edição item a item
+  const preco = page.getByLabel("Preço contratado 1.1");
+  await expect(preco).toHaveValue("211,97");
+  await preco.fill("200,00");
+  await preco.press("Enter");
+  await expect(page.getByRole("row", { name: /^1\.1 / })).toContainText("400,00");
+  // desconto linear de 10% sobre o orçado (211,97 × 0,9 = 190,773 → 190,77)
+  await page.getByLabel("Desconto linear (%)").fill("10");
+  await page.getByRole("button", { name: "Aplicar a todos os itens" }).click();
+  await expect(page.getByRole("status")).toContainText("Desconto aplicado");
+  await expect(page.getByLabel("Preço contratado 1.1")).toHaveValue("190,77");
+  await expect(page.getByText("Desconto sobre o orçado")).toBeVisible();
+  await page.screenshot({ path: "test-results/contrato-orcamento.png", fullPage: true });
+  await page.getByRole("button", { name: "Confirmar planilha" }).click();
+  await expect(page.getByText(/Planilha vigente desde/)).toBeVisible();
+  await expect(page.getByLabel("Preço contratado 1.1")).toHaveCount(0);
+  await page.getByRole("link", { name: "Contratos", exact: true }).first().click();
+  await expect(page.getByRole("row", { name: /017\/2026/ })).toContainText("Vigente");
+});

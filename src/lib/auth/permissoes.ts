@@ -11,6 +11,8 @@ export const PERMISSOES = [
   { codigo: "BDI", nome: "Perfis de BDI", descricao: "Criar, editar e arquivar perfis de BDI." },
   { codigo: "CABECALHOS", nome: "Cabeçalhos", descricao: "Cadastrar logos e textos dos cabeçalhos dos relatórios." },
   { codigo: "IMPORTACAO", nome: "Importação de bases", descricao: "Importar, validar e publicar bases (SINAPI, EMOP, SICRO, SCO) e conferir bases não publicadas." },
+  { codigo: "MEDICOES_VER", nome: "Ver contratos e medições", descricao: "Abrir contratos, planilhas contratuais e medições." },
+  { codigo: "MEDICOES_EDITAR", nome: "Editar contratos e medições", descricao: "Cadastrar contratos, montar e confirmar a planilha contratual e lançar medições." },
   { codigo: "USUARIOS", nome: "Usuários e permissões", descricao: "Cadastrar usuários, ativar/desativar e alterar permissões (administrador)." },
 ] as const;
 
@@ -22,6 +24,7 @@ export const DEPENDE_DE: Partial<Record<Permissao, Permissao>> = {
   ORCAMENTOS_EDITAR: "ORCAMENTOS_VER",
   RELATORIOS: "ORCAMENTOS_VER",
   COMPOSICOES: "CONSULTA",
+  MEDICOES_EDITAR: "MEDICOES_VER",
 };
 
 /** Ajusta um conjunto de permissões às dependências (sem nada inventado: só acrescenta as exigidas). */
@@ -33,8 +36,8 @@ export function completarPermissoes(lista: Iterable<string>): Permissao[] {
 
 /** Modelos para aplicar com um clique. */
 export const MODELOS: { nome: string; permissoes: Permissao[] }[] = [
-  { nome: "Leitor", permissoes: ["CONSULTA", "ORCAMENTOS_VER", "RELATORIOS"] },
-  { nome: "Orçamentista", permissoes: ["CONSULTA", "ORCAMENTOS_VER", "ORCAMENTOS_EDITAR", "RELATORIOS", "COMPOSICOES", "BDI", "CABECALHOS"] },
+  { nome: "Leitor", permissoes: ["CONSULTA", "ORCAMENTOS_VER", "RELATORIOS", "MEDICOES_VER"] },
+  { nome: "Orçamentista", permissoes: ["CONSULTA", "ORCAMENTOS_VER", "ORCAMENTOS_EDITAR", "RELATORIOS", "COMPOSICOES", "BDI", "CABECALHOS", "MEDICOES_VER", "MEDICOES_EDITAR"] },
   { nome: "Administrador", permissoes: [...CODIGOS_PERMISSAO] },
 ];
 

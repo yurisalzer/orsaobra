@@ -397,6 +397,8 @@ export async function excluirObra(ex: Executor, obraId: string, u: { id: string;
   if (!o) throw new ErroOrcamento("Obra não encontrada.");
   if (o.orcamentos > 0) throw new ErroOrcamento("A obra tem orçamentos e não pode ser excluída. Exclua os orçamentos antes.");
   if (!u.administrador && o.criado_por_id !== u.id) throw new ErroOrcamento("Só quem cadastrou a obra (ou o administrador) pode excluí-la.");
+  const [ct] = await ex.consulta<{ n: number }>(`SELECT count(*)::int AS n FROM contrato WHERE obra_id = $1`, [obraId]);
+  if (ct.n > 0) throw new ErroOrcamento("A obra tem contratos e não pode ser excluída.");
   await ex.transacao([
     { sql: `SELECT imp_exigir(NOT EXISTS (SELECT 1 FROM orcamento WHERE obra_id = $1), 'A obra tem orçamentos e não pode ser excluída. Exclua os orçamentos antes.')`, params: [obraId] },
     { sql: `DELETE FROM obra WHERE id = $1`, params: [obraId] },

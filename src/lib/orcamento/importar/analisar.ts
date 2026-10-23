@@ -245,15 +245,20 @@ export function lerLinhas(g: Grade, cab: Cabecalho, mapa: Mapa, opcoes: { contin
     // o total da etapa em alguma coluna numérica, mas não tem unidade.
     const codigoValido = !!base.codigo && pareceCodigo(base.codigo);
     if (qtd && (base.codigo || base.descricao) && (mapa.unidade === undefined || base.unidade || codigoValido)) { linhas.push({ ...base, tipo: "ITEM" }); continue; }
-    const soTexto = base.descricao && !base.item && !base.codigo && !base.unidade && base.quantidade === null;
     const anterior = linhas[linhas.length - 1];
+    // PDF: unidade quebrada em duas linhas ("UNX" / "M") continua a do item anterior
+    const restoUnidade = !!base.unidade && base.unidade.length <= 3 && anterior?.tipo === "ITEM" && !!anterior.unidade && !base.item && !base.codigo && base.quantidade === null && base.total === null;
+    const soTexto = (base.descricao || restoUnidade) && !base.item && !base.codigo && (!base.unidade || restoUnidade) && base.quantidade === null;
     if (opcoes.continuacao && soTexto && anterior && anterior.tipo !== "IGNORADA") {
-      anterior.descricao = `${anterior.descricao} ${base.descricao}`.trim();
+      if (base.descricao) anterior.descricao = `${anterior.descricao} ${base.descricao}`.trim();
+      if (restoUnidade) anterior.unidade = `${anterior.unidade}${base.unidade}`;
       continue;
     }
     // título de etapa escrito fora da coluna de descrição (célula mesclada)
     if (!base.descricao && !base.unidade) {
-      const livre = l.map((c, k) => (k === mapa.item ? "" : textoDe(c))).find((t) => t && lerNumero(t) === null && !pareceCodigo(t) && t.length >= 3);
+      // (no PDF, o título pode começar na coluna do item; precisa ter letras — números juntos, como "261.294,08 39,96", não são título)
+      const livre = l.map((c, k) => (k === mapa.item && /^[\d.]+$/.test(textoDe(c)) ? "" : textoDe(c)))
+        .find((t) => t && /\p{L}{2}/u.test(t) && lerNumero(t) === null && !pareceCodigo(t) && t.length >= 3);
       if (livre) { base.descricao = livre; if (base.codigo === livre) base.codigo = null; if (base.fonte === livre) base.fonte = null; }
     }
     if (base.descricao && !base.unidade && !codigoValido && (base.quantidade === null || mapa.unidade !== undefined)) {
