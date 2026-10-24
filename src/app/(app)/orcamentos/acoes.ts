@@ -174,10 +174,10 @@ export async function acaoDuplicar(revisaoId: string, titulo: string) {
 }
 
 const parcela = z.object({ tipo: z.enum(["AC", "S", "R", "G", "DF", "L", "I"]), nome: z.string().max(100), percentual: z.string().max(20) });
-export async function acaoSalvarPerfil(d: { id: string | null; nome: string; descricao: string | null; percentualInformado: string | null; parcelas: { tipo: string; nome: string; percentual: string }[] }) {
+export async function acaoSalvarPerfil(d: { id: string | null; nome: string; descricao: string | null; percentualInformado: string | null; formula?: string | null; parcelas: { tipo: string; nome: string; percentual: string }[] }) {
   return executar((u) => executor().then((ex) => salvarPerfil(ex, {
     id: d.id ? uuid.parse(d.id) : null, nome: z.string().max(120).parse(d.nome), descricao: d.descricao ? z.string().max(500).parse(d.descricao) : null,
-    percentualInformado: d.percentualInformado, parcelas: z.array(parcela).max(30).parse(d.parcelas),
+    percentualInformado: d.percentualInformado, formula: d.formula ? z.string().max(500).parse(d.formula) : null, parcelas: z.array(parcela).max(30).parse(d.parcelas),
   }, u)), "/bdi", "BDI");
 }
 export async function acaoArquivarPerfil(id: string, ativo: boolean) {

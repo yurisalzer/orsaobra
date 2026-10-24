@@ -22,7 +22,8 @@ export interface DemonstrativoBdi {
  *   BDI = [ (1 + AC + S + R + G) × (1 + DF) × (1 + L) ] / (1 − I) − 1
  * Parcelas do mesmo tipo são somadas (ex.: PIS + COFINS + ISS em I).
  */
-export function calcularBdi(parcelas: ParcelaBdi[]): DemonstrativoBdi {
+/** Soma das parcelas por grupo, em pontos percentuais. */
+export function somasBdi(parcelas: ParcelaBdi[]): Record<TipoParcelaBdi, Dec> {
   const somas: Record<TipoParcelaBdi, Dec> = {
     AC: dec(0), S: dec(0), R: dec(0), G: dec(0), DF: dec(0), L: dec(0), I: dec(0),
   };
@@ -31,6 +32,11 @@ export function calcularBdi(parcelas: ParcelaBdi[]): DemonstrativoBdi {
     if (v.isNegative()) throw new Error(`Parcela de BDI negativa: ${p.nome}`);
     somas[p.tipo] = somas[p.tipo].plus(v);
   }
+  return somas;
+}
+
+export function calcularBdi(parcelas: ParcelaBdi[]): DemonstrativoBdi {
+  const somas = somasBdi(parcelas);
   const f = (x: Dec) => x.div(100);
   const I = f(somas.I);
   if (I.gte(1)) throw new Error("Tributos (I) devem ser menores que 100%");

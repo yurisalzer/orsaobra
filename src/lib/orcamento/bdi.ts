@@ -6,7 +6,8 @@
  * percentuais), como usualmente apresentado no demonstrativo de BDI.
  */
 import type { Comando, Executor } from "../banco/executor";
-import { calcularBdi, type TipoParcelaBdi } from "../calculo/bdi";
+import { calcularBdi, somasBdi, type TipoParcelaBdi } from "../calculo/bdi";
+import { calcularBdiPorFormula, ErroFormulaBdi } from "../calculo/formula-bdi";
 import { arredondar, lerNumero, type Dec } from "../calculo/decimal";
 import { comandoAuditoria } from "../auditoria";
 
@@ -28,6 +29,8 @@ export interface PerfilBdi {
   nome: string;
   descricao: string | null;
   percentualInformado: string | null;
+  /** fórmula do usuário (null = fórmula do Acórdão TCU 2.622/2013) */
+  formula: string | null;
   ativo: boolean;
   parcelas: ParcelaPerfil[];
   /** BDI exato (sem arredondar), em pontos percentuais */
@@ -37,14 +40,15 @@ export interface PerfilBdi {
   emUso: number;
 }
 
-export function bdiDoPerfil(p: { percentualInformado: string | null; parcelas: ParcelaPerfil[] }): { exato: Dec; aplicado: Dec } {
-  const exato = p.percentualInformado !== null ? lerNumero(p.percentualInformado)! : calcularBdi(p.parcelas).bdi;
+export function bdiDoPerfil(p: { percentualInformado: string | null; formula?: string | null; parcelas: ParcelaPerfil[] }): { exato: Dec; aplicado: Dec } {
+  const exato = p.percentualInformado !== null ? lerNumero(p.percentualInformado)!
+    : p.formula ? calcularBdiPorFormula(p.formula, somasBdi(p.parcelas)) : calcularBdi(p.parcelas).bdi;
   return { exato, aplicado: arredondar(exato, 2) };
 }
 
 export async function listarPerfis(ex: Executor, apenasAtivos = false): Promise<PerfilBdi[]> {
-  const linhas = await ex.consulta<{ id: string; nome: string; descricao: string | null; percentual_informado: string | null; ativo: boolean; parcelas: ParcelaPerfil[] | null; em_uso: number }>(
-    `SELECT p.id, p.nome, p.descricao, p.percentual_informado::text, p.ativo,
+  const linhas = await ex.consulta<{ id: string; nome: string; descricao: string | null; percentual_informado: string | null; formula: string | null; ativo: boolean; parcelas: ParcelaPerfil[] | null; em_uso: number }>(
+    `SELECT p.id, p.nome, p.descricao, p.percentual_informado::text, p.formula, p.ativo,
             (SELECT jsonb_agg(jsonb_build_object('tipo', x.tipo, 'nome', x.nome, 'percentual', x.percentual::text) ORDER BY x.ordem) FROM bdi_parcela x WHERE x.perfil_id = p.id) AS parcelas,
             ((SELECT count(*) FROM orcamento_revisao r WHERE r.bdi_perfil_id = p.id) + (SELECT count(*) FROM item_orcamento i WHERE i.bdi_perfil_id = p.id))::int AS em_uso
        FROM bdi_perfil p WHERE ($1::boolean = false OR p.ativo) ORDER BY p.nome`,
@@ -52,9 +56,9 @@ export async function listarPerfis(ex: Executor, apenasAtivos = false): Promise<
   );
   return linhas.map((l) => {
     const parcelas = l.parcelas ?? [];
-    const b = bdiDoPerfil({ percentualInformado: l.percentual_informado, parcelas });
+    const b = bdiDoPerfil({ percentualInformado: l.percentual_informado, formula: l.formula, parcelas });
     return {
-      id: l.id, nome: l.nome, descricao: l.descricao, percentualInformado: l.percentual_informado, ativo: l.ativo, parcelas,
+      id: l.id, nome: l.nome, descricao: l.descricao, percentualInformado: l.percentual_informado, formula: l.formula, ativo: l.ativo, parcelas,
       bdiCalculado: b.exato.toString(), bdiAplicado: b.aplicado.toFixed(2), emUso: l.em_uso,
     };
   });
@@ -62,7 +66,7 @@ export async function listarPerfis(ex: Executor, apenasAtivos = false): Promise<
 
 export async function salvarPerfil(
   ex: Executor,
-  d: { id?: string | null; nome: string; descricao?: string | null; percentualInformado?: string | null; parcelas: { tipo: TipoParcelaBdi; nome: string; percentual: string }[] },
+  d: { id?: string | null; nome: string; descricao?: string | null; percentualInformado?: string | null; formula?: string | null; parcelas: { tipo: TipoParcelaBdi; nome: string; percentual: string }[] },
   usuarioId: string,
 ): Promise<string> {
   const nome = d.nome.trim();
@@ -79,9 +83,14 @@ export async function salvarPerfil(
     if (!v || v.isNegative()) throw new ErroBdi(`Percentual inválido na parcela ${p.nome || p.tipo}.`);
     return { tipo: p.tipo, nome: (p.nome || TIPOS_PARCELA.find((t) => t.tipo === p.tipo)!.nome).trim(), percentual: v.toString(), ordem: i + 1 };
   });
+  const formula = informado === null ? (d.formula ?? "").replace(/\s+/g, " ").trim() || null : null;
+  if (formula && formula.length > 500) throw new ErroBdi("Fórmula do BDI com mais de 500 caracteres.");
   if (informado === null && parcelas.length === 0) throw new ErroBdi("Informe as parcelas do BDI ou o percentual informado.");
   if (informado === null) {
-    try { calcularBdi(parcelas); } catch (e) { throw new ErroBdi((e as Error).message); }
+    try {
+      if (formula) calcularBdiPorFormula(formula, somasBdi(parcelas));
+      else calcularBdi(parcelas);
+    } catch (e) { throw new ErroBdi(e instanceof ErroFormulaBdi ? `Fórmula do BDI: ${e.message}` : (e as Error).message); }
   }
   const dup = await ex.consulta<{ id: string }>(`SELECT id FROM bdi_perfil WHERE lower(nome) = lower($1) AND id IS DISTINCT FROM $2::uuid`, [nome, d.id ?? null]);
   if (dup.length) throw new ErroBdi("Já existe perfil com esse nome.");
@@ -95,10 +104,10 @@ export async function salvarPerfil(
   const id = d.id ?? crypto.randomUUID();
   const cmds: Comando[] = d.id
     ? [
-        { sql: `UPDATE bdi_perfil SET nome = $2, descricao = $3, percentual_informado = $4::numeric WHERE id = $1`, params: [id, nome, d.descricao ?? null, informado] },
+        { sql: `UPDATE bdi_perfil SET nome = $2, descricao = $3, percentual_informado = $4::numeric, formula = $5 WHERE id = $1`, params: [id, nome, d.descricao ?? null, informado, formula] },
         { sql: `DELETE FROM bdi_parcela WHERE perfil_id = $1`, params: [id] },
       ]
-    : [{ sql: `INSERT INTO bdi_perfil (id, nome, descricao, percentual_informado) VALUES ($1, $2, $3, $4::numeric)`, params: [id, nome, d.descricao ?? null, informado] }];
+    : [{ sql: `INSERT INTO bdi_perfil (id, nome, descricao, percentual_informado, formula) VALUES ($1, $2, $3, $4::numeric, $5)`, params: [id, nome, d.descricao ?? null, informado, formula] }];
   if (parcelas.length) {
     cmds.push({
       sql: `INSERT INTO bdi_parcela (perfil_id, tipo, nome, percentual, ordem)
@@ -106,7 +115,7 @@ export async function salvarPerfil(
       params: [id, JSON.stringify(parcelas)],
     });
   }
-  cmds.push(comandoAuditoria({ usuarioId, acao: d.id ? "BDI_ALTERADO" : "BDI_CRIADO", entidade: "bdi_perfil", entidadeId: id, depois: { nome, informado, parcelas } }));
+  cmds.push(comandoAuditoria({ usuarioId, acao: d.id ? "BDI_ALTERADO" : "BDI_CRIADO", entidade: "bdi_perfil", entidadeId: id, depois: { nome, informado, formula, parcelas } }));
   await ex.transacao(cmds);
   return id;
 }

@@ -18,7 +18,7 @@ export function ListaBdi({ perfis, podeEditar }: { perfis: PerfilBdi[]; podeEdit
       {editando && (
         <EditorBdi aoFechar={() => setEditando(null)} inicial={editando === "novo"
           ? { id: null, nome: "", descricao: null, percentualInformado: null, parcelas: [] }
-          : { id: editando.id, nome: editando.nome, descricao: editando.descricao, percentualInformado: editando.percentualInformado, parcelas: editando.parcelas }} />
+          : { id: editando.id, nome: editando.nome, descricao: editando.descricao, percentualInformado: editando.percentualInformado, formula: editando.formula, parcelas: editando.parcelas }} />
       )}
       {perfis.length === 0 ? <p className="text-sm text-slate-500">Nenhum perfil cadastrado.</p> : perfis.map((p) => (
         <section key={p.id} className={`rounded-xl border border-slate-200 bg-white p-5 ${p.ativo ? "" : "opacity-60"}`}>
@@ -32,11 +32,12 @@ export function ListaBdi({ perfis, podeEditar }: { perfis: PerfilBdi[]; podeEdit
             )}
           </div>
           {p.descricao && <p className="text-sm text-slate-600">{p.descricao}</p>}
-          {p.percentualInformado ? <p className="mt-2 text-sm">Percentual informado diretamente.</p> : (
+          {p.percentualInformado ? <p className="mt-2 text-sm">Percentual informado diretamente.</p> : (<>
+            <p className="mt-2 text-xs text-slate-600">{p.formula ? <>Fórmula personalizada: <code className="font-mono">BDI = {p.formula}</code></> : "Fórmula do Acórdão TCU 2.622/2013"}</p>
             <table className="mt-2 text-sm">
               <tbody>{p.parcelas.map((x, i) => <tr key={i}><td className="pr-3 text-slate-500">{x.tipo}</td><td className="pr-3">{x.nome}</td><td className="num">{pct(x.percentual)}%</td></tr>)}</tbody>
             </table>
-          )}
+          </>)}
           <p className="mt-2 text-xs text-slate-500">Calculado: {Number(p.bdiCalculado).toLocaleString("pt-BR", { maximumFractionDigits: 6 })}% · em uso em {p.emUso} revisão(ões)/item(ns)</p>
         </section>
       ))}

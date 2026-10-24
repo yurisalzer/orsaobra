@@ -9,7 +9,8 @@
  *    retificação, regime), data de referência e dados de emissão.
  */
 import type { Executor } from "../banco/executor";
-import { calcularBdi } from "../calculo/bdi";
+import { calcularBdi, somasBdi } from "../calculo/bdi";
+import { calcularBdiPorFormula } from "../calculo/formula-bdi";
 import { curvaAbc } from "../calculo/abc";
 import { arredondar, dec, formatarNumero, type Dec } from "../calculo/decimal";
 import { avaliarMemoria } from "../calculo/expressao";
@@ -437,7 +438,7 @@ async function abcInsumos(c: Contexto): Promise<Documento> {
 // 6. BDI
 // ---------------------------------------------------------------------------
 
-interface PerfilSnap { id: string; nome: string; descricao: string | null; percentualInformado: string | null; parcelas: ParcelaPerfil[]; bdiCalculado: string; bdiAplicado: string }
+interface PerfilSnap { id: string; nome: string; descricao: string | null; percentualInformado: string | null; formula?: string | null; parcelas: ParcelaPerfil[]; bdiCalculado: string; bdiAplicado: string }
 
 async function bdi(c: Contexto): Promise<Documento> {
   const e = c.estado;
@@ -460,10 +461,16 @@ async function bdi(c: Contexto): Promise<Documento> {
     const linhas: Linha[] = p.parcelas.map((x) => ({ celulas: [x.tipo, x.nome, x.percentual] }));
     const paragrafos: string[] = [];
     if (p.parcelas.length) {
-      const d = calcularBdi(p.parcelas);
-      (["AC", "S", "R", "G", "DF", "L", "I"] as const).forEach((t) => linhas.push({ celulas: [t, `Soma ${t}`, d.somas[t].toString()], estilo: "subtotal" }));
-      paragrafos.push("Fórmula (Acórdão TCU 2.622/2013): BDI = [(1 + AC + S + R + G) × (1 + DF) × (1 + L)] / (1 − I) − 1");
-      paragrafos.push(`BDI calculado pelas parcelas: ${formatarNumero(d.bdi, 4)}%`);
+      const somas = somasBdi(p.parcelas);
+      (["AC", "S", "R", "G", "DF", "L", "I"] as const).forEach((t) => linhas.push({ celulas: [t, `Soma ${t}`, somas[t].toString()], estilo: "subtotal" }));
+      if (p.formula) {
+        paragrafos.push(`Fórmula adotada (informada no perfil): BDI = ${p.formula}`);
+        paragrafos.push("Variáveis em fração (ex.: 5% = 0,05), iguais à soma das parcelas de cada grupo.");
+        paragrafos.push(`BDI calculado pela fórmula: ${formatarNumero(calcularBdiPorFormula(p.formula, somas), 4)}%`);
+      } else {
+        paragrafos.push("Fórmula (Acórdão TCU 2.622/2013): BDI = [(1 + AC + S + R + G) × (1 + DF) × (1 + L)] / (1 − I) − 1");
+        paragrafos.push(`BDI calculado pelas parcelas: ${formatarNumero(calcularBdi(p.parcelas).bdi, 4)}%`);
+      }
     }
     if (p.percentualInformado !== null) paragrafos.push(`BDI informado no perfil (ex.: fixado em edital): ${formatarNumero(p.percentualInformado, 4)}% — prevalece sobre o calculado.`);
     paragrafos.push(`BDI aplicado aos itens (2 casas): ${fmtPct(p.bdiAplicado)}`);

@@ -640,3 +640,24 @@ test("acesso individual: sem acesso vê só na lista; o criador libera pelo bot�
     await expect(outra.getByRole("heading", { name: "Sem acesso a este orçamento" })).toBeVisible({ timeout: 2000 });
   }).toPass({ timeout: 15000 });
 });
+
+test("perfil de BDI com fórmula personalizada: prévia na hora e fórmula na lista", async ({ page }) => {
+  await entrar(page);
+  await page.goto("/bdi");
+  await page.getByRole("button", { name: "Novo perfil de BDI" }).click();
+  await page.getByLabel("Nome do perfil").fill("BDI fórmula própria");
+  await page.getByLabel("Percentual Administração central").fill("4");
+  await page.getByLabel("Percentual Lucro").fill("8");
+  await page.getByLabel("Percentual ISS").fill("5");
+  await page.getByLabel("Fórmula personalizada").check();
+  // começa com a fórmula do TCU para adaptar
+  await expect(page.getByLabel("Fórmula do BDI")).toHaveValue("(1 + AC + S + R + G) * (1 + DF) * (1 + L) / (1 - I) - 1");
+  await page.getByLabel("Fórmula do BDI").fill("(1 + AC) * (1 + L) / (1 - I) - 1");
+  await expect(page.getByText("BDI resultante (aplicado com 2 casas): 18,23%")).toBeVisible();
+  await page.getByLabel("Fórmula do BDI").fill("(1 + AC) * (1 + LUCRO)");
+  await expect(page.getByText(/inválido — "LUCRO" não é uma variável/)).toBeVisible();
+  await page.getByLabel("Fórmula do BDI").fill("(1 + AC) * (1 + L) / (1 - I) - 1");
+  await page.getByRole("button", { name: "Salvar perfil" }).click();
+  await expect(page.getByRole("heading", { name: /BDI fórmula própria — BDI 18,23%/ })).toBeVisible();
+  await expect(page.getByText("BDI = (1 + AC) * (1 + L) / (1 - I) - 1")).toBeVisible();
+});

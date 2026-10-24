@@ -1146,7 +1146,7 @@ export async function perfisDaRevisao(ex: Executor, revisaoId: string) {
   );
   const todos = await listarPerfis(ex);
   return todos.filter((p) => ids.some((i) => i.id === p.id))
-    .map((p) => ({ id: p.id, nome: p.nome, descricao: p.descricao, percentualInformado: p.percentualInformado, parcelas: p.parcelas, bdiCalculado: p.bdiCalculado, bdiAplicado: p.bdiAplicado }));
+    .map((p) => ({ id: p.id, nome: p.nome, descricao: p.descricao, percentualInformado: p.percentualInformado, formula: p.formula, parcelas: p.parcelas, bdiCalculado: p.bdiCalculado, bdiAplicado: p.bdiAplicado }));
 }
 
 export async function fecharRevisao(ex: Executor, revisaoId: string, versao: number, usuarioId: string) {

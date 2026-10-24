@@ -47,6 +47,20 @@ describe("perfis de BDI", () => {
   });
 });
 
+describe("perfis de BDI — fórmula personalizada", () => {
+  it("calcula pela fórmula do usuário sobre as parcelas e recusa fórmula inválida", async () => {
+    const parcelas = [{ tipo: "AC" as const, nome: "AC", percentual: "4" }, { tipo: "L" as const, nome: "Lucro", percentual: "8" }, { tipo: "I" as const, nome: "ISS", percentual: "5" }];
+    const id = await salvarPerfil(ex, { nome: "Fórmula própria", formula: "(1 + AC) * (1 + L) / (1 - I) - 1", parcelas }, u);
+    const p = (await listarPerfis(ex)).find((x) => x.id === id)!;
+    // 1,04 × 1,08 / 0,95 − 1 = 18,2316%
+    expect(p).toMatchObject({ formula: "(1 + AC) * (1 + L) / (1 - I) - 1", bdiAplicado: "18.23" });
+    await expect(salvarPerfil(ex, { nome: "Fórmula ruim", formula: "(1 + LUCRO) - 1", parcelas }, u)).rejects.toThrow(/Fórmula do BDI: "LUCRO" não é uma variável/);
+    // percentual informado prevalece e descarta a fórmula
+    const id2 = await salvarPerfil(ex, { nome: "Informado com fórmula", percentualInformado: "20", formula: "AC", parcelas: [] }, u);
+    expect((await listarPerfis(ex)).find((x) => x.id === id2)).toMatchObject({ formula: null, bdiAplicado: "20.00" });
+  });
+});
+
 describe("orçamento completo", () => {
   let orcamentoId: string;
   let r1: string;
