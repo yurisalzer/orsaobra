@@ -27,3 +27,70 @@ table th:last-child,
 table td:last-child {
   padding-right: 0;
 }
+
+/*
+ * Tema escuro: <html data-tema="escuro"> (definido antes da pintura pelo script
+ * do layout, conforme a escolha do usuário ou o tema do sistema). As cores da
+ * paleta são remapeadas — a escala cinza se inverte e os tons de alerta viram
+ * fundos escuros com texto claro. Só na tela: a impressão sai sempre clara.
+ */
+@media screen {
+  html[data-tema="escuro"] {
+    color-scheme: dark;
+    --superficie: #111c2e;
+    --color-slate-50: #0b1220;
+    --color-slate-100: #172236;
+    --color-slate-200: #263449;
+    --color-slate-300: #3a4a62;
+    --color-slate-400: #64748b;
+    --color-slate-500: #9aa8bc;
+    --color-slate-600: #b8c3d3;
+    --color-slate-700: #d3dbe6;
+    --color-slate-800: #e5eaf1;
+    --color-slate-900: #f1f5f9;
+    --color-marca-50: #10294a;
+    --color-marca-200: #24476f;
+    --color-marca-600: #2f6fb8;
+    --color-marca-700: #8cbcf0;
+    --color-marca-800: #b3d3f6;
+    --color-marca-900: #d6e7fb;
+    --color-red-50: #3a1418;
+    --color-red-100: #4a171c;
+    --color-red-200: #6b1f26;
+    --color-red-300: #8f2a33;
+    --color-red-600: #f28b8b;
+    --color-red-700: #f6a3a3;
+    --color-red-800: #fbc4c4;
+    --color-amber-50: #33240b;
+    --color-amber-100: #45300c;
+    --color-amber-200: #5c410f;
+    --color-amber-300: #7a5514;
+    --color-amber-400: #9a6b17;
+    --color-amber-500: #c48a1c;
+    --color-amber-700: #f2c66b;
+    --color-amber-800: #f6d28a;
+    --color-amber-900: #fae0ad;
+    --color-amber-950: #fdeccc;
+    --color-green-50: #0f2a1b;
+    --color-green-100: #133522;
+    --color-green-700: #86d9a6;
+    --color-green-800: #a6e5bd;
+    --color-emerald-100: #133522;
+    --color-emerald-900: #b6efcf;
+    --color-sky-100: #10304a;
+    --color-sky-900: #c4e4fb;
+    --color-blue-100: #142a52;
+    --color-blue-900: #c9dafb;
+  }
+  html[data-tema="escuro"] .bg-white { background-color: var(--superficie); }
+  html[data-tema="escuro"] .bg-white\/95 { background-color: color-mix(in oklab, var(--superficie) 95%, transparent); }
+  /* fundos escuros com texto branco (cabeçalhos de tabela, botões) continuam escuros */
+  html[data-tema="escuro"] .bg-marca-700,
+  html[data-tema="escuro"] .hover\:bg-marca-700:hover { background-color: #1d5fa8; }
+  html[data-tema="escuro"] .bg-slate-800 { background-color: #334155; }
+  html[data-tema="escuro"] .bg-slate-900\/40 { background-color: rgb(0 0 0 / 0.6); }
+  html[data-tema="escuro"] .bg-green-700,
+  html[data-tema="escuro"] .bg-green-800 { background-color: #15803d; }
+  html[data-tema="escuro"] .bg-amber-700 { background-color: #b45309; }
+  html[data-tema="escuro"] img { opacity: 0.95; }
+}

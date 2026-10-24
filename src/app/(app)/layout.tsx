@@ -2,6 +2,7 @@ import Link from "next/link";
 import { exigirUsuario, type Permissao } from "@/lib/auth/sessao";
 import { rotuloPerfil } from "@/lib/auth/permissoes";
 import { acaoSair } from "./acoes";
+import { TemaSeletor } from "../TemaSeletor";
 
 // cada item aparece só para quem tem a permissão
 const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
@@ -24,10 +25,11 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link href="/" className="font-semibold text-marca-900">Orçamento de Obras</Link>
-          <nav className="flex flex-wrap gap-4 text-sm">
+          <nav className="flex flex-wrap items-center gap-4 text-sm">
             {MENU.filter((m) => !m.permissao || u.permissoes.includes(m.permissao)).map((m) => (
               <Link key={m.href} href={m.href} className="text-slate-600 hover:text-marca-700">{m.rotulo}</Link>
             ))}
+            <TemaSeletor />
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Link href="/conta" className="text-slate-600 hover:text-marca-700">{u.nome} · {rotuloPerfil(u.permissoes)}</Link>
