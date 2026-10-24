@@ -12,6 +12,15 @@ test("tema claro, escuro e automático (segue o sistema); escolha lembrada", asy
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
   const tema = () => page.evaluate(() => document.documentElement.dataset.tema);
+  // tela: textos 1 px maiores; impressão: tamanhos originais
+  const tamanhos = () => page.evaluate(() => {
+    const sm = document.querySelector("nav a")!;
+    return [getComputedStyle(sm).fontSize, getComputedStyle(document.body).fontSize, getComputedStyle(document.querySelector("h1")!).fontSize];
+  });
+  expect(await tamanhos()).toEqual(["15px", "17px", "25px"]);
+  await page.emulateMedia({ media: "print" });
+  expect(await tamanhos()).toEqual(["14px", "16px", "24px"]);
+  await page.emulateMedia({ media: "screen" });
   // automático: segue o sistema (escuro aqui)
   await expect(page.getByLabel("Tema")).toHaveValue("auto");
   expect(await tema()).toBe("escuro");
