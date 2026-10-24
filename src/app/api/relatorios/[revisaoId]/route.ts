@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { comandoAuditoria } from "@/lib/auditoria";
+import { acessoRevisao } from "@/lib/acesso";
 import { temPermissao, usuarioAtual } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { RELATORIOS, type TipoRelatorio } from "@/lib/relatorios/documento";
@@ -21,6 +22,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ revisaoI
   }).safeParse({ revisaoId, tipo: url.searchParams.get("tipo"), outra: url.searchParams.get("outra") || null, formato: url.searchParams.get("formato") });
   if (!p.success) return Response.json({ erro: "Relatório inválido." }, { status: 400 });
   const ex = await executor();
+  for (const r of [p.data.revisaoId, p.data.outra]) {
+    if (!r) continue;
+    const a = await acessoRevisao(ex, r, u);
+    if (!a) return Response.json({ erro: "Revisão não encontrada." }, { status: 404 });
+    if (!a.ver) return Response.json({ erro: "Você não tem acesso a este orçamento. Peça acesso a quem o criou ou ao administrador." }, { status: 403 });
+  }
   try {
     const doc = await montarRelatorio(ex, p.data.revisaoId, p.data.tipo, { outraRevisaoId: p.data.outra, emitidoPor: u.nome });
     if (p.data.formato !== "tela") {

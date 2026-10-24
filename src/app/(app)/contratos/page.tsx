@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
+import { idsComAcesso } from "@/lib/acesso";
 import { executor } from "@/lib/banco/servidor";
 import { formatarMoeda } from "@/lib/calculo/decimal";
 import { listarContratos } from "@/lib/contratos/servico";
@@ -9,7 +10,8 @@ export const dynamic = "force-dynamic";
 export default async function PaginaContratos({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
   const u = await exigirUsuario("MEDICOES_VER");
   const { busca = "" } = await searchParams;
-  const contratos = await listarContratos(await executor(), busca.slice(0, 100));
+  const ex = await executor();
+  const [contratos, liberados] = await Promise.all([listarContratos(ex, busca.slice(0, 100)), idsComAcesso(ex, "contrato", u)]);
   const editor = temPermissao(u, "MEDICOES_EDITAR");
   return (
     <div className="space-y-4">
@@ -41,7 +43,9 @@ export default async function PaginaContratos({ searchParams }: { searchParams: 
             <tbody>
               {contratos.map((c) => (
                 <tr key={c.id} className="border-t border-slate-100 align-top">
-                  <td className="px-3 py-2 font-medium"><Link href={`/contratos/${c.id}`} className="text-marca-700 hover:underline">{c.numero}</Link></td>
+                  <td className="px-3 py-2 font-medium">{!liberados || liberados.has(c.id)
+                    ? <Link href={`/contratos/${c.id}`} className="text-marca-700 hover:underline">{c.numero}</Link>
+                    : <span className="text-slate-500" title="Sem acesso: peça a quem cadastrou o contrato ou ao administrador">🔒 {c.numero}</span>}</td>
                   <td className="max-w-md">{c.objeto}</td>
                   <td>{c.empresa ?? "—"}</td>
                   <td>{c.obraCodigo ? `${c.obraCodigo} · ` : ""}{c.obraNome}</td>

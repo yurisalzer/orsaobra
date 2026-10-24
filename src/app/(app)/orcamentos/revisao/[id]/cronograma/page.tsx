@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { acessoRevisao } from "@/lib/acesso";
+import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { z } from "zod";
-import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
+import { exigirUsuario } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { carregarRevisao, ErroOrcamento, lerCronograma } from "@/lib/orcamento/servico";
 import { EditorCronograma } from "./EditorCronograma";
@@ -13,6 +15,9 @@ export default async function PaginaCronograma({ params }: { params: Promise<{ i
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();
+  const acesso = await acessoRevisao(ex, id, u);
+  if (!acesso) notFound();
+  if (!acesso.ver) return <SemAcessoItem tipo="orçamento" voltar="/orcamentos" />;
   const estado = await carregarRevisao(ex, id).catch((e) => { if (e instanceof ErroOrcamento) return null; throw e; });
   if (!estado) notFound();
   const cronograma = await lerCronograma(ex, id);
@@ -28,7 +33,7 @@ export default async function PaginaCronograma({ params }: { params: Promise<{ i
       </div>
       <EditorCronograma
         revisaoId={id} versao={estado.revisao.versao} etapas={etapas} total={estado.totais.total}
-        inicial={cronograma} editavel={estado.revisao.status === "EM_ELABORACAO" && temPermissao(u, "ORCAMENTOS_EDITAR")}
+        inicial={cronograma} editavel={estado.revisao.status === "EM_ELABORACAO" && acesso.editar}
       />
     </div>
   );

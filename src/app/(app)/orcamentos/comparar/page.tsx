@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { acessoRevisao } from "@/lib/acesso";
+import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { z } from "zod";
 import { SeloFonte } from "@/components/SeloFonte";
 import { exigirUsuario } from "@/lib/auth/sessao";
@@ -17,11 +19,15 @@ const SIT: Record<string, { nome: string; cor: string }> = {
 };
 
 export default async function Comparar({ searchParams }: { searchParams: Promise<{ a?: string; b?: string; todos?: string; gerada?: string }> }) {
-  await exigirUsuario("ORCAMENTOS_VER");
+  const u = await exigirUsuario("ORCAMENTOS_VER");
   const sp = await searchParams;
   const ids = z.object({ a: z.string().uuid(), b: z.string().uuid() }).safeParse(sp);
   if (!ids.success) notFound();
-  const c = await compararRevisoes(await executor(), ids.data.a, ids.data.b);
+  const ex = await executor();
+  const [aa, ab] = await Promise.all([acessoRevisao(ex, ids.data.a, u), acessoRevisao(ex, ids.data.b, u)]);
+  if (!aa || !ab) notFound();
+  if (!aa.ver || !ab.ver) return <SemAcessoItem tipo="orçamento" voltar="/orcamentos" />;
+  const c = await compararRevisoes(ex, ids.data.a, ids.data.b);
   const mostrarTodos = sp.todos === "1";
   const linhas = c.linhas.filter((l) => mostrarTodos || l.situacao !== "IGUAL");
   const bases = (x: typeof c.a) => x.bases.map((b) => `${b.fonte} ${b.competencia.split("-").reverse().join("/")}${b.numeroBase ? ` ret.${b.numeroBase}` : ""} (${b.regimeNome})`).join("; ");

@@ -26,8 +26,10 @@ async function main() {
      RETURNING id, email`,
     [email, nome, senhaHash],
   );
-  // administrador = todas as permissões
-  await ex.consulta(`INSERT INTO usuario_permissao (usuario_id, permissao) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING`, [u.id, CODIGOS_PERMISSAO]);
+  // administrador = todas as permissões (PERMISSOES="A,B" restringe — usado nos testes de usuário comum)
+  const lista = process.env.PERMISSOES ? process.env.PERMISSOES.split(",").filter((p) => (CODIGOS_PERMISSAO as string[]).includes(p)) : CODIGOS_PERMISSAO;
+  if (process.env.PERMISSOES) await ex.consulta(`DELETE FROM usuario_permissao WHERE usuario_id = $1`, [u.id]);
+  await ex.consulta(`INSERT INTO usuario_permissao (usuario_id, permissao) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING`, [u.id, lista]);
   await ex.consulta(`INSERT INTO auditoria (acao, entidade, entidade_id) VALUES ('ADMIN_DEFINIDO_VIA_SCRIPT', 'usuario', $1)`, [u.id]);
   console.log(`Administrador pronto: ${u.email}`);
   await ex.encerrar?.();

@@ -61,6 +61,10 @@ model Usuario {
   revisoesFech         OrcamentoRevisao[]   @relation("RevisaoFechadaPor")
   memoriais            MemorialDescritivo[] @relation("MemorialAtualizadoPor")
   contratosCriados     Contrato[]           @relation("ContratoCriadoPor")
+  acessosOrcamento     OrcamentoAcesso[]    @relation("AcessoOrcamentoUsuario")
+  acessosOrcConcedidos OrcamentoAcesso[]    @relation("AcessoOrcamentoConcedidoPor")
+  acessosContrato      ContratoAcesso[]     @relation("AcessoContratoUsuario")
+  acessosCtrConcedidos ContratoAcesso[]     @relation("AcessoContratoConcedidoPor")
   contratosConfirmados Contrato[]           @relation("ContratoConfirmadoPor")
 
   @@map("usuario")
@@ -625,6 +629,7 @@ model Orcamento {
   revisoes OrcamentoRevisao[]
   versaoDe Orcamento?         @relation("VersaoRegime", fields: [versaoDeId], references: [id], onDelete: SetNull)
   versoes  Orcamento[]        @relation("VersaoRegime")
+  acessos  OrcamentoAcesso[]
 
   @@index([obraId])
   @@map("orcamento")
@@ -788,34 +793,34 @@ model CronogramaParcela {
 /// Contrato da obra (módulo de medições). A planilha contratual vem de uma revisão
 /// do orçamento ou da planilha importada da proposta vencedora.
 model Contrato {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  obraId          String    @map("obra_id") @db.Uuid
-  numero          String
-  objeto          String
-  empresa         String?
-  cnpj            String?
-  dataAssinatura  DateTime? @map("data_assinatura") @db.Date
-  dataOs          DateTime? @map("data_os") @db.Date
-  prazoExecucaoDias  Int?    @map("prazo_execucao_dias")
-  prazoVigenciaDias  Int?    @map("prazo_vigencia_dias")
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  obraId             String    @map("obra_id") @db.Uuid
+  numero             String
+  objeto             String
+  empresa            String?
+  cnpj               String?
+  dataAssinatura     DateTime? @map("data_assinatura") @db.Date
+  dataOs             DateTime? @map("data_os") @db.Date
+  prazoExecucaoDias  Int?      @map("prazo_execucao_dias")
+  prazoVigenciaDias  Int?      @map("prazo_vigencia_dias")
   endereco           String?
-  responsavelTecnico String? @map("responsavel_tecnico")
-  artRrt             String? @map("art_rrt")
-  emailContato       String? @map("email_contato")
-  telefoneContato    String? @map("telefone_contato")
-  origem          String
-  revisaoId       String?   @map("revisao_id") @db.Uuid
-  arquivoOrigem   String?   @map("arquivo_origem")
-  referencia      String?
-  bdiPercentual   Decimal?  @map("bdi_percentual") @db.Decimal(9, 4)
-  arredondamento  String    @default("ARREDONDAR")
-  situacao        String    @default("EM_CADASTRO")
-  versao          Int       @default(1)
-  criadoPorId     String?   @map("criado_por_id") @db.Uuid
-  criadoEm        DateTime  @default(now()) @map("criado_em") @db.Timestamptz
-  atualizadoEm    DateTime  @default(now()) @map("atualizado_em") @db.Timestamptz
-  confirmadoEm    DateTime? @map("confirmado_em") @db.Timestamptz
-  confirmadoPorId String?   @map("confirmado_por_id") @db.Uuid
+  responsavelTecnico String?   @map("responsavel_tecnico")
+  artRrt             String?   @map("art_rrt")
+  emailContato       String?   @map("email_contato")
+  telefoneContato    String?   @map("telefone_contato")
+  origem             String
+  revisaoId          String?   @map("revisao_id") @db.Uuid
+  arquivoOrigem      String?   @map("arquivo_origem")
+  referencia         String?
+  bdiPercentual      Decimal?  @map("bdi_percentual") @db.Decimal(9, 4)
+  arredondamento     String    @default("ARREDONDAR")
+  situacao           String    @default("EM_CADASTRO")
+  versao             Int       @default(1)
+  criadoPorId        String?   @map("criado_por_id") @db.Uuid
+  criadoEm           DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm       DateTime  @default(now()) @map("atualizado_em") @db.Timestamptz
+  confirmadoEm       DateTime? @map("confirmado_em") @db.Timestamptz
+  confirmadoPorId    String?   @map("confirmado_por_id") @db.Uuid
 
   obra          Obra              @relation(fields: [obraId], references: [id], onDelete: Restrict)
   revisao       OrcamentoRevisao? @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
@@ -823,6 +828,7 @@ model Contrato {
   confirmadoPor Usuario?          @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
   grupos        ContratoGrupo[]
   itens         ContratoItem[]
+  acessos       ContratoAcesso[]
 
   @@index([obraId], map: "contrato_obra_idx")
   @@map("contrato")
@@ -875,4 +881,38 @@ model ContratoItem {
 
   @@index([contratoId, ordem], map: "contrato_item_contrato_idx")
   @@map("contrato_item")
+}
+
+/// Usuários com acesso ao orçamento além do criador e dos administradores.
+model OrcamentoAcesso {
+  orcamentoId    String   @map("orcamento_id") @db.Uuid
+  usuarioId      String   @map("usuario_id") @db.Uuid
+  podeEditar     Boolean  @default(false) @map("pode_editar")
+  concedidoPorId String?  @map("concedido_por_id") @db.Uuid
+  concedidoEm    DateTime @default(now()) @map("concedido_em") @db.Timestamptz
+
+  orcamento    Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  usuario      Usuario   @relation("AcessoOrcamentoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  concedidoPor Usuario?  @relation("AcessoOrcamentoConcedidoPor", fields: [concedidoPorId], references: [id], onDelete: SetNull)
+
+  @@id([orcamentoId, usuarioId])
+  @@index([usuarioId], map: "orcamento_acesso_usuario_idx")
+  @@map("orcamento_acesso")
+}
+
+/// Usuários com acesso ao contrato além do criador e dos administradores.
+model ContratoAcesso {
+  contratoId     String   @map("contrato_id") @db.Uuid
+  usuarioId      String   @map("usuario_id") @db.Uuid
+  podeEditar     Boolean  @default(false) @map("pode_editar")
+  concedidoPorId String?  @map("concedido_por_id") @db.Uuid
+  concedidoEm    DateTime @default(now()) @map("concedido_em") @db.Timestamptz
+
+  contrato     Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  usuario      Usuario  @relation("AcessoContratoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  concedidoPor Usuario? @relation("AcessoContratoConcedidoPor", fields: [concedidoPorId], references: [id], onDelete: SetNull)
+
+  @@id([contratoId, usuarioId])
+  @@index([usuarioId], map: "contrato_acesso_usuario_idx")
+  @@map("contrato_acesso")
 }

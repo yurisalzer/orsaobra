@@ -6,6 +6,7 @@ import { Fragment, useEffect, useState, useTransition } from "react";
 import type { EstadoContrato, ItemContrato } from "@/lib/contratos/servico";
 import { acaoAlterarDadosContrato, acaoAlterarPreco, acaoConfirmarContrato, acaoDescontoLinear, acaoExcluirContrato, acaoReabrirContrato } from "../acoes";
 import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
+import { Compartilhar } from "../../Compartilhar";
 import { CamposContrato, paraAcao, type FormContrato } from "../CamposContrato";
 
 const moeda = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }));
@@ -17,7 +18,7 @@ const paraForm = (c: EstadoContrato["contrato"]): FormContrato => ({
   endereco: c.endereco ?? "", responsavelTecnico: c.responsavelTecnico ?? "", artRrt: c.artRrt ?? "", emailContato: c.emailContato ?? "", telefoneContato: c.telefoneContato ?? "",
 });
 
-export function PlanilhaContrato({ estado, podeEditar, podeGerenciar }: { estado: EstadoContrato; podeEditar: boolean; podeGerenciar: boolean }) {
+export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompartilhar = false }: { estado: EstadoContrato; podeEditar: boolean; podeGerenciar: boolean; podeCompartilhar?: boolean }) {
   const c = estado.contrato;
   const router = useRouter();
   const [versao, setVersao] = useState(c.versao);
@@ -64,6 +65,7 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar }: { estado
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
+          {podeCompartilhar && <Compartilhar tipo="contrato" id={c.id} />}
           {podeGerenciar && emCadastro && (
             <button disabled={pendente} onClick={() => { if (window.confirm("Confirmar a planilha contratual? Depois de confirmada ela fica travada (alterações só por aditivo).")) rodar(() => acaoConfirmarContrato(c.id, versao), undefined, "Planilha confirmada: contrato vigente."); }}
               className="rounded-md bg-marca-600 px-3 py-1.5 font-medium text-white disabled:opacity-50">Confirmar planilha</button>

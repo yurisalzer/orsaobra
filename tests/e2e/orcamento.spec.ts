@@ -582,3 +582,53 @@ test("contrato a partir do orçamento: preço contratado editável, desconto lin
   await page.getByRole("link", { name: "Contratos", exact: true }).first().click();
   await expect(page.getByRole("row", { name: /017\/2026/ })).toContainText("Vigente");
 });
+
+test("acesso individual: sem acesso vê só na lista; o criador libera pelo botão Acesso", async ({ page, browser }) => {
+  const COLEGA = "colega.e2e@exemplo.com.br";
+  execSync(`npx dotenv -e .env.test -- tsx scripts/criar-admin.ts ${COLEGA} "Colega Sem Acesso"`, {
+    env: { ...process.env, ADMIN_SENHA: SENHA, PERMISSOES: "ORCAMENTOS_VER,ORCAMENTOS_EDITAR,RELATORIOS,MEDICOES_VER" }, stdio: "inherit",
+  });
+  const outra = await (await browser.newContext()).newPage();
+  await outra.goto("/login");
+  await outra.getByLabel("E-mail").fill(COLEGA);
+  await outra.getByLabel("Senha").fill(SENHA);
+  await outra.getByRole("button", { name: "Entrar" }).click();
+  await expect(outra.getByRole("heading", { name: "Início" })).toBeVisible();
+  await outra.goto("/orcamentos");
+  // vê na lista, mas sem link
+  await expect(outra.getByText(/🔒 .*Reforma da cobertura/).first()).toBeVisible();
+  await expect(outra.getByRole("link", { name: /Reforma da cobertura/ })).toHaveCount(0);
+  // nem pelo endereço direto
+  await entrar(page);
+  await page.goto("/orcamentos");
+  await page.getByRole("link", { name: "Reforma da cobertura", exact: true }).click();
+  await page.waitForURL(/\/orcamentos\/revisao\//);
+  const url = page.url();
+  await outra.goto(url);
+  await expect(outra.getByRole("heading", { name: "Sem acesso a este orçamento" })).toBeVisible();
+  // o criador libera "pode ver e editar"
+  await page.getByRole("button", { name: "Acesso" }).click();
+  const dialogo = page.getByRole("dialog", { name: "Acesso ao orçamento" });
+  await expect(dialogo.getByText("Criador — acesso total")).toBeVisible();
+  await dialogo.getByLabel("Acesso de Colega Sem Acesso").selectOption("EDITAR");
+  await page.screenshot({ path: "test-results/acesso-orcamento.png", fullPage: true });
+  await dialogo.getByRole("button", { name: "Fechar" }).click();
+  await expect(async () => {
+    await outra.goto(url);
+    await expect(outra.getByLabel("Quantidade 1.1")).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+  // só ver: abre, mas sem edição
+  await page.getByRole("button", { name: "Acesso" }).click();
+  await page.getByRole("dialog").getByLabel("Acesso de Colega Sem Acesso").selectOption("VER");
+  await expect(async () => {
+    await outra.reload();
+    await expect(outra.getByRole("heading", { name: /Reforma da cobertura/ }).first()).toBeVisible({ timeout: 2000 });
+    await expect(outra.getByLabel("Quantidade 1.1")).toHaveCount(0, { timeout: 1000 });
+  }).toPass({ timeout: 15000 });
+  // retirado: volta a ficar bloqueado
+  await page.getByRole("dialog").getByLabel("Acesso de Colega Sem Acesso").selectOption("");
+  await expect(async () => {
+    await outra.reload();
+    await expect(outra.getByRole("heading", { name: "Sem acesso a este orçamento" })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+});

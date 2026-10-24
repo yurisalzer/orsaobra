@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { acessoRevisao } from "@/lib/acesso";
+import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { z } from "zod";
 import { exigirUsuario } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
@@ -10,10 +12,13 @@ import { Relatorios } from "./Relatorios";
 export const dynamic = "force-dynamic";
 
 export default async function PaginaRelatorios({ params }: { params: Promise<{ id: string }> }) {
-  await exigirUsuario("RELATORIOS");
+  const u = await exigirUsuario("RELATORIOS");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();
+  const acesso = await acessoRevisao(ex, id, u);
+  if (!acesso) notFound();
+  if (!acesso.ver) return <SemAcessoItem tipo="orçamento" voltar="/orcamentos" />;
   const estado = await carregarRevisao(ex, id).catch((e) => { if (e instanceof ErroOrcamento) return null; throw e; });
   if (!estado) notFound();
   const memorial = await situacaoMemorial(ex, estado);

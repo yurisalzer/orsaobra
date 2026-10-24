@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { semAcessoRevisao } from "@/lib/acesso-sessao";
 import { ErroPermissao, exigirPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { conferirCodigos, criarEtapasImportadas, importarItens } from "@/lib/orcamento/importar/servidor";
@@ -31,12 +32,16 @@ export async function acaoConferirCodigos(b: { baseRevisaoId: string; regime: st
 }
 
 export async function acaoCriarEtapas(revisaoId: string, versao: number, etapas: { chave: string; titulo: string; paiChave: string | null }[], origem: { arquivo: string; linhas: number; itens: number }) {
+  const negado = await semAcessoRevisao(revisaoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => criarEtapasImportadas(await executor(), uuid.parse(revisaoId), z.number().int().parse(versao),
     z.array(z.object({ chave: z.string().max(20), titulo: z.string().max(400), paiChave: z.string().max(20).nullable() })).max(2000).parse(etapas),
     z.object({ arquivo: z.string().max(200), linhas: z.number().int(), itens: z.number().int() }).parse(origem), u));
 }
 
 export async function acaoImportarItens(revisaoId: string, versao: number, itens: { ref: number; etapaId: string; itemReferenciaId: string | null; quantidade: string; informado?: { codigo: string; descricao: string; unidade: string; custo: string; arquivo: string } | null }[]) {
+  const negado = await semAcessoRevisao(revisaoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => importarItens(await executor(), uuid.parse(revisaoId), z.number().int().parse(versao),
     z.array(z.object({
       ref: z.number().int(), etapaId: uuid, itemReferenciaId: uuid.nullable(), quantidade: z.string().max(30),

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
+import { idsComAcesso } from "@/lib/acesso";
 import { executor } from "@/lib/banco/servidor";
 import { formatarMoeda } from "@/lib/calculo/decimal";
 import { listarOrcamentos, podeExcluirObra, podeExcluirOrcamento } from "@/lib/orcamento/servico";
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function Orcamentos({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const u = await exigirUsuario("ORCAMENTOS_VER");
   const busca = ((await searchParams).q ?? "").slice(0, 120).trim();
-  const lista = await listarOrcamentos(await executor(), busca);
+  const ex = await executor();
+  const [lista, liberados] = await Promise.all([listarOrcamentos(ex, busca), idsComAcesso(ex, "orcamento", u)]);
+  const abre = (id: string | null) => !!id && (!liberados || liberados.has(id));
   const editor = temPermissao(u, "ORCAMENTOS_EDITAR");
   const quem = { id: u.id, administrador: temPermissao(u, "USUARIOS") };
   const obras = [...new Map(lista.map((l) => [l.obraId, l])).values()];
@@ -57,7 +60,9 @@ export default async function Orcamentos({ searchParams }: { searchParams: Promi
             <tbody>
               {lista.filter((l) => l.obraId === o.obraId && l.orcamentoId).map((l) => (
                 <tr key={l.orcamentoId} className="border-t border-slate-100">
-                  <td className="py-2"><Link className="text-marca-700 hover:underline" href={`/orcamentos/revisao/${l.ultimaRevisaoId}`}>{l.codigo ? `${l.codigo} — ` : ""}{l.titulo}</Link></td>
+                  <td className="py-2">{abre(l.orcamentoId)
+                    ? <Link className="text-marca-700 hover:underline" href={`/orcamentos/revisao/${l.ultimaRevisaoId}`}>{l.codigo ? `${l.codigo} — ` : ""}{l.titulo}</Link>
+                    : <span className="text-slate-500" title="Sem acesso: peça a quem criou o orçamento ou ao administrador">🔒 {l.codigo ? `${l.codigo} — ` : ""}{l.titulo}</span>}</td>
                   <td>{l.revisoes}</td>
                   <td>{l.ultimaNumero} — {l.ultimaStatus === "FECHADA" ? "fechada" : "em elaboração"}</td>
                   <td className="num">{l.total ? formatarMoeda(l.total) : "—"}</td>

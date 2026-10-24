@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { acessoRevisao } from "@/lib/acesso";
+import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { z } from "zod";
 import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
@@ -14,23 +16,24 @@ export default async function PaginaRevisao({ params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
   const ex = await executor();
+  const acesso = await acessoRevisao(ex, id, u);
+  if (!acesso) notFound();
+  if (!acesso.ver) return <SemAcessoItem tipo="orçamento" voltar="/orcamentos" />;
   const estado = await carregarRevisao(ex, id).catch((e) => { if (e instanceof ErroOrcamento) return null; throw e; });
   if (!estado) notFound();
-  const [perfis, bases, [criador]] = await Promise.all([
-    listarPerfis(ex, true), basesDisponiveis(ex),
-    ex.consulta<{ id: string | null }>(`SELECT criado_por_id AS id FROM orcamento_revisao WHERE orcamento_id = $1 ORDER BY numero LIMIT 1`, [estado.orcamento.id]),
-  ]);
-  // criador do orçamento ou administrador: desbloquear revisão fechada e excluir o orçamento
-  const dono = temPermissao(u, "ORCAMENTOS_EDITAR") && (temPermissao(u, "USUARIOS") || criador?.id === u.id);
+  const [perfis, bases] = await Promise.all([listarPerfis(ex, true), basesDisponiveis(ex)]);
+  // criador do orçamento ou administrador: desbloquear revisão fechada, excluir o orçamento e escolher quem tem acesso
+  const dono = temPermissao(u, "ORCAMENTOS_EDITAR") && acesso.gerenciar;
   return (
     <Editor
       estado={estado}
       perfis={perfis.map((p) => ({ id: p.id, nome: p.nome, bdi: p.bdiAplicado }))}
       bases={bases.filter((b) => b.publicada).map((b) => ({ revisaoId: b.revisaoId, fonte: b.fonte, rotulo: rotuloBase(b), regimes: b.regimes }))}
-      podeEditar={temPermissao(u, "ORCAMENTOS_EDITAR")}
+      podeEditar={acesso.editar}
       podeRelatorios={temPermissao(u, "RELATORIOS")}
       podeGerenciar={dono}
       podeContrato={temPermissao(u, "MEDICOES_EDITAR")}
+      podeCompartilhar={acesso.gerenciar}
     />
   );
 }

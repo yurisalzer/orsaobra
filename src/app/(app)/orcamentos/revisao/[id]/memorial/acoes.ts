@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { semAcessoRevisao } from "@/lib/acesso-sessao";
 import { ErroPermissao, exigirPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { descartarMemorial, ErroMemorial, LIMITES_MEMORIAL as L, salvarMemorial, sugerirMemorial, type ConteudoMemorial } from "@/lib/relatorios/memorial";
@@ -35,11 +36,15 @@ async function executar<T>(f: (usuarioId: string) => Promise<T>, revisaoId: stri
 }
 
 export async function acaoSalvarMemorial(revisaoId: string, c: ConteudoMemorial) {
+  const negado = await semAcessoRevisao(revisaoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => salvarMemorial(await executor(), z.string().uuid().parse(revisaoId), conteudo.parse(c), u), revisaoId);
 }
 
 /** Descarta o texto editado e devolve a sugestão do sistema. */
 export async function acaoRestaurarMemorial(revisaoId: string) {
+  const negado = await semAcessoRevisao(revisaoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => {
     const ex = await executor();
     const id = z.string().uuid().parse(revisaoId);

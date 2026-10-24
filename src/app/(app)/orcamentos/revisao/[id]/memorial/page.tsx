@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { acessoRevisao } from "@/lib/acesso";
+import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { z } from "zod";
-import { exigirUsuario, temPermissao } from "@/lib/auth/sessao";
+import { exigirUsuario } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import { carregarMemorial, ErroMemorial } from "@/lib/relatorios/memorial";
 import { EditorMemorial } from "./EditorMemorial";
@@ -12,7 +14,11 @@ export default async function PaginaMemorial({ params }: { params: Promise<{ id:
   const u = await exigirUsuario("RELATORIOS");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
-  const m = await carregarMemorial(await executor(), id).catch((e) => { if (e instanceof ErroMemorial) return null; throw e; });
+  const ex = await executor();
+  const acesso = await acessoRevisao(ex, id, u);
+  if (!acesso) notFound();
+  if (!acesso.ver) return <SemAcessoItem tipo="orçamento" voltar="/orcamentos" />;
+  const m = await carregarMemorial(ex, id).catch((e) => { if (e instanceof ErroMemorial) return null; throw e; });
   if (!m) notFound();
   return (
     <div className="space-y-4">
@@ -32,7 +38,7 @@ export default async function PaginaMemorial({ params }: { params: Promise<{ id:
         </section>
       ) : (
         <EditorMemorial revisaoId={id} inicial={m.conteudo} cabecalho={m.cabecalho} nomeArquivo={m.nomeArquivo}
-          salvo={m.salvo} podeEditar={temPermissao(u, "ORCAMENTOS_EDITAR")} />
+          salvo={m.salvo} podeEditar={acesso.editar} />
       )}
     </div>
   );

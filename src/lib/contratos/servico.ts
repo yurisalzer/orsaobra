@@ -447,8 +447,8 @@ export async function excluirContrato(ex: Executor, contratoId: string, u: { id:
 
 /** Revisões fechadas disponíveis para gerar contrato. */
 export async function revisoesParaContrato(ex: Executor) {
-  return ex.consulta<{ revisaoId: string; rotulo: string; obraNome: string; objeto: string | null; total: string }>(
-    `SELECT r.id AS "revisaoId", concat_ws(' — ', oc.codigo, oc.titulo) || ' · revisão ' || r.numero AS rotulo, o.nome AS "obraNome", o.descricao AS objeto,
+  return ex.consulta<{ revisaoId: string; orcamentoId: string; rotulo: string; obraNome: string; objeto: string | null; total: string }>(
+    `SELECT r.id AS "revisaoId", oc.id AS "orcamentoId", concat_ws(' — ', oc.codigo, oc.titulo) || ' · revisão ' || r.numero AS rotulo, o.nome AS "obraNome", o.descricao AS objeto,
             coalesce(r.total_geral, 0)::text AS total
        FROM orcamento_revisao r JOIN orcamento oc ON oc.id = r.orcamento_id JOIN obra o ON o.id = oc.obra_id
       WHERE r.status = 'FECHADA' ORDER BY r.fechada_em DESC NULLS LAST`,

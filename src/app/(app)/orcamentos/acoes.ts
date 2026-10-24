@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ErroPermissao, exigirPermissao, temPermissao, type Permissao } from "@/lib/auth/sessao";
+import { semAcessoRevisao as semAcesso } from "@/lib/acesso-sessao";
 import { executor } from "@/lib/banco/servidor";
 import { arquivarPerfil, ErroBdi, salvarPerfil } from "@/lib/orcamento/bdi";
 import {
@@ -58,6 +59,8 @@ export async function acaoAlterarObra(obraId: string, antes: DadosNovaObra, depo
 }
 
 export async function acaoConfigurar(revisaoId: string, versao: number, d: { descricao?: string | null; bases?: { baseRevisaoId: string; regime: string | null }[]; bdiPerfilId?: string | null; arredondamento?: string; dataReferencia?: string }) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => configurarRevisao(ex, uuid.parse(revisaoId), versao, {
     descricao: d.descricao, bases: d.bases ? z.array(base).parse(d.bases) : undefined,
     bdiPerfilId: d.bdiPerfilId === undefined ? undefined : d.bdiPerfilId ? uuid.parse(d.bdiPerfilId) : null,
@@ -66,19 +69,29 @@ export async function acaoConfigurar(revisaoId: string, versao: number, d: { des
 }
 
 export async function acaoCriarEtapa(revisaoId: string, versao: number, paiId: string | null, titulo: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => criarEtapa(ex, uuid.parse(revisaoId), versao, { paiId: paiId ? uuid.parse(paiId) : null, titulo: z.string().max(300).parse(titulo) }, u)));
 }
 export async function acaoRenomearEtapa(revisaoId: string, versao: number, etapaId: string, titulo: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => renomearEtapa(ex, uuid.parse(revisaoId), versao, uuid.parse(etapaId), z.string().max(300).parse(titulo), u)));
 }
 export async function acaoExcluirEtapa(revisaoId: string, versao: number, etapaId: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => excluirEtapa(ex, uuid.parse(revisaoId), versao, uuid.parse(etapaId), u)));
 }
 export async function acaoMoverEtapa(revisaoId: string, versao: number, etapaId: string, direcao: -1 | 1) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => moverEtapa(ex, uuid.parse(revisaoId), versao, uuid.parse(etapaId), direcao === 1 ? 1 : -1, u)));
 }
 
 export async function acaoBuscarParaOrcamento(revisaoId: string, texto: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar(async () => {
     const ex = await executor();
     const bases = await basesDaRevisao(ex, uuid.parse(revisaoId));
@@ -98,6 +111,8 @@ export async function acaoBuscarParaOrcamento(revisaoId: string, texto: string) 
 }
 
 export async function acaoAdicionarItem(revisaoId: string, versao: number, d: { etapaId: string; itemReferenciaId: string; quantidade: string; memoriaQuantitativo?: string | null; base: { baseRevisaoId: string; regime: string | null } | null }) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => adicionarItem(ex, uuid.parse(revisaoId), versao, {
     etapaId: uuid.parse(d.etapaId), itemReferenciaId: uuid.parse(d.itemReferenciaId), quantidade: z.string().max(40).parse(d.quantidade),
     memoriaQuantitativo: d.memoriaQuantitativo ? z.string().max(4000, "Memória de cálculo com mais de 4.000 caracteres.").parse(d.memoriaQuantitativo) : null,
@@ -106,6 +121,8 @@ export async function acaoAdicionarItem(revisaoId: string, versao: number, d: { 
 }
 
 export async function acaoAlterarItem(revisaoId: string, versao: number, itemId: string, d: { quantidade?: string; memoriaQuantitativo?: string | null; bdiPerfilId?: string | null; bdiInformado?: string; base?: { baseRevisaoId: string; regime: string | null }; etapaId?: string; custoInformado?: string }) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => alterarItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), {
     quantidade: d.quantidade !== undefined ? z.string().max(40).parse(d.quantidade) : undefined,
     memoriaQuantitativo: d.memoriaQuantitativo !== undefined ? z.string().max(4000, "Memória de cálculo com mais de 4.000 caracteres.").nullable().parse(d.memoriaQuantitativo) : undefined,
@@ -116,27 +133,43 @@ export async function acaoAlterarItem(revisaoId: string, versao: number, itemId:
   }, u)));
 }
 export async function acaoTrocarItem(revisaoId: string, versao: number, itemId: string, novoItemReferenciaId: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => trocarItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), uuid.parse(novoItemReferenciaId), u)));
 }
 export async function acaoExcluirItem(revisaoId: string, versao: number, itemId: string) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => excluirItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), u)));
 }
 export async function acaoMoverItem(revisaoId: string, versao: number, itemId: string, direcao: -1 | 1) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => moverItem(ex, uuid.parse(revisaoId), versao, uuid.parse(itemId), direcao === 1 ? 1 : -1, u)));
 }
 export async function acaoReprecificar(revisaoId: string, versao: number) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => reprecificarRevisao(ex, uuid.parse(revisaoId), versao, u)));
 }
 export async function acaoFechar(revisaoId: string, versao: number) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => fecharRevisao(ex, uuid.parse(revisaoId), versao, u)), "/orcamentos");
 }
 export async function acaoAtualizarBdi(revisaoId: string, versao: number) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => atualizarBdi(ex, uuid.parse(revisaoId), versao, u)), "/orcamentos");
 }
 export async function acaoNovaRevisao(origemId: string, descricao: string, novasBases: { baseRevisaoId: string; regime: string | null }[] | null) {
+  const negado = await semAcesso(origemId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => novaRevisao(ex, uuid.parse(origemId), { descricao: z.string().max(300).parse(descricao), novasBases: novasBases ? z.array(base).parse(novasBases) : null }, u)), "/orcamentos");
 }
 export async function acaoDuplicar(revisaoId: string, titulo: string) {
+  const negado = await semAcesso(revisaoId, "ver");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => duplicarOrcamento(ex, uuid.parse(revisaoId), { titulo: z.string().max(200).parse(titulo) }, u)), "/orcamentos");
 }
 
@@ -152,6 +185,8 @@ export async function acaoArquivarPerfil(id: string, ativo: boolean) {
 }
 
 export async function acaoSalvarCronograma(revisaoId: string, versao: number, d: { meses: number; parcelas: { etapaId: string; periodo: number; percentual: string }[] }) {
+  const negado = await semAcesso(revisaoId, "editar");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => salvarCronograma(ex, uuid.parse(revisaoId), versao, z.object({
     meses: z.number().int(), parcelas: z.array(z.object({ etapaId: uuid, periodo: z.number().int(), percentual: z.string().max(20) })).max(5000),
   }).parse(d), u)));
@@ -175,6 +210,8 @@ export async function acaoExcluirObra(obraId: string) {
 
 /** Gera a versão do orçamento com ou sem desoneração (outro orçamento ligado, para comparação). */
 export async function acaoGerarVersaoRegime(revisaoId: string, regime: string, titulo: string) {
+  const negado = await semAcesso(revisaoId, "ver");
+  if (negado) return negado;
   return executar((u) => executor().then((ex) => gerarVersaoRegime(ex, uuid.parse(revisaoId), {
     regime: z.enum(["COM_DESONERACAO", "SEM_DESONERACAO"]).parse(regime), titulo: z.string().max(200).parse(titulo),
   }, u)), "/orcamentos");

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import { SeloFonte } from "@/components/SeloFonte";
 import { ExcluirOrcamento, RenomearOrcamento } from "../../ExcluirOrcamento";
+import { Compartilhar } from "../../../Compartilhar";
 import { dec, formatarMoeda, formatarNumero, lerNumero, type Dec } from "@/lib/calculo/decimal";
 import { avaliarMemoria } from "@/lib/calculo/expressao";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
@@ -41,7 +42,7 @@ export function quantidadeDaMemoria(texto: string): { quantidade: string | null;
   }
 }
 
-export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios, podeGerenciar = false, podeContrato = false }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean; podeRelatorios: boolean; podeGerenciar?: boolean; podeContrato?: boolean }) {
+export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios, podeGerenciar = false, podeContrato = false, podeCompartilhar = false }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean; podeRelatorios: boolean; podeGerenciar?: boolean; podeContrato?: boolean; podeCompartilhar?: boolean }) {
   const router = useRouter();
   const [versao, setVersao] = useState(estado.revisao.versao);
   const [erro, setErro] = useState<string | null>(null);
@@ -234,6 +235,7 @@ export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios, pode
             {r.status === "FECHADA" && !estado.revisoes.some((x) => x.status === "EM_ELABORACAO") && <NovaRevisao origem={r.id} bases={bases} padrao={estado.basesPadrao} aoCriar={(id) => router.push(`/orcamentos/revisao/${id}`)} setErro={setErro} />}
             {podeContrato && r.status === "FECHADA" && <Link href={`/contratos/novo?revisao=${r.id}`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Criar contrato</Link>}
             <button disabled={pendente} onClick={() => { const t = window.prompt("Título do novo orçamento (cópia desta revisão):", `${estado.orcamento.titulo} — cópia`); if (t) rodar(() => acaoDuplicar(r.id, t), (d) => router.push(`/orcamentos/revisao/${d.revisaoId}`)); }} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Duplicar</button>
+            {podeCompartilhar && <Compartilhar tipo="orcamento" id={estado.orcamento.id} />}
             {podeGerenciar && <RenomearOrcamento orcamentoId={estado.orcamento.id} titulo={estado.orcamento.titulo} botao />}
             {podeGerenciar && <ExcluirOrcamento orcamentoId={estado.orcamento.id} titulo={estado.orcamento.titulo} temFechada={estado.revisoes.some((x) => x.status === "FECHADA")} botao depois="/orcamentos" />}
             <VersaoRegime revisaoId={r.id} titulo={estado.orcamento.titulo} padrao={estado.basesPadrao} setErro={setErro}

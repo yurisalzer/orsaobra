@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { semAcessoContrato, semAcessoRevisao } from "@/lib/acesso-sessao";
 import { ErroPermissao, exigirPermissao, temPermissao } from "@/lib/auth/sessao";
 import { executor } from "@/lib/banco/servidor";
 import {
@@ -47,6 +48,8 @@ const novaObra = z.object({
 type DadosForm = z.infer<typeof dadosContrato>;
 
 export async function acaoCriarContratoDoOrcamento(revisaoId: string, d: DadosForm) {
+  const negado = await semAcessoRevisao(revisaoId, "ver");
+  if (negado) return negado;
   return executar(async (u) => criarContratoDoOrcamento(await executor(), uuid.parse(revisaoId), dadosContrato.parse(d), u.id));
 }
 
@@ -72,14 +75,20 @@ export async function acaoCriarContratoDaPlanilha(d: DadosForm & { obraId: strin
 }
 
 export async function acaoAlterarDadosContrato(contratoId: string, versao: number, d: DadosForm) {
+  const negado = await semAcessoContrato(contratoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => alterarDadosContrato(await executor(), uuid.parse(contratoId), z.number().int().parse(versao), dadosContrato.parse(d), u.id), `/contratos/${contratoId}`);
 }
 
 export async function acaoAlterarPreco(contratoId: string, versao: number, itemId: string, preco: string) {
+  const negado = await semAcessoContrato(contratoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => alterarPrecoContratado(await executor(), uuid.parse(contratoId), z.number().int().parse(versao), uuid.parse(itemId), z.string().max(40).parse(preco), u.id), `/contratos/${contratoId}`);
 }
 
 export async function acaoDescontoLinear(contratoId: string, versao: number, percentual: string, modo: string) {
+  const negado = await semAcessoContrato(contratoId, "editar");
+  if (negado) return negado;
   return executar(async (u) => aplicarDescontoLinear(await executor(), uuid.parse(contratoId), z.number().int().parse(versao), z.string().max(20).parse(percentual), modo === "TRUNCAR" ? "TRUNCAR" : "ARREDONDAR", u.id), `/contratos/${contratoId}`);
 }
 

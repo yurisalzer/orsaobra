@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { exigirUsuario } from "@/lib/auth/sessao";
+import { idsComAcesso } from "@/lib/acesso";
 import { executor } from "@/lib/banco/servidor";
 import { revisoesParaContrato } from "@/lib/contratos/servico";
 import { NovoContrato } from "./NovoContrato";
@@ -7,9 +8,12 @@ import { NovoContrato } from "./NovoContrato";
 export const dynamic = "force-dynamic";
 
 export default async function PaginaNovoContrato({ searchParams }: { searchParams: Promise<{ revisao?: string }> }) {
-  await exigirUsuario("MEDICOES_EDITAR");
+  const u = await exigirUsuario("MEDICOES_EDITAR");
   const { revisao } = await searchParams;
-  const revisoes = await revisoesParaContrato(await executor());
+  const ex = await executor();
+  // só os orçamentos que o usuário pode abrir
+  const [todas, liberados] = await Promise.all([revisoesParaContrato(ex), idsComAcesso(ex, "orcamento", u)]);
+  const revisoes = todas.filter((r) => !liberados || liberados.has(r.orcamentoId));
   return (
     <div className="space-y-4">
       <div>
