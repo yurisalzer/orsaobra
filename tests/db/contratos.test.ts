@@ -53,13 +53,13 @@ describe("contratos — planilha contratual", () => {
     await fecharRevisao(ex, r1, e.revisao.versao, u);
     expect((await revisoesParaContrato(ex)).map((x) => x.revisaoId)).toContain(r1);
     contrato = await criarContratoDoOrcamento(ex, r1, { numero: "017/2026", objeto: "Ponte Regalo (Sana) — emergencial", empresa: "Construtora X", cnpj: "12345678000190", dataOs: "2026-05-19", prazoExecucaoDias: 30,
-      dataAssinatura: "2026-05-15", prazoVigenciaDias: 120, endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
+      dataAssinatura: "2026-05-15", prazoVigenciaDias: 120, processo: " SEI-170001/000017/2026 ", endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
       emailContato: "Obra@Construtora.com.br", telefoneContato: "22999998888" }, u);
     await expect(criarContratoDoOrcamento(ex, r1, { numero: "017/2026", objeto: "Duplicado" }, u)).rejects.toThrow(/Já existe o contrato nº 017\/2026/);
     const c = await carregarContrato(ex, contrato);
     const orc = await carregarRevisao(ex, r1);
     expect(c.contrato).toMatchObject({ numero: "017/2026", origem: "ORCAMENTO", situacao: "EM_CADASTRO", cnpj: "12.345.678/0001-90", obraNome: "Ponte Regalo", prazoExecucaoDias: 30, dataOs: "2026-05-19",
-      prazoVigenciaDias: 120, dataAssinatura: "2026-05-15", endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
+      prazoVigenciaDias: 120, dataAssinatura: "2026-05-15", processo: "SEI-170001/000017/2026", endereco: "Estrada do Sana, s/nº — Macaé/RJ", responsavelTecnico: "Eng. Fulano de Tal", artRrt: "ART 2026123456",
       emailContato: "obra@construtora.com.br", telefoneContato: "(22) 99999-8888" });
     await expect(criarContratoDoOrcamento(ex, r1, { numero: "018/2026", objeto: "x x x", emailContato: "invalido" }, u)).rejects.toThrow(/E-mail de contato inválido/);
     await expect(criarContratoDoOrcamento(ex, r1, { numero: "018/2026", objeto: "x x x", telefoneContato: "123" }, u)).rejects.toThrow(/Telefone de contato inválido/);

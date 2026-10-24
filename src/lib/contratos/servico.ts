@@ -30,6 +30,7 @@ export interface DadosContrato {
   cnpj?: string | null;
   dataAssinatura?: string | null;
   dataOs?: string | null;
+  processo?: string | null;
   prazoExecucaoDias?: number | null;
   prazoVigenciaDias?: number | null;
   endereco?: string | null;
@@ -67,7 +68,7 @@ function limpar(d: DadosContrato) {
     numero, objeto, empresa: t(d.empresa)?.slice(0, 300) ?? null, cnpj: cnpj ? formatarCnpj(cnpj) : null,
     dataAssinatura: data(d.dataAssinatura, "Data de assinatura"), dataOs: data(d.dataOs, "Data da ordem de serviço"),
     prazoExecucaoDias: prazo(d.prazoExecucaoDias, "Prazo de execução"), prazoVigenciaDias: prazo(d.prazoVigenciaDias, "Prazo contratual"),
-    endereco: t(d.endereco)?.slice(0, 300) ?? null, responsavelTecnico: t(d.responsavelTecnico)?.slice(0, 200) ?? null, artRrt: t(d.artRrt)?.slice(0, 60) ?? null,
+    processo: t(d.processo)?.slice(0, 100) ?? null, endereco: t(d.endereco)?.slice(0, 300) ?? null, responsavelTecnico: t(d.responsavelTecnico)?.slice(0, 200) ?? null, artRrt: t(d.artRrt)?.slice(0, 60) ?? null,
     emailContato: email, telefoneContato: telefone || null,
   };
 }
@@ -86,8 +87,8 @@ async function numeroLivre(ex: Executor, numero: string, exceto: string | null =
 function comandoDados(id: string, d: ReturnType<typeof limpar>): Comando {
   return {
     sql: `UPDATE contrato SET empresa = $2, cnpj = $3, data_assinatura = $4, data_os = $5, prazo_execucao_dias = $6, prazo_vigencia_dias = $7,
-                 endereco = $8, responsavel_tecnico = $9, art_rrt = $10, email_contato = $11, telefone_contato = $12 WHERE id = $1`,
-    params: [id, d.empresa, d.cnpj, d.dataAssinatura, d.dataOs, d.prazoExecucaoDias, d.prazoVigenciaDias, d.endereco, d.responsavelTecnico, d.artRrt, d.emailContato, d.telefoneContato],
+                 endereco = $8, responsavel_tecnico = $9, art_rrt = $10, email_contato = $11, telefone_contato = $12, processo = $13 WHERE id = $1`,
+    params: [id, d.empresa, d.cnpj, d.dataAssinatura, d.dataOs, d.prazoExecucaoDias, d.prazoVigenciaDias, d.endereco, d.responsavelTecnico, d.artRrt, d.emailContato, d.telefoneContato, d.processo],
   };
 }
 
@@ -247,7 +248,7 @@ export async function listarContratos(ex: Executor, busca = ""): Promise<Contrat
             c.criado_por_id AS "criadoPorId", u.nome AS "criadoPor",
             to_char(c.atualizado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS atualizado
        FROM contrato c JOIN obra o ON o.id = c.obra_id LEFT JOIN usuario u ON u.id = c.criado_por_id
-      WHERE ($1 = '' OR lower(f_unaccent(concat_ws(' ', c.numero, c.objeto, c.empresa, o.nome, o.codigo, o.processo))) LIKE '%' || lower(f_unaccent($1)) || '%')
+      WHERE ($1 = '' OR lower(f_unaccent(concat_ws(' ', c.numero, c.objeto, c.empresa, c.processo, o.nome, o.codigo, o.processo))) LIKE '%' || lower(f_unaccent($1)) || '%')
       ORDER BY c.criado_em DESC`,
     [termo],
   );
@@ -283,7 +284,7 @@ export async function carregarContrato(ex: Executor, contratoId: string): Promis
             c.arquivo_origem AS "arquivoOrigem", c.referencia, c.bdi_percentual::text AS "bdiPercentual", c.arredondamento, c.situacao, c.versao,
             c.criado_por_id AS "criadoPorId", u.nome AS "criadoPor", to_char(c.criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS "criadoEm",
             to_char(c.confirmado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS "confirmadoEm", uc.nome AS "confirmadoPor",
-            o.id AS "obraId", o.nome AS "obraNome", o.codigo AS "obraCodigo", o.processo
+            o.id AS "obraId", o.nome AS "obraNome", o.codigo AS "obraCodigo", c.processo
        FROM contrato c JOIN obra o ON o.id = c.obra_id LEFT JOIN usuario u ON u.id = c.criado_por_id LEFT JOIN usuario uc ON uc.id = c.confirmado_por_id
       WHERE c.id = $1`, [contratoId],
   );
@@ -447,8 +448,8 @@ export async function excluirContrato(ex: Executor, contratoId: string, u: { id:
 
 /** Revisões fechadas disponíveis para gerar contrato. */
 export async function revisoesParaContrato(ex: Executor) {
-  return ex.consulta<{ revisaoId: string; orcamentoId: string; rotulo: string; obraNome: string; objeto: string | null; total: string }>(
-    `SELECT r.id AS "revisaoId", oc.id AS "orcamentoId", concat_ws(' — ', oc.codigo, oc.titulo) || ' · revisão ' || r.numero AS rotulo, o.nome AS "obraNome", o.descricao AS objeto,
+  return ex.consulta<{ revisaoId: string; orcamentoId: string; processo: string | null; rotulo: string; obraNome: string; objeto: string | null; total: string }>(
+    `SELECT r.id AS "revisaoId", oc.id AS "orcamentoId", o.processo, concat_ws(' — ', oc.codigo, oc.titulo) || ' · revisão ' || r.numero AS rotulo, o.nome AS "obraNome", o.descricao AS objeto,
             coalesce(r.total_geral, 0)::text AS total
        FROM orcamento_revisao r JOIN orcamento oc ON oc.id = r.orcamento_id JOIN obra o ON o.id = oc.obra_id
       WHERE r.status = 'FECHADA' ORDER BY r.fechada_em DESC NULLS LAST`,

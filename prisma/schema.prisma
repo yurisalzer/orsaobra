@@ -797,6 +797,7 @@ model Contrato {
   obraId             String    @map("obra_id") @db.Uuid
   numero             String
   objeto             String
+  processo           String?
   empresa            String?
   cnpj               String?
   dataAssinatura     DateTime? @map("data_assinatura") @db.Date

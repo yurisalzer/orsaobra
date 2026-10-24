@@ -66,7 +66,7 @@ export function ImportarPlanilha({ obras, cabecalhos }: { obras: { id: string; n
     const texto = [l.textoExtra, ...g.slice(0, a.cabecalho.linha ?? 0).map((x) => x.map(textoDe).join(" "))].join("\n");
     const id = identificar(texto);
     const d = a.dados;
-    setForm((f) => ({ ...f, numero: f.numero || id.numero || "", empresa: f.empresa || id.empresa || "", objeto: f.objeto || id.objeto || d.descricao || d.obraNome || l.arquivo.replace(/\.[^.]+$/, "") }));
+    setForm((f) => ({ ...f, numero: f.numero || id.numero || "", processo: f.processo || d.processo || "", empresa: f.empresa || id.empresa || "", objeto: f.objeto || id.objeto || d.descricao || d.obraNome || l.arquivo.replace(/\.[^.]+$/, "") }));
     setNovaObra({ ...OBRA_VAZIA, nome: d.obraNome ?? id.objeto?.slice(0, 200) ?? "", codigo: d.obraCodigo ?? "", processo: d.processo ?? "", descricao: d.descricao ?? id.objeto ?? "", endereco: d.endereco ?? "", municipio: d.municipio ?? "", orgaoSolicitante: d.orgaoSolicitante ?? "" });
     const existente = obras.find((o) => (d.obraCodigo && o.codigo === d.obraCodigo) || (d.processo && o.processo === d.processo));
     setObraId(existente?.id ?? "");
@@ -171,7 +171,11 @@ export function ImportarPlanilha({ obras, cabecalhos }: { obras: { id: string; n
           <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-medium">Obra</h2>
             <label className="block text-sm">Obra cadastrada
-              <select value={obraId} onChange={(e) => setObraId(e.target.value)} aria-label="Obra" className={campo}>
+              <select value={obraId} onChange={(e) => {
+                setObraId(e.target.value);
+                const o = obras.find((x) => x.id === e.target.value);
+                if (o?.processo && !form.processo.trim()) setForm({ ...form, processo: o.processo });
+              }} aria-label="Obra" className={campo}>
                 <option value="">Nova obra (preencher abaixo)</option>
                 {obras.map((o) => <option key={o.id} value={o.id}>{o.codigo ? `${o.codigo} · ` : ""}{o.nome}{o.processo ? ` (${o.processo})` : ""}</option>)}
               </select>

@@ -5,12 +5,12 @@ import { useState, useTransition } from "react";
 import { acaoCriarContratoDoOrcamento } from "../acoes";
 import { CamposContrato, CONTRATO_VAZIO, paraAcao } from "../CamposContrato";
 
-interface Revisao { revisaoId: string; rotulo: string; obraNome: string; objeto: string | null; total: string }
+interface Revisao { revisaoId: string; processo: string | null; rotulo: string; obraNome: string; objeto: string | null; total: string }
 
 export function NovoContrato({ revisoes, inicial }: { revisoes: Revisao[]; inicial: string }) {
   const [revisaoId, setRevisaoId] = useState(inicial);
   const r0 = revisoes.find((r) => r.revisaoId === inicial);
-  const [form, setForm] = useState({ ...CONTRATO_VAZIO, objeto: r0?.objeto ?? r0?.obraNome ?? "" });
+  const [form, setForm] = useState({ ...CONTRATO_VAZIO, objeto: r0?.objeto ?? r0?.obraNome ?? "", processo: r0?.processo ?? "" });
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, iniciar] = useTransition();
   const router = useRouter();
@@ -18,7 +18,7 @@ export function NovoContrato({ revisoes, inicial }: { revisoes: Revisao[]; inici
   const escolher = (id: string) => {
     setRevisaoId(id);
     const r = revisoes.find((x) => x.revisaoId === id);
-    if (r && !form.objeto.trim()) setForm({ ...form, objeto: r.objeto ?? r.obraNome });
+    if (r) setForm({ ...form, objeto: form.objeto.trim() ? form.objeto : r.objeto ?? r.obraNome, processo: form.processo.trim() ? form.processo : r.processo ?? "" });
   };
   const criar = () => iniciar(async () => {
     setErro(null);

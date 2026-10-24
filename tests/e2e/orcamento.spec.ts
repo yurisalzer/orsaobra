@@ -557,12 +557,20 @@ test("contrato a partir do orçamento: preço contratado editável, desconto lin
   await page.getByRole("link", { name: "Criar contrato" }).click();
   await expect(page.getByRole("heading", { name: "Novo contrato a partir do orçamento" })).toBeVisible();
   await expect(page.getByLabel("Revisão do orçamento")).not.toHaveValue("");
+  // processo vem da obra do orçamento e pode ser editado
+  await expect(page.getByLabel("Nº do processo")).toHaveValue("SEI-120001/000123/2026");
+  await page.getByLabel("Nº do processo").fill("SEI-120001/000999/2026");
   await page.getByLabel("Nº do contrato").fill("017/2026");
   await page.getByLabel("Empresa contratada").fill("Construtora Exemplo Ltda");
   await page.getByLabel("Objeto (nome da obra)").fill("PONTE REGALO (SANA) - EMERGENCIAL");
   await page.getByRole("button", { name: "Criar contrato e planilha" }).click();
   await expect(page.getByRole("heading", { name: "Contrato 017/2026" })).toBeVisible();
   await expect(page.getByText("Em cadastro — confira a planilha e confirme")).toBeVisible();
+  await expect(page.getByText("SEI-120001/000999/2026")).toBeVisible();
+  await page.getByRole("button", { name: "Editar dados" }).click();
+  await page.getByLabel("Nº do processo").fill("SEI-120001/001000/2026");
+  await page.getByRole("button", { name: "Salvar dados" }).click();
+  await expect(page.getByText("SEI-120001/001000/2026")).toBeVisible();
   // preço contratado começa igual ao orçado; edição item a item
   const preco = page.getByLabel("Preço contratado 1.1");
   await expect(preco).toHaveValue("211,97");

@@ -37,7 +37,7 @@ const data = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).n
 const dadosContrato = z.object({
   numero: z.string().max(60), objeto: z.string().max(2000), empresa: z.string().max(300).nullable().optional(), cnpj: z.string().max(30).nullable().optional(),
   dataAssinatura: data, dataOs: data, prazoExecucaoDias: z.number().int().nullable().optional(), prazoVigenciaDias: z.number().int().nullable().optional(),
-  endereco: z.string().max(300).nullable().optional(), responsavelTecnico: z.string().max(200).nullable().optional(), artRrt: z.string().max(60).nullable().optional(),
+  processo: z.string().max(100).nullable().optional(), endereco: z.string().max(300).nullable().optional(), responsavelTecnico: z.string().max(200).nullable().optional(), artRrt: z.string().max(60).nullable().optional(),
   emailContato: z.string().max(200).nullable().optional(), telefoneContato: z.string().max(30).nullable().optional(),
 });
 const novaObra = z.object({

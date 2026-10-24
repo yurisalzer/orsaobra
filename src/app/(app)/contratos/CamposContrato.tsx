@@ -3,11 +3,11 @@
 import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
 
 export interface FormContrato {
-  numero: string; objeto: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
+  numero: string; processo: string; objeto: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
   endereco: string; responsavelTecnico: string; artRrt: string; emailContato: string; telefoneContato: string;
 }
 export const CONTRATO_VAZIO: FormContrato = {
-  numero: "", objeto: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
+  numero: "", processo: "", objeto: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
   endereco: "", responsavelTecnico: "", artRrt: "", emailContato: "", telefoneContato: "",
 };
 
@@ -15,7 +15,7 @@ const dias = (s: string) => (s.trim() && /^\d+$/.test(s.trim()) ? Number(s.trim(
 
 /** Formato aceito pelas ações do servidor. */
 export const paraAcao = (f: FormContrato) => ({
-  numero: f.numero, objeto: f.objeto, empresa: f.empresa || null, cnpj: f.cnpj || null,
+  numero: f.numero, processo: f.processo || null, objeto: f.objeto, empresa: f.empresa || null, cnpj: f.cnpj || null,
   dataAssinatura: f.dataAssinatura || null, dataOs: f.dataOs || null, prazoExecucaoDias: dias(f.prazoExecucaoDias), prazoVigenciaDias: dias(f.prazoVigenciaDias),
   endereco: f.endereco || null, responsavelTecnico: f.responsavelTecnico || null, artRrt: f.artRrt || null, emailContato: f.emailContato || null, telefoneContato: f.telefoneContato || null,
 });
@@ -32,7 +32,8 @@ export function CamposContrato({ valor, onChange, desabilitado = false }: { valo
         <label className="text-sm">Nº do contrato<input {...p("numero")} maxLength={60} placeholder="ex.: 017/2026" className={campo} /></label>
         <label className="text-sm">Empresa contratada<input {...p("empresa")} maxLength={300} className={campo} /></label>
         <label className="text-sm">CNPJ<input {...p("cnpj")} maxLength={20} inputMode="numeric" className={campo} /></label>
-        <label className="text-sm sm:col-span-3">Objeto (nome da obra)<textarea {...p("objeto")} maxLength={2000} rows={2} className={campo} /></label>
+        <label className="text-sm">Nº do processo<input {...p("processo")} maxLength={100} placeholder="ex.: SEI-120001/000123/2026" className={campo} /></label>
+        <label className="text-sm sm:col-span-2">Objeto (nome da obra)<textarea {...p("objeto")} maxLength={2000} rows={2} className={campo} /></label>
         <label className="text-sm sm:col-span-3">Endereço da obra<input {...p("endereco")} maxLength={300} placeholder="Rua, número, bairro, município/UF" className={campo} /></label>
       </div>
 

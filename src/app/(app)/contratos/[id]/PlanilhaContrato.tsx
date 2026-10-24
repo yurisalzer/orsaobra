@@ -13,7 +13,7 @@ const moeda = (v: string | null) => (v === null ? "—" : Number(v).toLocaleStri
 const preco = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }));
 const qtd = (v: string) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const paraForm = (c: EstadoContrato["contrato"]): FormContrato => ({
-  numero: c.numero, objeto: c.objeto, empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "",
+  numero: c.numero, processo: c.processo ?? "", objeto: c.objeto, empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "",
   prazoExecucaoDias: c.prazoExecucaoDias ? String(c.prazoExecucaoDias) : "", prazoVigenciaDias: c.prazoVigenciaDias ? String(c.prazoVigenciaDias) : "",
   endereco: c.endereco ?? "", responsavelTecnico: c.responsavelTecnico ?? "", artRrt: c.artRrt ?? "", emailContato: c.emailContato ?? "", telefoneContato: c.telefoneContato ?? "",
 });
