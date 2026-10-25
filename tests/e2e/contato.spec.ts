@@ -13,7 +13,8 @@ test("aba Contato envia a solicitação por e-mail", async ({ page }) => {
   await page.getByLabel("E-mail").fill(EMAIL);
   await page.getByLabel("Senha").fill(SENHA);
   await page.getByRole("button", { name: "Entrar" }).click();
-  await page.getByRole("navigation").getByRole("link", { name: "Contato" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Administrador" }).click();
+  await page.getByRole("navigation").getByRole("menuitem", { name: "Contato" }).click();
   await expect(page.getByRole("heading", { name: "Contato" })).toBeVisible();
   await expect(page.getByLabel("Nome")).toHaveValue("Pessoa Contato");
   await expect(page.getByLabel("E-mail")).toHaveValue(EMAIL);

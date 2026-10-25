@@ -114,3 +114,8 @@ table td:last-child {
   html[data-tema="escuro"] .bg-amber-700 { background-color: #b45309; }
   html[data-tema="escuro"] img { opacity: 0.95; }
 }
+
+/* painel do menu principal: escuro nos dois temas, itens claros e destaque na cor da marca */
+.menu-painel { background-color: #1b1f27; border: 1px solid rgb(255 255 255 / 0.06); }
+.menu-item { color: #f1f5f9; transition: color 0.15s; }
+.menu-item:hover, .menu-item:focus-visible, .menu-item-ativo { color: #7cc4ff; outline: none; }

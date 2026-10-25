@@ -25,7 +25,8 @@ async function entrar(page: Page, email: string, senha: string) {
 test("administrador cadastra usuário e libera ou bloqueia recursos pelas caixas", async ({ page, browser }) => {
   page.on("dialog", (d) => d.accept());
   await entrar(page, ADMIN, SENHA);
-  await page.getByRole("link", { name: "Usuários", exact: true }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Cadastros" }).click();
+  await page.getByRole("menuitem", { name: "Usuários e Permissões" }).click();
   await expect(page.getByRole("heading", { name: "Usuários e permissões" })).toBeVisible();
   // a própria permissão de administrador não pode ser retirada
   await expect(page.getByLabel("Usuários e permissões — Admin Usuários")).toBeDisabled();
@@ -46,10 +47,13 @@ test("administrador cadastra usuário e libera ou bloqueia recursos pelas caixas
   const leitor = await ctx.newPage();
   await entrar(leitor, LEITOR, SENHA_LEITOR);
   const menu = leitor.getByRole("navigation");
-  await expect(menu.getByRole("link", { name: "Orçamentos" })).toBeVisible();
-  await expect(menu.getByRole("link", { name: "Importação" })).toHaveCount(0);
-  await expect(menu.getByRole("link", { name: "Usuários", exact: true })).toHaveCount(0);
-  await expect(menu.getByRole("link", { name: "BDI" })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Orçamentos" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Orçamentos" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "BDIs" })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Cadastros" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Usuários e Permissões" })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Administrador" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Importações" })).toHaveCount(0);
   await leitor.goto("/orcamentos");
   await expect(leitor.getByRole("link", { name: "Novo orçamento" })).toHaveCount(0);
   await leitor.goto("/orcamentos/novo");

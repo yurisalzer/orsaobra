@@ -293,7 +293,8 @@ test("cronograma e relatórios: visualizar, PDF e Excel", async ({ page }) => {
 test("cabeçalho dos relatórios: cadastro com logo, escolha na obra e uso no relatório", async ({ page }) => {
   dialogos(page);
   await entrar(page);
-  await page.getByRole("link", { name: "Cabeçalhos" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Cadastros" }).click();
+  await page.getByRole("menuitem", { name: "Cabeçalhos" }).click();
   await expect(page.getByRole("heading", { name: "Cabeçalhos dos relatórios" })).toBeVisible();
   // padrão sem logo
   await page.getByRole("button", { name: "Novo cabeçalho" }).click();

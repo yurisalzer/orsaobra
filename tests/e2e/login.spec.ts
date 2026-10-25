@@ -36,12 +36,25 @@ test("login, tela inicial e saída", async ({ page }) => {
   await page.getByLabel("Senha").fill(SENHA);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+  const menu = page.getByRole("navigation", { name: "Menu principal" });
+  // sem a marca "Orçamento de Obras": o "Início" leva à página inicial
+  await expect(menu.getByRole("link", { name: "Orçamento de Obras" })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Administrador" }).click();
   await expect(page.getByText("Admin E2E · Administrador")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Importação" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Importações" })).toBeVisible();
+  await menu.getByRole("button", { name: "Cadastros" }).hover();
+  await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Usuários e Permissões");
+  await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Empresas");
+  await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Setores");
+  await page.screenshot({ path: "test-results/menu-cadastros.png" });
+  await menu.getByRole("button", { name: "Orçamentos" }).hover();
+  await expect(menu.getByRole("menuitem", { name: "BDIs" })).toBeVisible();
+  await page.screenshot({ path: "test-results/menu-orcamentos.png" });
   const cookie = (await page.context().cookies()).find((c) => c.name === "sessao");
   expect(cookie?.httpOnly).toBe(true);
   await page.screenshot({ path: "test-results/tela-inicial.png", fullPage: true });
-  await page.getByRole("button", { name: "Sair" }).click();
+  await menu.getByRole("button", { name: "Administrador" }).click();
+  await menu.getByRole("menuitem", { name: "Sair" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);

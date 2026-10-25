@@ -81,7 +81,9 @@ test("cadastro pela tela de login, confirmação por e-mail e liberação pelo a
   await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
   const menu = page.getByRole("navigation");
   await expect(menu.getByRole("link", { name: "Consulta" })).toBeVisible();
-  await expect(menu.getByRole("link", { name: "Importação" })).toHaveCount(0);
+  await menu.getByRole("button", { name: "Administrador" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Importações" })).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "Sair" })).toBeVisible();
 });
 
 test("reenviar confirmação responde sem revelar se o e-mail existe", async ({ page }) => {

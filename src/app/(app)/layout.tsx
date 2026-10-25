@@ -1,42 +1,48 @@
-import Link from "next/link";
-import { exigirUsuario, type Permissao } from "@/lib/auth/sessao";
+import { exigirUsuario, temPermissao, type Permissao } from "@/lib/auth/sessao";
 import { rotuloPerfil } from "@/lib/auth/permissoes";
-import { acaoSair } from "./acoes";
-import { TemaSeletor } from "../TemaSeletor";
+import { MenuPrincipal, type GrupoMenu, type ItemMenu } from "./MenuPrincipal";
 
-// cada item aparece só para quem tem a permissão
-const MENU: { href: string; rotulo: string; permissao?: Permissao }[] = [
-  { href: "/", rotulo: "Início" },
-  { href: "/orcamentos", rotulo: "Orçamentos", permissao: "ORCAMENTOS_VER" },
-  { href: "/contratos", rotulo: "Contratos", permissao: "MEDICOES_VER" },
-  { href: "/consulta", rotulo: "Consulta de preços", permissao: "CONSULTA" },
-  { href: "/composicoes", rotulo: "Composições", permissao: "CONSULTA" },
-  { href: "/bdi", rotulo: "BDI", permissao: "BDI" },
-  { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
-  { href: "/importacao", rotulo: "Importação", permissao: "IMPORTACAO" },
-  { href: "/usuarios", rotulo: "Usuários", permissao: "USUARIOS" },
-  { href: "/contato", rotulo: "Contato" },
-];
+type Item = ItemMenu & { permissao?: Permissao };
+
+/** Estrutura do menu; cada item aparece só para quem tem a permissão, e o grupo some se ficar vazio. */
+function montarMenu(u: { nome: string; permissoes: readonly Permissao[] }): GrupoMenu[] {
+  const pode = (i: Item) => !i.permissao || temPermissao(u, i.permissao);
+  const grupo = (rotulo: string, itens: Item[], extra: Partial<GrupoMenu> = {}): GrupoMenu[] => {
+    const visiveis: ItemMenu[] = itens.filter(pode).map((i) => ({ href: i.href, rotulo: i.rotulo, emBreve: i.emBreve }));
+    return visiveis.length || extra.sair ? [{ rotulo, itens: visiveis, ...extra }] : [];
+  };
+  const direto = (rotulo: string, href: string, permissao?: Permissao): GrupoMenu[] => (pode({ href, rotulo, permissao }) ? [{ rotulo, href }] : []);
+  return [
+    { rotulo: "Início", href: "/" },
+    ...grupo("Orçamentos", [
+      { href: "/orcamentos", rotulo: "Orçamentos", permissao: "ORCAMENTOS_VER" },
+      { href: "/composicoes", rotulo: "Composições", permissao: "CONSULTA" },
+      { href: "/bdi", rotulo: "BDIs", permissao: "BDI" },
+    ]),
+    ...direto("Consulta de preços", "/consulta", "CONSULTA"),
+    ...direto("Contratos", "/contratos", "MEDICOES_VER"),
+    ...grupo("Cadastros", [
+      { href: "/usuarios", rotulo: "Usuários e Permissões", permissao: "USUARIOS" },
+      { href: "/empresas", rotulo: "Empresas", permissao: "USUARIOS", emBreve: true },
+      { href: "/setores", rotulo: "Setores", permissao: "USUARIOS", emBreve: true },
+      { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
+      { href: "/contato", rotulo: "Contato" },
+    ]),
+    ...grupo("Administrador", [
+      { href: "/importacao", rotulo: "Importações", permissao: "IMPORTACAO" },
+      { href: "/conta", rotulo: "Minha conta" },
+      { href: "/contato", rotulo: "Contato" },
+    ], { sair: true, cabecalho: `${u.nome} · ${rotuloPerfil(u.permissoes)}` }),
+  ];
+}
 
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const u = await exigirUsuario();
   return (
     <div className="flex-1">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/" className="font-semibold text-marca-900">Orçamento de Obras</Link>
-          <nav className="flex flex-wrap items-center gap-4 text-sm">
-            {MENU.filter((m) => !m.permissao || u.permissoes.includes(m.permissao)).map((m) => (
-              <Link key={m.href} href={m.href} className="text-slate-600 hover:text-marca-700">{m.rotulo}</Link>
-            ))}
-            <TemaSeletor />
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <Link href="/conta" className="text-slate-600 hover:text-marca-700">{u.nome} · {rotuloPerfil(u.permissoes)}</Link>
-            <form action={acaoSair}>
-              <button className="rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-100">Sair</button>
-            </form>
-          </div>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+          <MenuPrincipal grupos={montarMenu(u)} />
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
