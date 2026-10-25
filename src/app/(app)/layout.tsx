@@ -23,7 +23,7 @@ function montarMenu(u: { nome: string; permissoes: readonly Permissao[] }): Grup
     ...direto("Contratos", "/contratos", "MEDICOES_VER"),
     ...grupo("Cadastros", [
       { href: "/usuarios", rotulo: "Usuários e Permissões", permissao: "USUARIOS" },
-      { href: "/empresas", rotulo: "Empresas", permissao: "USUARIOS", emBreve: true },
+      { href: "/empresas", rotulo: "Empresas", permissao: "MEDICOES_VER" },
       { href: "/setores", rotulo: "Setores", permissao: "USUARIOS", emBreve: true },
       { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
     ]),

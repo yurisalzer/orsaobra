@@ -1,13 +1,14 @@
 "use client";
 
 import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
+import type { EmpresaParaContrato } from "@/lib/empresas/servico";
 
 export interface FormContrato {
-  numero: string; processo: string; objeto: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
+  numero: string; processo: string; objeto: string; empresaId: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
   endereco: string; responsavelTecnico: string; artRrt: string; emailContato: string; telefoneContato: string;
 }
 export const CONTRATO_VAZIO: FormContrato = {
-  numero: "", processo: "", objeto: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
+  numero: "", processo: "", objeto: "", empresaId: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
   endereco: "", responsavelTecnico: "", artRrt: "", emailContato: "", telefoneContato: "",
 };
 
@@ -15,7 +16,7 @@ const dias = (s: string) => (s.trim() && /^\d+$/.test(s.trim()) ? Number(s.trim(
 
 /** Formato aceito pelas ações do servidor. */
 export const paraAcao = (f: FormContrato) => ({
-  numero: f.numero, processo: f.processo || null, objeto: f.objeto, empresa: f.empresa || null, cnpj: f.cnpj || null,
+  numero: f.numero, processo: f.processo || null, objeto: f.objeto, empresaId: f.empresaId || null, empresa: f.empresa || null, cnpj: f.cnpj || null,
   dataAssinatura: f.dataAssinatura || null, dataOs: f.dataOs || null, prazoExecucaoDias: dias(f.prazoExecucaoDias), prazoVigenciaDias: dias(f.prazoVigenciaDias),
   endereco: f.endereco || null, responsavelTecnico: f.responsavelTecnico || null, artRrt: f.artRrt || null, emailContato: f.emailContato || null, telefoneContato: f.telefoneContato || null,
 });
@@ -23,11 +24,37 @@ export const paraAcao = (f: FormContrato) => ({
 const campo = "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50";
 
 /** Dados do contrato: identificação, prazos (com términos calculados), endereço e responsável técnico. */
-export function CamposContrato({ valor, onChange, desabilitado = false }: { valor: FormContrato; onChange: (v: FormContrato) => void; desabilitado?: boolean }) {
+const cnpjFormatado = (d: string) => d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+
+export function CamposContrato({ valor, onChange, desabilitado = false, empresas = [] }: { valor: FormContrato; onChange: (v: FormContrato) => void; desabilitado?: boolean; empresas?: EmpresaParaContrato[] }) {
+  const empresa = empresas.find((e) => e.id === valor.empresaId);
+  /** empresa cadastrada: copia razão social, CNPJ e o responsável técnico (principal ou o escolhido) */
+  const escolherEmpresa = (id: string) => {
+    const e = empresas.find((x) => x.id === id);
+    if (!e) return onChange({ ...valor, empresaId: "" });
+    const rt = e.responsaveis[0];
+    onChange({
+      ...valor, empresaId: e.id, empresa: e.razaoSocial, cnpj: cnpjFormatado(e.cnpj),
+      ...(rt ? { responsavelTecnico: rt.nome, emailContato: rt.email ?? "", telefoneContato: rt.telefone ?? "" } : {}),
+    });
+  };
+  const escolherRt = (nome: string) => {
+    const rt = empresa?.responsaveis.find((r) => r.nome === nome);
+    if (rt) onChange({ ...valor, responsavelTecnico: rt.nome, emailContato: rt.email ?? "", telefoneContato: rt.telefone ?? "" });
+  };
   const p = (k: keyof FormContrato) => ({ value: valor[k], disabled: desabilitado, onChange: (e: { target: { value: string } }) => onChange({ ...valor, [k]: e.target.value }) });
   const pr = calcularPrazos({ dataAssinatura: valor.dataAssinatura, dataOs: valor.dataOs, prazoExecucaoDias: dias(valor.prazoExecucaoDias), prazoVigenciaDias: dias(valor.prazoVigenciaDias) });
   return (
     <div className="space-y-4">
+      {empresas.length > 0 && (
+        <label className="block text-sm">Empresa cadastrada
+          <select value={valor.empresaId} disabled={desabilitado} onChange={(e) => escolherEmpresa(e.target.value)} aria-label="Empresa cadastrada" className={campo}>
+            <option value="">— digitar os dados da empresa abaixo —</option>
+            {empresas.map((e) => <option key={e.id} value={e.id}>{e.razaoSocial} — CNPJ {cnpjFormatado(e.cnpj)}</option>)}
+          </select>
+          <span className="text-xs text-slate-500">Preenche razão social, CNPJ e responsável técnico (pode ajustar depois). Cadastre empresas em Cadastros › Empresas.</span>
+        </label>
+      )}
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr_12rem]">
         <label className="text-sm">Nº do contrato<input {...p("numero")} maxLength={60} placeholder="ex.: 017/2026" className={campo} /></label>
         <label className="text-sm">Empresa contratada<input {...p("empresa")} maxLength={300} className={campo} /></label>
@@ -63,6 +90,15 @@ export function CamposContrato({ valor, onChange, desabilitado = false }: { valo
 
       <fieldset className="rounded-lg border border-slate-200 p-3">
         <legend className="px-1 text-sm font-medium">Responsável técnico da contratada</legend>
+        {empresa && empresa.responsaveis.length > 1 && (
+          <label className="mb-3 block text-sm">Responsável técnico da empresa
+            <select value={empresa.responsaveis.some((r) => r.nome === valor.responsavelTecnico) ? valor.responsavelTecnico : ""} disabled={desabilitado}
+              onChange={(e) => escolherRt(e.target.value)} aria-label="Responsável técnico da empresa" className={campo}>
+              <option value="">— outro (digitar abaixo) —</option>
+              {empresa.responsaveis.map((r) => <option key={r.nome} value={r.nome}>{r.nome} — {r.registro}{r.principal ? " (principal)" : ""}</option>)}
+            </select>
+          </label>
+        )}
         <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
           <label className="text-sm">Nome do responsável técnico<input {...p("responsavelTecnico")} maxLength={200} className={campo} /></label>
           <label className="text-sm">ART / RRT<input {...p("artRrt")} maxLength={60} className={campo} /></label>

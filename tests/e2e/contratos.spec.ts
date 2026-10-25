@@ -7,6 +7,15 @@ const EMAIL = "contratos.e2e@exemplo.com.br";
 const SENHA = "SenhaForte2026";
 
 test.setTimeout(120_000);
+test.describe.configure({ mode: "serial" });
+
+async function entrarComo(page: import("@playwright/test").Page) {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(EMAIL);
+  await page.getByLabel("Senha").fill(SENHA);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+}
 test.beforeAll(async () => {
   execSync(`npx dotenv -e .env.test -- tsx scripts/criar-admin.ts ${EMAIL} "Fiscal"`, { env: { ...process.env, ADMIN_SENHA: SENHA }, stdio: "inherit" });
   // planilha da proposta: grupos com subgrupo, preços com 2 e 4 casas e total do arquivo
@@ -25,6 +34,33 @@ test.beforeAll(async () => {
   await wb.xlsx.writeFile("test-results/proposta.xlsx");
 });
 
+test("cadastro de empresa com responsáveis técnicos", async ({ page }) => {
+  await entrarComo(page);
+  await page.getByRole("navigation").getByRole("button", { name: "Cadastros" }).click();
+  await page.getByRole("menuitem", { name: "Empresas" }).click();
+  await page.getByRole("link", { name: "Nova empresa" }).click();
+  await page.getByLabel("Razão social *").fill("CONSÓRCIO EXEMPLO");
+  await page.getByLabel("CNPJ *").fill("19.378.246/0001-21");
+  await page.getByLabel("Município").fill("Macaé");
+  await page.getByLabel("Nome do responsável técnico 1").fill("Eng. Maria Souza");
+  await page.getByLabel("Registro no conselho 1").fill("2012345678");
+  await page.getByLabel("E-mail do responsável técnico 1").fill("maria@consorcio.com.br");
+  await page.getByLabel("Telefone do responsável técnico 1").fill("22988887777");
+  await page.getByRole("button", { name: "Cadastrar empresa" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("CNPJ inválido");
+  await page.getByLabel("CNPJ *").fill("19.378.246/0001-20");
+  await page.getByRole("button", { name: "+ responsável técnico" }).click();
+  await page.getByLabel("Nome do responsável técnico 2").fill("Arq. Pedro Lima");
+  await page.getByLabel("Conselho 2", { exact: true }).selectOption("CAU");
+  await page.getByLabel("Registro no conselho 2").fill("A123456-7");
+  await page.getByRole("button", { name: "Cadastrar empresa" }).click();
+  await expect(page.getByRole("heading", { name: "CONSÓRCIO EXEMPLO" })).toBeVisible();
+  await expect(page.getByLabel("Nome do responsável técnico 2")).toHaveValue("Arq. Pedro Lima");
+  await page.screenshot({ path: "test-results/empresa.png", fullPage: true });
+  await page.getByRole("link", { name: "Empresas" }).first().click();
+  await expect(page.getByRole("row", { name: /CONSÓRCIO EXEMPLO/ })).toContainText("Eng. Maria Souza — CREA 2012345678/RJ");
+});
+
 test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e total", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   await page.goto("/login");
@@ -39,6 +75,13 @@ test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e to
   await expect(page.getByLabel("Nº do contrato")).toHaveValue("045/2023");
   await expect(page.getByLabel("Empresa contratada")).toHaveValue("CONSÓRCIO EXEMPLO");
   await page.getByLabel("Nome da obra", { exact: true }).fill("Praça e CRAS no Miramar");
+  // empresa cadastrada preenche razão social, CNPJ e responsável técnico
+  await page.getByLabel("Empresa cadastrada").selectOption({ label: "CONSÓRCIO EXEMPLO — CNPJ 19.378.246/0001-20" });
+  await expect(page.getByLabel("CNPJ", { exact: true })).toHaveValue("19.378.246/0001-20");
+  await expect(page.getByLabel("Nome do responsável técnico")).toHaveValue("Eng. Maria Souza");
+  await page.getByLabel("Responsável técnico da empresa").selectOption({ label: "Arq. Pedro Lima — CAU A123456-7/RJ" });
+  await expect(page.getByLabel("Nome do responsável técnico")).toHaveValue("Arq. Pedro Lima");
+  await page.getByLabel("Responsável técnico da empresa").selectOption({ label: "Eng. Maria Souza — CREA 2012345678/RJ (principal)" });
   await page.getByLabel("Objeto (nome da obra)").fill("CONSTRUÇÃO DE PRAÇA E CRAS NO MIRAMAR");
   await page.getByLabel("Nº do processo").fill("SEI-045/2023");
   await page.getByLabel("Endereço da obra").fill("Rua Exemplo, 100 — Miramar, Macaé/RJ");

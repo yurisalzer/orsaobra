@@ -8,6 +8,7 @@ import { CamposObra, OBRA_VAZIA } from "../../orcamentos/CamposObra";
 import type { DadosNovaObra } from "../../orcamentos/acoes";
 import { acaoCriarContratoDaPlanilha } from "../acoes";
 import { CamposContrato, CONTRATO_VAZIO, paraAcao } from "../CamposContrato";
+import type { EmpresaParaContrato } from "@/lib/empresas/servico";
 
 interface Leitura { arquivo: string; pdf: boolean; abas: { nome: string; grade: Grade }[]; textoExtra: string }
 type CampoContrato = "item" | "codigo" | "descricao" | "unidade" | "quantidade" | "preco" | "total";
@@ -34,7 +35,7 @@ function identificar(texto: string) {
   return { numero, empresa, objeto };
 }
 
-export function ImportarPlanilha({ obras, cabecalhos }: { obras: { id: string; nome: string; codigo: string | null; processo: string | null }[]; cabecalhos: { id: string; nome: string; padrao: boolean }[] }) {
+export function ImportarPlanilha({ obras, cabecalhos, empresas = [] }: { obras: { id: string; nome: string; codigo: string | null; processo: string | null }[]; cabecalhos: { id: string; nome: string; padrao: boolean }[]; empresas?: EmpresaParaContrato[] }) {
   const [leitura, setLeitura] = useState<Leitura | null>(null);
   const [aba, setAba] = useState(0);
   const [cab, setCab] = useState<Cabecalho | null>(null);
@@ -185,7 +186,7 @@ export function ImportarPlanilha({ obras, cabecalhos }: { obras: { id: string; n
 
           <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-medium">Dados do contrato</h2>
-            <CamposContrato valor={form} onChange={setForm} />
+            <CamposContrato valor={form} onChange={setForm} empresas={empresas} />
             <label className="block text-sm sm:w-80">Valor total dos itens sem coluna de total
               <select value={arredondamento} onChange={(e) => setArredondamento(e.target.value)} className={campo}>
                 <option value="ARREDONDAR">quantidade × preço, arredondado</option>

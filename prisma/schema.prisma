@@ -61,6 +61,7 @@ model Usuario {
   revisoesFech         OrcamentoRevisao[]   @relation("RevisaoFechadaPor")
   memoriais            MemorialDescritivo[] @relation("MemorialAtualizadoPor")
   contratosCriados     Contrato[]           @relation("ContratoCriadoPor")
+  empresasCriadas      Empresa[]            @relation("EmpresaCriadaPor")
   acessosOrcamento     OrcamentoAcesso[]    @relation("AcessoOrcamentoUsuario")
   acessosOrcConcedidos OrcamentoAcesso[]    @relation("AcessoOrcamentoConcedidoPor")
   acessosContrato      ContratoAcesso[]     @relation("AcessoContratoUsuario")
@@ -800,6 +801,7 @@ model Contrato {
   numero             String
   objeto             String
   processo           String?
+  empresaId          String?   @map("empresa_id") @db.Uuid
   empresa            String?
   cnpj               String?
   dataAssinatura     DateTime? @map("data_assinatura") @db.Date
@@ -825,13 +827,14 @@ model Contrato {
   confirmadoEm       DateTime? @map("confirmado_em") @db.Timestamptz
   confirmadoPorId    String?   @map("confirmado_por_id") @db.Uuid
 
-  obra          Obra              @relation(fields: [obraId], references: [id], onDelete: Restrict)
-  revisao       OrcamentoRevisao? @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
-  criadoPor     Usuario?          @relation("ContratoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
-  confirmadoPor Usuario?          @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
-  grupos        ContratoGrupo[]
-  itens         ContratoItem[]
-  acessos       ContratoAcesso[]
+  obra            Obra              @relation(fields: [obraId], references: [id], onDelete: Restrict)
+  empresaCadastro Empresa?          @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  revisao         OrcamentoRevisao? @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
+  criadoPor       Usuario?          @relation("ContratoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  confirmadoPor   Usuario?          @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  grupos          ContratoGrupo[]
+  itens           ContratoItem[]
+  acessos         ContratoAcesso[]
 
   @@index([obraId], map: "contrato_obra_idx")
   @@map("contrato")
@@ -918,4 +921,58 @@ model ContratoAcesso {
   @@id([contratoId, usuarioId])
   @@index([usuarioId], map: "contrato_acesso_usuario_idx")
   @@map("contrato_acesso")
+}
+
+/// Empresa (contratada) com os responsáveis técnicos.
+model Empresa {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  razaoSocial        String   @map("razao_social")
+  nomeFantasia       String?  @map("nome_fantasia")
+  cnpj               String   @unique(map: "empresa_cnpj_key")
+  inscricaoEstadual  String?  @map("inscricao_estadual")
+  inscricaoMunicipal String?  @map("inscricao_municipal")
+  cep                String?
+  logradouro         String?
+  numero             String?
+  complemento        String?
+  bairro             String?
+  municipio          String?
+  uf                 String?  @db.Char(2)
+  telefone           String?
+  email              String?
+  representanteNome  String?  @map("representante_nome")
+  representanteCpf   String?  @map("representante_cpf")
+  representanteCargo String?  @map("representante_cargo")
+  observacoes        String?
+  ativo              Boolean  @default(true)
+  criadoPorId        String?  @map("criado_por_id") @db.Uuid
+  criadoEm           DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm       DateTime @default(now()) @map("atualizado_em") @db.Timestamptz
+  versao             Int      @default(1)
+
+  criadoPor    Usuario?             @relation("EmpresaCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  responsaveis EmpresaResponsavel[]
+  contratos    Contrato[]
+
+  @@map("empresa")
+}
+
+model EmpresaResponsavel {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  empresaId  String  @map("empresa_id") @db.Uuid
+  ordem      Int
+  nome       String
+  titulo     String?
+  conselho   String
+  registro   String
+  ufRegistro String? @map("uf_registro") @db.Char(2)
+  cpf        String?
+  email      String?
+  telefone   String?
+  principal  Boolean @default(false)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, ordem], map: "empresa_responsavel_empresa_idx")
+  @@map("empresa_responsavel")
 }

@@ -50,8 +50,11 @@ test("administrador cadastra usuário e libera ou bloqueia recursos pelas caixas
   await menu.getByRole("button", { name: "Orçamentos" }).click();
   await expect(menu.getByRole("menuitem", { name: "Orçamentos" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "BDIs" })).toHaveCount(0);
-  // sem Usuários nem Cabeçalhos, o grupo Cadastros nem aparece
-  await expect(menu.getByRole("button", { name: "Cadastros" })).toHaveCount(0);
+  // leitor vê Empresas (consulta), mas não Usuários nem Cabeçalhos
+  await menu.getByRole("button", { name: "Cadastros" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Empresas" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Usuários e Permissões" })).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "Cabeçalhos" })).toHaveCount(0);
   await menu.getByRole("button", { name: "Administrador" }).click();
   await expect(menu.getByRole("menuitem", { name: "Importações" })).toHaveCount(0);
   await leitor.goto("/orcamentos");
