@@ -26,7 +26,6 @@ function montarMenu(u: { nome: string; permissoes: readonly Permissao[] }): Grup
       { href: "/empresas", rotulo: "Empresas", permissao: "USUARIOS", emBreve: true },
       { href: "/setores", rotulo: "Setores", permissao: "USUARIOS", emBreve: true },
       { href: "/cabecalhos", rotulo: "Cabeçalhos", permissao: "CABECALHOS" },
-      { href: "/contato", rotulo: "Contato" },
     ]),
     ...grupo("Administrador", [
       { href: "/importacao", rotulo: "Importações", permissao: "IMPORTACAO" },

@@ -46,6 +46,7 @@ test("login, tela inicial e saída", async ({ page }) => {
   await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Usuários e Permissões");
   await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Empresas");
   await expect(menu.getByRole("menu", { name: "Cadastros" })).toContainText("Setores");
+  await expect(menu.getByRole("menu", { name: "Cadastros" })).not.toContainText("Contato");
   await page.screenshot({ path: "test-results/menu-cadastros.png" });
   await menu.getByRole("button", { name: "Orçamentos" }).hover();
   await expect(menu.getByRole("menuitem", { name: "BDIs" })).toBeVisible();
