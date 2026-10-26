@@ -63,6 +63,7 @@ model Usuario {
   contratosCriados     Contrato[]           @relation("ContratoCriadoPor")
   empresasCriadas      Empresa[]            @relation("EmpresaCriadaPor")
   regimesCriados       RegimeExecucao[]     @relation("RegimeCriadoPor")
+  medicoesFechadas     Medicao[]            @relation("MedicaoFechadaPor")
   acessosOrcamento     OrcamentoAcesso[]    @relation("AcessoOrcamentoUsuario")
   acessosOrcConcedidos OrcamentoAcesso[]    @relation("AcessoOrcamentoConcedidoPor")
   acessosContrato      ContratoAcesso[]     @relation("AcessoContratoUsuario")
@@ -804,6 +805,7 @@ model Contrato {
   processo           String?
   empresaId          String?   @map("empresa_id") @db.Uuid
   regimeId           String?   @map("regime_id") @db.Uuid
+  servicoContinuo    Boolean   @default(false) @map("servico_continuo")
   empresa            String?
   cnpj               String?
   dataAssinatura     DateTime? @map("data_assinatura") @db.Date
@@ -839,6 +841,7 @@ model Contrato {
   acessos          ContratoAcesso[]
   regimeExecucao   RegimeExecucao?   @relation(fields: [regimeExecucaoId], references: [id])
   regimeExecucaoId String?           @db.Uuid
+  medicaos         Medicao[]
 
   @@index([obraId], map: "contrato_obra_idx")
   @@map("contrato")
@@ -888,6 +891,7 @@ model ContratoItem {
   contrato       Contrato        @relation(fields: [contratoId], references: [id], onDelete: Cascade)
   grupo          ContratoGrupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
   itemReferencia ItemReferencia? @relation(fields: [itemReferenciaId], references: [id], onDelete: SetNull)
+  medicoes       MedicaoItem[]
 
   @@index([contratoId, ordem], map: "contrato_item_contrato_idx")
   @@map("contrato_item")
@@ -996,4 +1000,42 @@ model RegimeExecucao {
   contratos Contrato[]
 
   @@map("regime_execucao")
+}
+
+/// Medição do contrato (período planejado e lançamento por item).
+model Medicao {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contratoId   String    @map("contrato_id") @db.Uuid
+  numero       Int
+  inicio       DateTime  @db.Date
+  fim          DateTime  @db.Date
+  situacao     String    @default("PREVISTA")
+  versao       Int       @default(1)
+  observacao   String?
+  fechadaEm    DateTime? @map("fechada_em") @db.Timestamptz
+  fechadaPorId String?   @map("fechada_por_id") @db.Uuid
+  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz
+  atualizadoEm DateTime  @default(now()) @map("atualizado_em") @db.Timestamptz
+
+  contrato   Contrato      @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  fechadaPor Usuario?      @relation("MedicaoFechadaPor", fields: [fechadaPorId], references: [id], onDelete: SetNull)
+  itens      MedicaoItem[]
+
+  @@unique([contratoId, numero], map: "medicao_contrato_numero_key")
+  @@map("medicao")
+}
+
+model MedicaoItem {
+  medicaoId      String   @map("medicao_id") @db.Uuid
+  contratoItemId String   @map("contrato_item_id") @db.Uuid
+  quantidade     Decimal? @db.Decimal(18, 4)
+  percentual     Decimal? @db.Decimal(9, 4)
+  valor          Decimal  @db.Decimal(18, 2)
+
+  medicao      Medicao      @relation(fields: [medicaoId], references: [id], onDelete: Cascade)
+  contratoItem ContratoItem @relation(fields: [contratoItemId], references: [id], onDelete: Restrict)
+
+  @@id([medicaoId, contratoItemId])
+  @@index([contratoItemId], map: "medicao_item_contrato_item_idx")
+  @@map("medicao_item")
 }

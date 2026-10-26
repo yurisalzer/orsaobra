@@ -128,3 +128,74 @@ test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e to
   await page.getByRole("button", { name: "Excluir contrato" }).click();
   await expect(page.getByRole("heading", { name: "Contratos e medições" })).toBeVisible();
 });
+
+test("medições: planejamento (até 30 dias), lançamento por quantidade, fechamento e reabertura", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await entrarComo(page);
+  await page.getByRole("link", { name: "Contratos", exact: true }).click();
+  await page.getByRole("link", { name: "Importar planilha da proposta" }).click();
+  await page.getByLabel("Arquivo da planilha (.xls, .xlsx ou .pdf)").setInputFiles("test-results/proposta.xlsx");
+  await expect(page.getByRole("status")).toContainText("3 itens em 2 grupos");
+  await page.getByLabel("Nº do contrato").fill("046/2023");
+  await page.getByLabel("Nome da obra", { exact: true }).fill("Escola — medições");
+  await page.getByLabel("Objeto (nome da obra)").fill("Reforma da escola — medições");
+  await page.getByLabel("Regime de execução").selectOption({ label: "1. Empreitada por preço unitário" });
+  await page.getByLabel("Ordem de serviço (início)").fill("2026-10-10");
+  await page.getByLabel("Prazo de execução (dias)").fill("300");
+  await page.getByRole("button", { name: "Criar contrato com 3 itens" }).click();
+  await expect(page.getByRole("heading", { name: "Contrato 046/2023" })).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar planilha" }).click();
+  await expect(page.getByText(/Planilha vigente/)).toBeVisible();
+
+  await page.getByRole("link", { name: "Medições", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Medições — Contrato 046/2023" })).toBeVisible();
+  // sugestão: 300 dias ÷ 30 = 10 medições, a partir da OS
+  await expect(page.getByLabel("Quantidade de medições")).toHaveValue("10");
+  await expect(page.getByLabel("Início da 1ª medição")).toHaveValue("2026-10-10");
+  await page.getByLabel(/Dias corridos por medição/).fill("31");
+  await expect(page.getByRole("button", { name: "Planejar medições" })).toBeDisabled();
+  await page.getByLabel(/Dias corridos por medição/).fill("30");
+  await expect(page.getByText(/Prévia: 1ª 10\/10\/2026 a 08\/11\/2026/)).toBeVisible();
+  // serviço contínuo: mensal dia a dia
+  await page.getByLabel(/Serviço contínuo/).check();
+  await expect(page.getByText(/Prévia: 1ª 10\/10\/2026 a 09\/11\/2026 · 2ª 10\/11\/2026 a 09\/12\/2026/)).toBeVisible();
+  await page.getByLabel(/Serviço contínuo/).uncheck();
+  await page.getByLabel("Quantidade de medições").fill("10");
+  await page.getByRole("button", { name: "Planejar medições" }).click();
+  const tabela = page.getByRole("region", { name: "Medições" });
+  await expect(tabela.getByRole("row")).toHaveCount(11);
+  await expect(tabela.getByRole("row", { name: /^10ª/ })).toContainText("07/07/2027");
+  // ajuste do 1º período (20 dias): as seguintes acompanham
+  await page.getByLabel("Fim da 1ª medição").fill("2026-10-29");
+  await tabela.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Período da 1ª medição ajustado.")).toBeVisible();
+  await expect(tabela.getByRole("row", { name: /^2ª/ })).toContainText("30/10/2026");
+
+  await tabela.getByRole("row", { name: /^1ª/ }).getByRole("link", { name: "Abrir" }).click();
+  await expect(page.getByRole("heading", { name: "1ª medição — Contrato 046/2023" })).toBeVisible();
+  await page.getByRole("button", { name: "Iniciar medição" }).click();
+  await expect(page.getByLabel("Quantidade do item 2.1")).toBeVisible();
+  await page.getByLabel("Quantidade do item 2.1").fill("13");
+  await expect(page.getByText("saldo 12")).toBeVisible();
+  await page.getByLabel("Quantidade do item 2.1").fill("6");
+  await page.getByLabel("Quantidade do item 1.1").fill("10,5");
+  await page.getByRole("button", { name: "Salvar lançamentos (2)" }).click();
+  await expect(page.getByText("Lançamentos salvos.")).toBeVisible();
+  await expect(page.getByRole("row", { name: /^2\.1 / })).toContainText("600,00");
+  await expect(page.getByRole("row", { name: /^1\.1 / })).toContainText("45.696,00");
+  await page.getByLabel("Observações da medição").fill("Medição de teste");
+  await page.getByRole("button", { name: "Fechar medição" }).click();
+  await expect(page.getByText("Medição fechada.")).toBeVisible();
+  await expect(page.getByLabel("Quantidade do item 2.1")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/medicao.png", fullPage: true });
+  await page.getByRole("button", { name: "Reabrir medição" }).click();
+  await expect(page.getByText("Medição reaberta.")).toBeVisible();
+  await expect(page.getByLabel("Quantidade do item 2.1")).toHaveValue("6");
+  await page.getByRole("button", { name: "Fechar medição" }).click();
+  await expect(page.getByText("Medição fechada.")).toBeVisible();
+
+  await page.getByRole("link", { name: "← Voltar às medições" }).click();
+  await expect(tabela.getByRole("row", { name: /^1ª/ })).toContainText("Fechada");
+  await expect(tabela.getByRole("row", { name: /^1ª/ })).toContainText("46.296,00");
+  await page.screenshot({ path: "test-results/medicoes.png", fullPage: true });
+});

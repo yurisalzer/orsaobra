@@ -67,6 +67,7 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompar
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
+          <Link href={`/contratos/${c.id}/medicoes`} className="rounded-md border border-marca-600 px-3 py-1.5 font-medium text-marca-700">Medições</Link>
           {podeCompartilhar && <Compartilhar tipo="contrato" id={c.id} />}
           {podeGerenciar && emCadastro && (
             <button disabled={pendente} onClick={() => { if (window.confirm("Confirmar a planilha contratual? Depois de confirmada ela fica travada (alterações só por aditivo).")) rodar(() => acaoConfirmarContrato(c.id, versao), undefined, "Planilha confirmada: contrato vigente."); }}

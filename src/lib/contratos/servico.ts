@@ -362,6 +362,16 @@ export async function alterarDadosContrato(ex: Executor, contratoId: string, ver
   if (!c) throw new ErroContrato("Contrato não encontrado.");
   if (c.versao !== versao) throw new ErroContrato("O contrato foi alterado por outra pessoa. Recarregue a página.");
   await numeroLivre(ex, dados.numero, contratoId);
+  // com lançamentos de medição, o critério (quantidade × percentual) não pode mudar
+  const [crit] = await ex.consulta<{ atual: string | null; novo: string | null; lancados: boolean }>(
+    `SELECT (SELECT r.medicao FROM contrato c JOIN regime_execucao r ON r.id = c.regime_id WHERE c.id = $1) AS atual,
+            (SELECT medicao FROM regime_execucao WHERE id = $2) AS novo,
+            EXISTS (SELECT 1 FROM medicao_item mi JOIN medicao m ON m.id = mi.medicao_id WHERE m.contrato_id = $1) AS lancados`,
+    [contratoId, dados.regimeId],
+  );
+  if (crit.lancados && crit.atual !== crit.novo) {
+    throw new ErroContrato("Já há medição lançada: o regime só pode ser trocado por outro com o mesmo critério de medição (quantidade ou percentual).");
+  }
   await ex.transacao([
     { sql: `UPDATE contrato SET numero = $2, objeto = $3, versao = versao + 1, atualizado_em = now() WHERE id = $1 AND versao = $4`, params: [contratoId, dados.numero, dados.objeto, versao] },
     comandoDados(contratoId, dados),
@@ -430,11 +440,13 @@ export async function confirmarContrato(ex: Executor, contratoId: string, versao
   ]);
 }
 
-/** Volta a planilha para cadastro (enquanto não houver medições — fase seguinte). */
+/** Volta a planilha para cadastro (enquanto nenhuma medição tiver sido iniciada). */
 export async function reabrirContrato(ex: Executor, contratoId: string, u: { id: string; administrador: boolean }) {
   const e = await carregarContrato(ex, contratoId);
   if (!podeGerenciarContrato(e.contrato, u)) throw new ErroContrato("Só quem cadastrou o contrato (ou o administrador) pode reabrir a planilha.");
   if (e.contrato.situacao !== "VIGENTE") throw new ErroContrato("A planilha já está em cadastro.");
+  const [med] = await ex.consulta<{ n: number }>(`SELECT count(*)::int AS n FROM medicao WHERE contrato_id = $1 AND situacao <> 'PREVISTA'`, [contratoId]);
+  if (med.n > 0) throw new ErroContrato("Há medição iniciada ou fechada: a planilha contratual não pode mais ser reaberta.");
   await ex.transacao([
     { sql: `UPDATE contrato SET situacao = 'EM_CADASTRO', confirmado_em = NULL, confirmado_por_id = NULL, versao = versao + 1, atualizado_em = now() WHERE id = $1`, params: [contratoId] },
     comandoAuditoria({ usuarioId: u.id, acao: "CONTRATO_REABERTO", entidade: "contrato", entidadeId: contratoId }),
