@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
 import type { EstadoMedicao, LinhaMedicao } from "@/lib/medicoes/servico";
 import { dataBr } from "@/lib/contratos/prazos";
 import { acaoFecharMedicao, acaoIniciarMedicao, acaoReabrirMedicao, acaoSalvarLancamentos } from "../acoes";
@@ -16,7 +16,7 @@ const lerCampo = (v: string) => Number(v.trim().replace(/\./g, "").replace(",", 
 
 const iniciais = (linhas: LinhaMedicao[], porQtd: boolean) => Object.fromEntries(linhas.map((l) => [l.itemId, paraCampo(porQtd ? l.atualQtd : l.atualPct)]));
 
-export function LancamentoMedicao({ estado, podeEditar, podeGerenciar }: { estado: EstadoMedicao; podeEditar: boolean; podeGerenciar: boolean }) {
+export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documentos }: { estado: EstadoMedicao; podeEditar: boolean; podeGerenciar: boolean; documentos?: ReactNode }) {
   const m = estado.medicao;
   const c = estado.contrato;
   const porQtd = c.medicao === "QUANTIDADE";
@@ -104,6 +104,7 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar }: { estad
 
       {erro && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{erro}</p>}
       {aviso && <p role="status" className="rounded-md bg-green-50 p-3 text-sm text-green-800">{aviso}</p>}
+      {documentos}
       {lanca && (
         <p className="text-xs text-slate-500">
           {porQtd

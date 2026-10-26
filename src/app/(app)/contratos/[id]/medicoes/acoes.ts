@@ -8,6 +8,7 @@ import { executor } from "@/lib/banco/servidor";
 import {
   acrescentarMedicao, alterarPeriodo, ErroMedicao, excluirUltimaPrevista, fecharMedicao, iniciarMedicao, planejarMedicoes, reabrirMedicao, salvarLancamentos,
 } from "@/lib/medicoes/servico";
+import { dadosBoletim, dadosDesembolso, salvarDesembolso } from "@/lib/medicoes/relatorios";
 
 type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
 type Usuario = { id: string; administrador: boolean };
@@ -82,4 +83,35 @@ export async function acaoFecharMedicao(contratoId: string, medicaoId: string, v
 
 export async function acaoReabrirMedicao(contratoId: string, medicaoId: string) {
   return executar(contratoId, async (u, ex) => reabrirMedicao(ex, await daMedicao(ex, contratoId, medicaoId), u));
+}
+
+/** Leitura (MEDICOES_VER e acesso de leitura ao contrato). */
+async function ler<T>(contratoId: string, f: (ex: Awaited<ReturnType<typeof executor>>) => Promise<T>): Promise<Resultado<T & { rodape: string }>> {
+  const negado = await semAcessoContrato(contratoId, "ver");
+  if (negado) return negado;
+  try {
+    const u = await exigirPermissao("MEDICOES_VER");
+    const dados = await f(await executor());
+    const agora = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+    return { ok: true, dados: { ...dados, rodape: `Emitido em ${agora} por ${u.nome} · Orçamento de Obras` } };
+  } catch (e) {
+    if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
+    if (e instanceof ErroPermissao || e instanceof ErroMedicao) return { ok: false, erro: e.message };
+    if (e instanceof z.ZodError) return { ok: false, erro: "Dados inválidos." };
+    console.error(e);
+    return { ok: false, erro: "Não foi possível gerar o documento. Tente novamente." };
+  }
+}
+
+export async function acaoDadosBoletim(contratoId: string, medicaoId: string) {
+  return ler(contratoId, async (ex) => ({ boletim: await dadosBoletim(ex, await daMedicao(ex, contratoId, medicaoId)) }));
+}
+
+export async function acaoDadosDesembolso(contratoId: string, numero: number) {
+  return ler(contratoId, async (ex) => ({ desembolso: await dadosDesembolso(ex, uuid.parse(contratoId), z.number().int().min(1).parse(numero)) }));
+}
+
+export async function acaoSalvarDesembolso(contratoId: string, previsto: Record<string, Record<string, string>>) {
+  const dados = z.record(uuid, z.record(z.string().regex(/^\d{1,3}$/), z.string().max(20))).parse(previsto);
+  return executar(contratoId, (u, ex) => salvarDesembolso(ex, uuid.parse(contratoId), dados as Record<string, Record<number, string>>, u.id));
 }

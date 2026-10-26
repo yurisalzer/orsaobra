@@ -130,7 +130,7 @@ export function PainelMedicoes({ painel, podeEditar, podeGerenciar }: { painel: 
       {ms.length > 0 && (
         <section aria-label="Medições" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold">Medições ({ms.length})</h2>
+            <h2 className="font-semibold">Medições ({ms.length}) <Link href={`/contratos/${c.id}/medicoes/desembolso`} className="ml-3 text-sm font-normal text-marca-700 underline">Cronograma de desembolso</Link></h2>
             {podeEditar && (
               <div className="flex flex-wrap gap-2 text-sm">
                 {!planejando && <button onClick={() => setPlanejando(true)} className="rounded-md border border-slate-300 px-3 py-1.5">Refazer planejamento</button>}

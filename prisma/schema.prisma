@@ -831,17 +831,18 @@ model Contrato {
   confirmadoEm       DateTime? @map("confirmado_em") @db.Timestamptz
   confirmadoPorId    String?   @map("confirmado_por_id") @db.Uuid
 
-  obra             Obra              @relation(fields: [obraId], references: [id], onDelete: Restrict)
-  empresaCadastro  Empresa?          @relation(fields: [empresaId], references: [id], onDelete: SetNull)
-  revisao          OrcamentoRevisao? @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
-  criadoPor        Usuario?          @relation("ContratoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
-  confirmadoPor    Usuario?          @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  obra             Obra                   @relation(fields: [obraId], references: [id], onDelete: Restrict)
+  empresaCadastro  Empresa?               @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  revisao          OrcamentoRevisao?      @relation(fields: [revisaoId], references: [id], onDelete: SetNull)
+  criadoPor        Usuario?               @relation("ContratoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  confirmadoPor    Usuario?               @relation("ContratoConfirmadoPor", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
   grupos           ContratoGrupo[]
   itens            ContratoItem[]
   acessos          ContratoAcesso[]
-  regimeExecucao   RegimeExecucao?   @relation(fields: [regimeExecucaoId], references: [id])
-  regimeExecucaoId String?           @db.Uuid
+  regimeExecucao   RegimeExecucao?        @relation(fields: [regimeExecucaoId], references: [id])
+  regimeExecucaoId String?                @db.Uuid
   medicaos         Medicao[]
+  desembolso       CronogramaDesembolso[]
 
   @@index([obraId], map: "contrato_obra_idx")
   @@map("contrato")
@@ -854,10 +855,11 @@ model ContratoGrupo {
   ordem      Int
   titulo     String
 
-  contrato Contrato        @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-  pai      ContratoGrupo?  @relation("GrupoPai", fields: [paiId], references: [id], onDelete: Cascade)
-  filhos   ContratoGrupo[] @relation("GrupoPai")
-  itens    ContratoItem[]
+  contrato   Contrato               @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  pai        ContratoGrupo?         @relation("GrupoPai", fields: [paiId], references: [id], onDelete: Cascade)
+  filhos     ContratoGrupo[]        @relation("GrupoPai")
+  itens      ContratoItem[]
+  desembolso CronogramaDesembolso[]
 
   @@index([contratoId], map: "contrato_grupo_contrato_idx")
   @@map("contrato_grupo")
@@ -1038,4 +1040,19 @@ model MedicaoItem {
   @@id([medicaoId, contratoItemId])
   @@index([contratoItemId], map: "medicao_item_contrato_item_idx")
   @@map("medicao_item")
+}
+
+/// Cronograma de desembolso: percentual previsto de cada etapa principal por período de medição.
+model CronogramaDesembolso {
+  contratoId String  @map("contrato_id") @db.Uuid
+  grupoId    String  @map("grupo_id") @db.Uuid
+  periodo    Int
+  percentual Decimal @db.Decimal(9, 4)
+
+  contrato Contrato      @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  grupo    ContratoGrupo @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@id([grupoId, periodo])
+  @@index([contratoId], map: "cronograma_desembolso_contrato_idx")
+  @@map("cronograma_desembolso")
 }

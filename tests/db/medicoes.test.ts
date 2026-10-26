@@ -6,6 +6,7 @@ import { criarObra } from "@/lib/orcamento/servico";
 import {
   acrescentarMedicao, alterarPeriodo, carregarMedicao, excluirUltimaPrevista, fecharMedicao, iniciarMedicao, painelMedicoes, planejarMedicoes, reabrirMedicao, salvarLancamentos,
 } from "@/lib/medicoes/servico";
+import { dadosBoletim, dadosDesembolso, estadoDesembolso, salvarDesembolso } from "@/lib/medicoes/relatorios";
 import { limparBanco, prisma } from "./ajuda";
 
 let ex: Executor;
@@ -158,5 +159,62 @@ describe("medições", () => {
     const [m] = (await painelMedicoes(ex, id)).medicoes;
     expect((await carregarMedicao(ex, m.id)).podeIniciar).toMatch(/confirmada/);
     await expect(iniciarMedicao(ex, m.id, u)).rejects.toThrow(/confirmada/);
+  });
+
+  it("boletim de medição e cronograma de desembolso (realizado + previsto fechando 100%)", async () => {
+    const regimes = await listarRegimes(ex);
+    const obra = await criarObra(ex, { nome: "Obra Boletim" }, u);
+    const id = await criarContratoDaPlanilha(ex, { obraId: obra, numero: "M-6", objeto: "Reforma da ponte", regimeId: regimes[0].id, dataOs: "2026-10-10", prazoExecucaoDias: 90, empresa: "Construtora X" }, {
+      arquivo: "p.xlsx",
+      grupos: [{ chave: "a", titulo: "PISOS", paiChave: null }, { chave: "b", titulo: "ESQUADRIAS", paiChave: null }, { chave: "b1", titulo: "Portas", paiChave: "b" }],
+      itens: [
+        { grupoChave: "a", numero: "1.1", codigo: "01.001", fonte: null, descricao: "Piso", unidade: "M2", quantidade: "10", precoUnitario: "33.33", total: null },
+        { grupoChave: "b1", numero: "2.1.1", codigo: null, fonte: null, descricao: "Porta", unidade: "UN", quantidade: "3", precoUnitario: "100", total: null },
+      ],
+    }, u);
+    await confirmarContrato(ex, id, (await carregarContrato(ex, id)).contrato.versao, admin(u));
+    const [piso, porta] = (await carregarContrato(ex, id)).itens.map((i) => i.id);
+    await planejarMedicoes(ex, id, { inicio: "2026-10-10", quantidade: 3, dias: 30, servicoContinuo: false }, u);
+    const [m1, m2] = (await painelMedicoes(ex, id)).medicoes;
+    await iniciarMedicao(ex, m1.id, u);
+    const v = await salvarLancamentos(ex, m1.id, (await carregarMedicao(ex, m1.id)).medicao.versao, [{ itemId: piso, valor: "3,333" }, { itemId: porta, valor: "1" }], u);
+    await fecharMedicao(ex, m1.id, v, "Obs", u);
+
+    const b = await dadosBoletim(ex, m1.id);
+    expect(b.contrato).toMatchObject({ numero: "M-6", empresa: "Construtora X", termino: "2027-01-07", porQuantidade: true });
+    expect(b.medicao).toMatchObject({ numero: 1, situacao: "FECHADA", observacao: "Obs" });
+    expect(b.linhas.map((l) => (l.tipo === "grupo" ? [l.numero, l.titulo, l.contratado, l.medido, l.saldo, l.percentual] : [l.numero, l.antes, l.medido, l.saldo, l.valorMedido, l.valorSaldo, l.percentual]))).toEqual([
+      ["1", "PISOS", "333.30", "111.09", "222.21", "33.33"],
+      ["1.1", "10", "3.333", "6.667", "111.09", "222.21", "33.33"],
+      ["2", "ESQUADRIAS", "300.00", "100.00", "200.00", "33.33"],
+      ["2.1", "Portas", "300.00", "100.00", "200.00", "33.33"],
+      ["2.1.1", "3", "1", "2", "100.00", "200.00", "33.33"],
+    ]);
+    expect(b.totais).toMatchObject({ contratado: "633.30", medicao: "211.09", acumulado: "211.09", saldo: "422.21", percentualAcumulado: "33.33" });
+
+    // cronograma: sem previsto salvo, sugestão uniforme fechando 100%
+    let e = await estadoDesembolso(ex, id);
+    expect(e.ultimaFechada).toBe(1);
+    expect(e.grupos.map((g) => [g.numero, g.titulo, g.total])).toEqual([["1", "PISOS", "333.30"], ["2", "ESQUADRIAS", "300.00"]]);
+    const [ga, gb] = e.grupos;
+    expect(e.realizado[ga.id][1]).toBe("111.09");
+    expect(e.origem[ga.id]).toBe("uniforme");
+    const somaPct = (g: string) => Object.values(e.previsto[g]).reduce((a, x) => a + Number(x), 0) + Number(e.realizado[g][1]) / Number(e.grupos.find((x) => x.id === g)!.total) * 100;
+    expect(somaPct(ga.id)).toBeCloseTo(100, 3);
+
+    await expect(salvarDesembolso(ex, id, { [ga.id]: { 2: "50" }, [gb.id]: { 2: "66,6667" } }, u)).rejects.toThrow(/PISOS\) soma 83,33%/);
+    await salvarDesembolso(ex, id, { [ga.id]: { 2: "50", 3: "16,67" }, [gb.id]: { 2: "66,6667", 3: "" } }, u);
+    e = await estadoDesembolso(ex, id);
+    expect(e.origem[ga.id]).toBe("salvo");
+    expect(e.previsto[gb.id]).toEqual({ 2: "66.6667", 3: "0" });
+
+    const d = await dadosDesembolso(ex, id, 1);
+    expect(d.rotuloPeriodos).toBe("PERÍODOS DE 30 DIAS");
+    expect(d.grupos.map((g) => g.valores)).toEqual([["111.09", "166.65", "55.56"], ["100.00", "200.00", "0.00"]]);
+    expect(d.mensal).toEqual(["211.09", "366.65", "55.56"]);
+    expect(d.acumulado).toEqual(["211.09", "577.74", "633.30"]);
+    expect(d.total).toBe("633.30");
+    expect(d.periodos.map((p) => p.realizado)).toEqual([true, false, false]);
+    await expect(dadosDesembolso(ex, id, m2.numero)).rejects.toThrow(/medição fechada/);
   });
 });

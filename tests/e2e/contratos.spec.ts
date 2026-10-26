@@ -194,7 +194,36 @@ test("medições: planejamento (até 30 dias), lançamento por quantidade, fecha
   await page.getByRole("button", { name: "Fechar medição" }).click();
   await expect(page.getByText("Medição fechada.")).toBeVisible();
 
-  await page.getByRole("link", { name: "← Voltar às medições" }).click();
+  // documentos da medição fechada: boletim e cronograma de desembolso
+  await page.getByLabel("Nº do empenho (opcional)").fill("000369/26");
+  await page.getByLabel("Assinatura 1 — cargo / registro").fill("Engenheiro fiscal — CREA 123456");
+  const baixar = async (botao: string, arquivo: string) => {
+    const [d] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: botao }).click()]);
+    await d.saveAs(`test-results/${arquivo}`);
+    return d.suggestedFilename();
+  };
+  expect(await baixar("Boletim de medição (PDF)", "boletim.pdf")).toBe("Boletim_medicao_1_contrato_046_2023.pdf");
+  expect(await baixar("Boletim (Excel)", "boletim.xlsx")).toBe("Boletim_medicao_1_contrato_046_2023.xlsx");
+  await page.getByRole("button", { name: /Usar a nota do modelo/ }).click();
+  expect(await baixar("Cronograma de desembolso (PDF)", "desembolso.pdf")).toBe("Cronograma_desembolso_medicao_1_contrato_046_2023.pdf");
+  expect(await baixar("Cronograma (Excel)", "desembolso.xlsx")).toBe("Cronograma_desembolso_medicao_1_contrato_046_2023.xlsx");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile("test-results/boletim.xlsx");
+  const valores = wb.worksheets[0].getSheetValues().flat().filter((v) => typeof v === "number");
+  expect(valores).toContain(46296);
+
+  // previsto do cronograma de desembolso
+  await page.getByRole("link", { name: "Ajustar o previsto dos próximos períodos" }).click();
+  await expect(page.getByRole("heading", { name: "Cronograma de desembolso — Contrato 046/2023" })).toBeVisible();
+  await page.getByLabel("Etapa 2, período 2").fill("50");
+  await page.getByRole("button", { name: "Salvar previsto" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("soma");
+  await page.getByRole("button", { name: "Distribuir saldo igualmente" }).nth(1).click();
+  await page.getByRole("button", { name: "Salvar previsto" }).click();
+  await expect(page.getByText("Cronograma previsto salvo.")).toBeVisible();
+  await page.screenshot({ path: "test-results/desembolso-editor.png", fullPage: true });
+
+  await page.getByRole("link", { name: "Medições", exact: true }).click();
   await expect(tabela.getByRole("row", { name: /^1ª/ })).toContainText("Fechada");
   await expect(tabela.getByRole("row", { name: /^1ª/ })).toContainText("46.296,00");
   await page.screenshot({ path: "test-results/medicoes.png", fullPage: true });
