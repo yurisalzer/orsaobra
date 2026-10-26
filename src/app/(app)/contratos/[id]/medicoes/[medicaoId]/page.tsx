@@ -6,6 +6,7 @@ import { executor } from "@/lib/banco/servidor";
 import { acessoA } from "@/lib/acesso";
 import { SemAcessoItem } from "@/components/SemAcessoItem";
 import { carregarMedicao, ErroMedicao } from "@/lib/medicoes/servico";
+import { lerAssinaturas } from "@/lib/medicoes/relatorios";
 import { LancamentoMedicao } from "./LancamentoMedicao";
 import { DocumentosMedicao } from "./DocumentosMedicao";
 
@@ -21,18 +22,16 @@ export default async function PaginaMedicao({ params }: { params: Promise<{ id: 
   if (!acesso.ver) return <SemAcessoItem tipo="contrato" voltar="/contratos" />;
   const e = await carregarMedicao(ex, medicaoId).catch((err) => { if (err instanceof ErroMedicao) return null; throw err; });
   if (!e || e.contrato.id !== id) notFound();
-  const [resp] = await ex.consulta<{ responsavelTecnico: string | null; artRrt: string | null }>(
-    `SELECT responsavel_tecnico AS "responsavelTecnico", art_rrt AS "artRrt" FROM contrato WHERE id = $1`, [id],
-  );
+  const assinaturas = e.medicao.situacao === "FECHADA" ? await lerAssinaturas(ex, id) : null;
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500">
         <Link href="/contratos" className="underline">Contratos</Link> · <Link href={`/contratos/${id}`} className="underline">Contrato {e.contrato.numero}</Link> · <Link href={`/contratos/${id}/medicoes`} className="underline">Medições</Link> · {e.medicao.numero}ª medição
       </p>
       <LancamentoMedicao estado={e} podeEditar={acesso.editar} podeGerenciar={acesso.gerenciar && temPermissao(u, "MEDICOES_EDITAR")}
-        documentos={e.medicao.situacao === "FECHADA" && (
+        documentos={assinaturas && (
           <DocumentosMedicao contratoId={id} contratoNumero={e.contrato.numero} medicaoId={medicaoId} numero={e.medicao.numero}
-            fechadaPor={e.medicao.fechadaPor} responsavelTecnico={resp?.responsavelTecnico ?? null} artRrt={resp?.artRrt ?? null} />
+            assinaturas={assinaturas} podeEditar={acesso.editar} />
         )} />
     </div>
   );

@@ -6,7 +6,7 @@ import { criarObra } from "@/lib/orcamento/servico";
 import {
   acrescentarMedicao, alterarPeriodo, carregarMedicao, excluirUltimaPrevista, fecharMedicao, iniciarMedicao, painelMedicoes, planejarMedicoes, reabrirMedicao, salvarLancamentos,
 } from "@/lib/medicoes/servico";
-import { dadosBoletim, dadosDesembolso, estadoDesembolso, salvarDesembolso } from "@/lib/medicoes/relatorios";
+import { dadosBoletim, dadosDesembolso, estadoDesembolso, lerAssinaturas, salvarAssinaturas, salvarDesembolso } from "@/lib/medicoes/relatorios";
 import { limparBanco, prisma } from "./ajuda";
 
 let ex: Executor;
@@ -216,5 +216,27 @@ describe("medições", () => {
     expect(d.total).toBe("633.30");
     expect(d.periodos.map((p) => p.realizado)).toEqual([true, false, false]);
     await expect(dadosDesembolso(ex, id, m2.numero)).rejects.toThrow(/medição fechada/);
+  });
+
+  it("assinaturas dos documentos: 2 a 3 fiscais e a empresa (sugerida pelo contrato)", async () => {
+    const regimes = await listarRegimes(ex);
+    const obra = await criarObra(ex, { nome: "Obra Assinaturas" }, u);
+    const id = await criarContratoDaPlanilha(ex, { obraId: obra, numero: "M-7", objeto: "Objeto M-7", regimeId: regimes[0].id, empresa: "Construtora Y", cnpj: "19378246000120", responsavelTecnico: "Eng. Maria", artRrt: "RJ123" }, {
+      arquivo: "p.xlsx", grupos: [{ chave: "g", titulo: "G", paiChave: null }],
+      itens: [{ grupoChave: "g", numero: "1", codigo: null, fonte: null, descricao: "Item", unidade: "UN", quantidade: "1", precoUnitario: "1", total: null }],
+    }, u);
+    const a = await lerAssinaturas(ex, id);
+    expect(a.salvas).toBe(false);
+    expect(a.fiscais).toHaveLength(2);
+    expect(a.empresa).toEqual({ nome: "Construtora Y", cnpj: "19.378.246/0001-20", responsavel: "Eng. Maria", registro: "ART/RRT RJ123" });
+    const f = (nome: string) => ({ nome, cargo: "Fiscal" });
+    await expect(salvarAssinaturas(ex, id, { fiscais: [f("A")], empresa: a.empresa }, u)).rejects.toThrow(/mínimo 2 fiscais/);
+    await expect(salvarAssinaturas(ex, id, { fiscais: [f("A"), f("B"), f("C"), f("D")], empresa: a.empresa }, u)).rejects.toThrow(/máximo 3/);
+    await expect(salvarAssinaturas(ex, id, { fiscais: [f("A"), { nome: "", cargo: "Fiscal" }], empresa: a.empresa }, u)).rejects.toThrow(/nome de cada fiscal/);
+    await expect(salvarAssinaturas(ex, id, { fiscais: [f("A"), f("B")], empresa: { ...a.empresa, cnpj: "11.111.111/1111-11" } }, u)).rejects.toThrow(/CNPJ/);
+    await expect(salvarAssinaturas(ex, id, { fiscais: [f("A"), f("B")], empresa: { ...a.empresa, responsavel: " " } }, u)).rejects.toThrow(/responsável técnico/);
+    await salvarAssinaturas(ex, id, { fiscais: [f(" Ana  Lima "), f("Bruno"), { nome: "", cargo: "" }], empresa: { ...a.empresa, cnpj: "19378246000120" } }, u);
+    const b = await lerAssinaturas(ex, id);
+    expect(b).toEqual({ fiscais: [f("Ana Lima"), f("Bruno")], empresa: a.empresa, salvas: true });
   });
 });

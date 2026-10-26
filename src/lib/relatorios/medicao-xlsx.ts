@@ -41,24 +41,32 @@ function linhaTexto(ws: Planilha, nCols: number, partes: string, opc: { negrito?
   return r;
 }
 
-function assinaturasXlsx(ws: Planilha, nCols: number, a: OpcoesDocumentoMedicao["assinaturas"]) {
-  const validas = a.filter((x) => x.nome.trim() || x.cargo.trim());
-  if (!validas.length) return;
-  ws.addRow([]); ws.addRow([]);
-  // a largura dividida em 2n+1 faixas: assinaturas nas faixas ímpares, centralizadas
-  const faixa = Math.max(1, Math.floor(nCols / (2 * validas.length + 1)));
-  const sobra = nCols - faixa * (2 * validas.length + 1);
-  const largura = faixa + (validas.length === 1 ? sobra % 2 : 0);
-  const r1 = ws.addRow([]);
-  const r2 = ws.addRow([]);
-  validas.forEach((x, k) => {
-    const c = Math.floor(sobra / 2) + (2 * k + 1) * faixa + 1;
-    r1.getCell(c).value = x.nome; r1.getCell(c).alignment = { horizontal: "center" };
-    r2.getCell(c).value = x.cargo; r2.getCell(c).alignment = { horizontal: "center" }; r2.getCell(c).font = { size: 9 };
-    for (let i = c; i < c + largura; i++) r1.getCell(i).border = { top: { style: "thin" } };
-    ws.mergeCells(r1.number, c, r1.number, c + largura - 1);
-    ws.mergeCells(r2.number, c, r2.number, c + largura - 1);
-  });
+function assinaturasXlsx(ws: Planilha, nCols: number, o: OpcoesDocumentoMedicao) {
+  // cada fileira de assinaturas: a largura dividida em 2n+1 faixas, assinaturas nas faixas ímpares
+  const fileira = (blocos: string[][]) => {
+    if (!blocos.length) return;
+    ws.addRow([]); ws.addRow([]);
+    const n = blocos.length;
+    const faixa = Math.max(1, Math.floor(nCols / (2 * n + 1)));
+    const sobra = nCols - faixa * (2 * n + 1);
+    const largura = faixa + (n === 1 ? sobra % 2 : 0);
+    const altura = Math.max(...blocos.map((b) => b.length));
+    const linhas = Array.from({ length: altura }, () => ws.addRow([]));
+    blocos.forEach((textos, k) => {
+      const c = Math.floor(sobra / 2) + (2 * k + 1) * faixa + 1;
+      for (let i = c; i < c + largura; i++) linhas[0].getCell(i).border = { top: { style: "thin" } };
+      textos.forEach((t, j) => {
+        const cell = linhas[j].getCell(c);
+        cell.value = t;
+        cell.alignment = { horizontal: "center" };
+        cell.font = j === 0 ? { bold: true, size: 10 } : { size: 9 };
+      });
+      linhas.forEach((r) => ws.mergeCells(r.number, c, r.number, c + largura - 1));
+    });
+  };
+  fileira(o.fiscais.filter((f) => f.nome.trim()).map((f) => [f.nome, f.cargo].filter(Boolean)));
+  const e = o.empresa;
+  if (e.responsavel.trim() || e.nome.trim()) fileira([[e.responsavel, e.registro, e.nome, e.cnpj ? `CNPJ ${e.cnpj}` : ""].filter(Boolean)]);
 }
 
 export async function gerarBoletimXlsx(Excel: ExcelJS, b: Boletim, o: OpcoesDocumentoMedicao): Promise<ArrayBuffer> {
@@ -119,7 +127,7 @@ export async function gerarBoletimXlsx(Excel: ExcelJS, b: Boletim, o: OpcoesDocu
   rp.getCell(12).value = Number(t.percentualAcumulado) / 100; rp.getCell(12).numFmt = "0.00%";
   if (m.observacao) { ws.addRow([]); linhaTexto(ws, N, `Observações: ${m.observacao}`); }
   if (m.situacao !== "FECHADA") { ws.addRow([]); linhaTexto(ws, N, "MEDIÇÃO NÃO FECHADA — documento de conferência, sujeito a alteração.", { negrito: true }); }
-  assinaturasXlsx(ws, N, o.assinaturas);
+  assinaturasXlsx(ws, N, o);
   return wb.xlsx.writeBuffer() as Promise<ArrayBuffer>;
 }
 
@@ -168,6 +176,6 @@ export async function gerarDesembolsoXlsx(Excel: ExcelJS, d: Desembolso, o: Opco
   ws.addRow([]);
   linhaTexto(ws, N, "Períodos realizados = medições fechadas; demais = previsto. M = valor do período; A = acumulado.", { tamanho: 9 });
   if (o.nota?.trim()) linhaTexto(ws, N, `* ${o.nota.trim()}`, { negrito: true, tamanho: 9 });
-  assinaturasXlsx(ws, N, o.assinaturas);
+  assinaturasXlsx(ws, N, o);
   return wb.xlsx.writeBuffer() as Promise<ArrayBuffer>;
 }

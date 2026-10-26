@@ -8,7 +8,7 @@ import { executor } from "@/lib/banco/servidor";
 import {
   acrescentarMedicao, alterarPeriodo, ErroMedicao, excluirUltimaPrevista, fecharMedicao, iniciarMedicao, planejarMedicoes, reabrirMedicao, salvarLancamentos,
 } from "@/lib/medicoes/servico";
-import { dadosBoletim, dadosDesembolso, salvarDesembolso } from "@/lib/medicoes/relatorios";
+import { dadosBoletim, dadosDesembolso, salvarAssinaturas, salvarDesembolso } from "@/lib/medicoes/relatorios";
 
 type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
 type Usuario = { id: string; administrador: boolean };
@@ -114,4 +114,14 @@ export async function acaoDadosDesembolso(contratoId: string, numero: number) {
 export async function acaoSalvarDesembolso(contratoId: string, previsto: Record<string, Record<string, string>>) {
   const dados = z.record(uuid, z.record(z.string().regex(/^\d{1,3}$/), z.string().max(20))).parse(previsto);
   return executar(contratoId, (u, ex) => salvarDesembolso(ex, uuid.parse(contratoId), dados as Record<string, Record<number, string>>, u.id));
+}
+
+const assinaturas = z.object({
+  fiscais: z.array(z.object({ nome: z.string().max(200), cargo: z.string().max(300) })).max(3),
+  empresa: z.object({ nome: z.string().max(300), cnpj: z.string().max(30), responsavel: z.string().max(200), registro: z.string().max(300) }),
+});
+
+/** Fiscais (2 ou 3) e bloco da empresa que assinam o boletim e o cronograma de desembolso. */
+export async function acaoSalvarAssinaturas(contratoId: string, a: z.infer<typeof assinaturas>) {
+  return executar(contratoId, (u, ex) => salvarAssinaturas(ex, uuid.parse(contratoId), assinaturas.parse(a), u.id));
 }

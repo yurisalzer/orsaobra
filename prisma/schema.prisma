@@ -806,6 +806,7 @@ model Contrato {
   empresaId          String?   @map("empresa_id") @db.Uuid
   regimeId           String?   @map("regime_id") @db.Uuid
   servicoContinuo    Boolean   @default(false) @map("servico_continuo")
+  assinaturasMedicao Json?     @map("assinaturas_medicao")
   empresa            String?
   cnpj               String?
   dataAssinatura     DateTime? @map("data_assinatura") @db.Date

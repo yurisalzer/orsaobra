@@ -16,8 +16,10 @@ import type { Executor } from "@/lib/banco/executor";
 import { arredondar, dec, lerNumero, type Dec } from "@/lib/calculo/decimal";
 import { comandoAuditoria } from "@/lib/auditoria";
 import { termino } from "@/lib/contratos/prazos";
+import { formatarCnpj, normalizarCnpj } from "@/lib/empresas/servico";
 import { cabecalhoDaObra, type CabecalhoDocumento } from "@/lib/relatorios/cabecalhos";
 import { carregarMedicao, diasEntre, ErroMedicao } from "./servico";
+import { MAX_FISCAIS, MIN_FISCAIS, type AssinaturasMedicao } from "./assinaturas";
 
 const pct = (parte: Dec, total: Dec) => (total.isZero() ? dec(0) : parte.div(total).times(100));
 const p2 = (v: Dec) => arredondar(v, 2, "ARREDONDAR").toFixed(2);
@@ -337,4 +339,57 @@ export async function dadosDesembolso(ex: Executor, contratoId: string, numero: 
     acumulado,
     total: grupos.reduce((a, g) => a.plus(g.total), dec(0)).toFixed(2),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Assinaturas dos documentos (gravadas no contrato, valem para todas as medições)
+// ---------------------------------------------------------------------------
+
+export { MAX_FISCAIS, MIN_FISCAIS, type AssinaturasMedicao } from "./assinaturas";
+
+const limpo = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+export async function lerAssinaturas(ex: Executor, contratoId: string): Promise<AssinaturasMedicao> {
+  const [c] = await ex.consulta<{ salvo: Partial<AssinaturasMedicao> | null; empresa: string | null; cnpj: string | null; responsavel: string | null; art: string | null; registro: string | null }>(
+    `SELECT c.assinaturas_medicao AS salvo, coalesce(e.razao_social, c.empresa) AS empresa, coalesce(e.cnpj, c.cnpj) AS cnpj,
+            c.responsavel_tecnico AS responsavel, c.art_rrt AS art,
+            (SELECT concat_ws(' ', r.conselho, r.registro || coalesce('/' || r.uf_registro, '')) FROM empresa_responsavel r
+              WHERE r.empresa_id = c.empresa_id AND lower(r.nome) = lower(c.responsavel_tecnico) LIMIT 1) AS registro
+       FROM contrato c LEFT JOIN empresa e ON e.id = c.empresa_id WHERE c.id = $1`, [contratoId],
+  );
+  if (!c) throw new ErroMedicao("Contrato não encontrado.");
+  const cnpj = c.cnpj?.replace(/\D/g, "").length === 14 ? formatarCnpj(c.cnpj.replace(/\D/g, "")) : c.cnpj ?? "";
+  const sugerida: AssinaturasMedicao = {
+    fiscais: [{ nome: "", cargo: "Fiscal do contrato" }, { nome: "", cargo: "Fiscal do contrato" }],
+    empresa: { nome: c.empresa ?? "", cnpj, responsavel: c.responsavel ?? "", registro: [c.registro, c.art ? `ART/RRT ${c.art}` : null].filter(Boolean).join(" — ") },
+    salvas: false,
+  };
+  if (!c.salvo) return sugerida;
+  return {
+    fiscais: (c.salvo.fiscais ?? []).map((f) => ({ nome: limpo(f.nome, 120), cargo: limpo(f.cargo, 160) })),
+    empresa: { ...sugerida.empresa, ...c.salvo.empresa },
+    salvas: true,
+  };
+}
+
+/** Grava as assinaturas: de 2 a 3 fiscais (nome obrigatório) e a empresa (nome obrigatório; CNPJ válido, se informado). */
+export async function salvarAssinaturas(ex: Executor, contratoId: string, a: { fiscais: { nome: string; cargo: string }[]; empresa: AssinaturasMedicao["empresa"] }, usuarioId: string) {
+  const fiscais = a.fiscais.map((f) => ({ nome: limpo(f.nome, 120), cargo: limpo(f.cargo, 160) })).filter((f) => f.nome || f.cargo);
+  if (fiscais.some((f) => !f.nome)) throw new ErroMedicao("Informe o nome de cada fiscal (ou apague o cargo do fiscal não usado).");
+  if (fiscais.length < MIN_FISCAIS) throw new ErroMedicao(`Informe no mínimo ${MIN_FISCAIS} fiscais.`);
+  if (fiscais.length > MAX_FISCAIS) throw new ErroMedicao(`No máximo ${MAX_FISCAIS} fiscais.`);
+  const empresa = { nome: limpo(a.empresa.nome, 200), cnpj: limpo(a.empresa.cnpj, 20), responsavel: limpo(a.empresa.responsavel, 120), registro: limpo(a.empresa.registro, 160) };
+  if (!empresa.nome) throw new ErroMedicao("Informe o nome da empresa contratada.");
+  if (!empresa.responsavel) throw new ErroMedicao("Informe o responsável técnico da empresa (quem assina pela contratada).");
+  if (empresa.cnpj) {
+    const d = normalizarCnpj(empresa.cnpj);
+    if (!d) throw new ErroMedicao("CNPJ da empresa inválido.");
+    empresa.cnpj = formatarCnpj(d);
+  }
+  const valor = { fiscais, empresa };
+  await ex.transacao([
+    { sql: `UPDATE contrato SET assinaturas_medicao = $2::jsonb, atualizado_em = now() WHERE id = $1`, params: [contratoId, JSON.stringify(valor)] },
+    comandoAuditoria({ usuarioId, acao: "ASSINATURAS_MEDICAO_SALVAS", entidade: "contrato", entidadeId: contratoId, depois: valor }),
+  ]);
+  return valor;
 }

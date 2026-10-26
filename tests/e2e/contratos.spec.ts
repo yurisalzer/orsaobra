@@ -196,7 +196,15 @@ test("medições: planejamento (até 30 dias), lançamento por quantidade, fecha
 
   // documentos da medição fechada: boletim e cronograma de desembolso
   await page.getByLabel("Nº do empenho (opcional)").fill("000369/26");
-  await page.getByLabel("Assinatura 1 — cargo / registro").fill("Engenheiro fiscal — CREA 123456");
+  await page.getByLabel("Fiscal 1 — nome *").fill("Yuri Borba Salzer");
+  await page.getByLabel("Fiscal 1 — cargo / matrícula / registro").fill("Engenheiro Civil — Mat. 43.064");
+  await page.getByRole("button", { name: "Boletim de medição (PDF)" }).click();
+  await expect(page.getByText("Informe no mínimo 2 fiscais (nome) para gerar o documento.")).toBeVisible();
+  await page.getByLabel("Fiscal 2 — nome *").fill("Ana Lima");
+  await expect(page.getByLabel("Empresa — nome *")).toHaveValue("CONSÓRCIO EXEMPLO");
+  await page.getByLabel("Responsável técnico *").fill("Eng. Maria Souza");
+  await page.getByRole("button", { name: "Salvar assinaturas" }).click();
+  await expect(page.getByText("Assinaturas salvas no contrato.")).toBeVisible();
   const baixar = async (botao: string, arquivo: string) => {
     const [d] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: botao }).click()]);
     await d.saveAs(`test-results/${arquivo}`);

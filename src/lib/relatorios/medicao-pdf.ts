@@ -9,8 +9,9 @@ import type { Boletim, Desembolso } from "../medicoes/relatorios";
 
 export interface OpcoesDocumentoMedicao {
   empenho?: string;
-  /** assinaturas no fim do documento */
-  assinaturas: { nome: string; cargo: string }[];
+  /** assinaturas no fim do documento: 2 ou 3 fiscais e o responsável técnico da contratada */
+  fiscais: { nome: string; cargo: string }[];
+  empresa: { nome: string; cnpj: string; responsavel: string; registro: string };
   /** nota no pé do cronograma (ex.: limite de 90% dos pagamentos) */
   nota?: string;
   rodape: string;
@@ -36,29 +37,43 @@ function timbre(cab: Boletim["cabecalho"], largura: number): Content {
   } as Content;
 }
 
-const LARG_ASSINATURA = 230;
+const LARG_ASSINATURA = 210;
+
+/** Bloco de assinatura de largura fixa: linha e, abaixo, as linhas de texto centralizadas. */
+function blocoAssinatura(linhas: { texto: string; destaque?: boolean }[], largura = LARG_ASSINATURA) {
+  return {
+    width: largura,
+    stack: [
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: largura, y2: 0, lineWidth: 0.6 }] },
+      ...linhas.filter((l) => l.texto.trim()).map((l, k) => ({
+        text: l.texto.trim(), alignment: "center", fontSize: l.destaque ? 8.5 : 7.5, bold: !!l.destaque && k > 0, color: l.destaque ? undefined : "#334155", margin: [0, k === 0 ? 3 : 0, 0, 0],
+      })),
+    ],
+  };
+}
 
 /**
- * Assinaturas lado a lado, cada uma num bloco de largura fixa (linha, nome e
- * cargo centralizados no mesmo bloco), distribuídas por igual na largura da página.
+ * Assinaturas: os fiscais lado a lado (blocos de largura fixa distribuídos por
+ * igual na página) e, abaixo, centralizado, o responsável técnico da contratada
+ * com o nome e o CNPJ da empresa.
  */
-function assinaturas(a: OpcoesDocumentoMedicao["assinaturas"]): Content {
-  const validas = a.filter((x) => x.nome.trim() || x.cargo.trim());
-  if (!validas.length) return { text: "" };
+function assinaturas(o: OpcoesDocumentoMedicao): Content {
   const espaco = { width: "*", text: "" };
-  const blocos = validas.map((x) => ({
-    width: LARG_ASSINATURA,
-    stack: [
-      { canvas: [{ type: "line", x1: 0, y1: 0, x2: LARG_ASSINATURA, y2: 0, lineWidth: 0.6 }] },
-      { text: x.nome.trim() || " ", alignment: "center", fontSize: 8.5, margin: [0, 3, 0, 0] },
-      { text: x.cargo.trim() || " ", alignment: "center", fontSize: 7.5, color: "#334155" },
-    ],
-  }));
+  const linha = (blocos: object[]) => ({ columns: [espaco, ...blocos.flatMap((b) => [b, espaco])], columnGap: 0 });
+  const fiscais = o.fiscais.filter((f) => f.nome.trim());
+  const e = o.empresa;
   return {
-    columns: [espaco, ...blocos.flatMap((b) => [b, espaco])],
-    columnGap: 0,
-    margin: [0, 40, 0, 0],
     unbreakable: true,
+    margin: [0, 40, 0, 0],
+    stack: [
+      ...(fiscais.length ? [linha(fiscais.map((f) => blocoAssinatura([{ texto: f.nome, destaque: true }, { texto: f.cargo }])))] : []),
+      ...(e.responsavel.trim() || e.nome.trim() ? [{
+        ...linha([blocoAssinatura([
+          { texto: e.responsavel, destaque: true }, { texto: e.registro }, { texto: e.nome, destaque: true }, { texto: e.cnpj ? `CNPJ ${e.cnpj}` : "" },
+        ], 280)]),
+        margin: [0, fiscais.length ? 42 : 0, 0, 0],
+      }] : []),
+    ],
   } as Content;
 }
 
@@ -178,7 +193,7 @@ export function definicaoBoletim(b: Boletim, o: OpcoesDocumentoMedicao): TDocume
         } as Content,
         ...(m.observacao ? [{ text: [{ text: "Observações: ", bold: true }, m.observacao], fontSize: 8, margin: [0, 6, 0, 0] } as Content] : []),
         ...(m.situacao !== "FECHADA" ? [{ text: "MEDIÇÃO NÃO FECHADA — documento de conferência, sujeito a alteração.", bold: true, color: "#b45309", fontSize: 9, margin: [0, 6, 0, 0] } as Content] : []),
-        assinaturas(o.assinaturas),
+        assinaturas(o),
       ],
     } as Content,
   ];
@@ -270,7 +285,7 @@ export function definicaoDesembolso(d: Desembolso, o: OpcoesDocumentoMedicao): T
         margin: [0, 4, 0, 0],
       });
       if (o.nota?.trim()) conteudo.push({ text: `* ${o.nota.trim()}`, bold: true, fontSize: 7.5, margin: [0, 4, 0, 0] });
-      conteudo.push(assinaturas(o.assinaturas));
+      conteudo.push(assinaturas(o));
     }
   });
   return {
