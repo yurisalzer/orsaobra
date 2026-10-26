@@ -36,20 +36,28 @@ function timbre(cab: Boletim["cabecalho"], largura: number): Content {
   } as Content;
 }
 
+const LARG_ASSINATURA = 230;
+
+/**
+ * Assinaturas lado a lado, cada uma num bloco de largura fixa (linha, nome e
+ * cargo centralizados no mesmo bloco), distribuídas por igual na largura da página.
+ */
 function assinaturas(a: OpcoesDocumentoMedicao["assinaturas"]): Content {
   const validas = a.filter((x) => x.nome.trim() || x.cargo.trim());
   if (!validas.length) return { text: "" };
+  const espaco = { width: "*", text: "" };
+  const blocos = validas.map((x) => ({
+    width: LARG_ASSINATURA,
+    stack: [
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: LARG_ASSINATURA, y2: 0, lineWidth: 0.6 }] },
+      { text: x.nome.trim() || " ", alignment: "center", fontSize: 8.5, margin: [0, 3, 0, 0] },
+      { text: x.cargo.trim() || " ", alignment: "center", fontSize: 7.5, color: "#334155" },
+    ],
+  }));
   return {
-    columns: validas.map((x) => ({
-      width: "*",
-      stack: [
-        { canvas: [{ type: "line", x1: 20, y1: 0, x2: 230, y2: 0, lineWidth: 0.6 }] },
-        { text: x.nome, alignment: "center", fontSize: 8.5, margin: [0, 3, 0, 0] },
-        { text: x.cargo, alignment: "center", fontSize: 7.5, color: "#334155" },
-      ],
-    })),
-    columnGap: 20,
-    margin: [0, 34, 0, 0],
+    columns: [espaco, ...blocos.flatMap((b) => [b, espaco])],
+    columnGap: 0,
+    margin: [0, 40, 0, 0],
     unbreakable: true,
   } as Content;
 }
@@ -202,7 +210,9 @@ export function definicaoDesembolso(d: Desembolso, o: OpcoesDocumentoMedicao): T
     ],
   });
   const blocos: number[][] = [];
-  for (let i = 0; i < d.periodos.length; i += POR_PAGINA) blocos.push(d.periodos.slice(i, i + POR_PAGINA).map((_, k) => i + k));
+  // páginas com o mesmo número de períodos (12 → 6 + 6, e não 10 + 2)
+  const porPagina = Math.ceil(d.periodos.length / Math.max(1, Math.ceil(d.periodos.length / POR_PAGINA)));
+  for (let i = 0; i < d.periodos.length; i += porPagina) blocos.push(d.periodos.slice(i, i + porPagina).map((_, k) => i + k));
   if (!blocos.length) blocos.push([]);
   const conteudo: Content[] = [];
   blocos.forEach((idx, b) => {

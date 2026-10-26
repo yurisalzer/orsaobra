@@ -45,13 +45,17 @@ function assinaturasXlsx(ws: Planilha, nCols: number, a: OpcoesDocumentoMedicao[
   const validas = a.filter((x) => x.nome.trim() || x.cargo.trim());
   if (!validas.length) return;
   ws.addRow([]); ws.addRow([]);
-  const largura = Math.floor(nCols / validas.length);
+  // a largura dividida em 2n+1 faixas: assinaturas nas faixas ímpares, centralizadas
+  const faixa = Math.max(1, Math.floor(nCols / (2 * validas.length + 1)));
+  const sobra = nCols - faixa * (2 * validas.length + 1);
+  const largura = faixa + (validas.length === 1 ? sobra % 2 : 0);
   const r1 = ws.addRow([]);
   const r2 = ws.addRow([]);
   validas.forEach((x, k) => {
-    const c = k * largura + 1;
-    r1.getCell(c).value = x.nome; r1.getCell(c).border = { top: { style: "thin" } }; r1.getCell(c).alignment = { horizontal: "center" };
+    const c = Math.floor(sobra / 2) + (2 * k + 1) * faixa + 1;
+    r1.getCell(c).value = x.nome; r1.getCell(c).alignment = { horizontal: "center" };
     r2.getCell(c).value = x.cargo; r2.getCell(c).alignment = { horizontal: "center" }; r2.getCell(c).font = { size: 9 };
+    for (let i = c; i < c + largura; i++) r1.getCell(i).border = { top: { style: "thin" } };
     ws.mergeCells(r1.number, c, r1.number, c + largura - 1);
     ws.mergeCells(r2.number, c, r2.number, c + largura - 1);
   });
