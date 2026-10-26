@@ -4,6 +4,7 @@ import { idsComAcesso } from "@/lib/acesso";
 import { executor } from "@/lib/banco/servidor";
 import { revisoesParaContrato } from "@/lib/contratos/servico";
 import { empresasParaContrato } from "@/lib/empresas/servico";
+import { listarRegimes } from "@/lib/contratos/regimes";
 import { NovoContrato } from "./NovoContrato";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function PaginaNovoContrato({ searchParams }: { searchParam
   // só os orçamentos que o usuário pode abrir
   const [todas, liberados] = await Promise.all([revisoesParaContrato(ex), idsComAcesso(ex, "orcamento", u)]);
   const revisoes = todas.filter((r) => !liberados || liberados.has(r.orcamentoId));
-  const empresas = await empresasParaContrato(ex);
+  const [empresas, regimes] = await Promise.all([empresasParaContrato(ex), listarRegimes(ex)]);
   return (
     <div className="space-y-4">
       <div>
@@ -25,7 +26,7 @@ export default async function PaginaNovoContrato({ searchParams }: { searchParam
       </div>
       {revisoes.length === 0
         ? <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">Nenhuma revisão de orçamento fechada. Feche a revisão do orçamento (ou importe a planilha da proposta).</p>
-        : <NovoContrato revisoes={revisoes} empresas={empresas} inicial={revisoes.some((r) => r.revisaoId === revisao) ? revisao! : ""} />}
+        : <NovoContrato revisoes={revisoes} empresas={empresas} regimes={regimes} inicial={revisoes.some((r) => r.revisaoId === revisao) ? revisao! : ""} />}
     </div>
   );
 }

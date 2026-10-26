@@ -84,6 +84,17 @@ test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e to
   await page.getByLabel("Responsável técnico da empresa").selectOption({ label: "Eng. Maria Souza — CREA 2012345678/RJ (principal)" });
   await page.getByLabel("Objeto (nome da obra)").fill("CONSTRUÇÃO DE PRAÇA E CRAS NO MIRAMAR");
   await page.getByLabel("Nº do processo").fill("SEI-045/2023");
+  // regime de execução: os 7 da lei e cadastro de um novo
+  await page.getByLabel("Regime de execução").selectOption({ label: "1. Empreitada por preço unitário" });
+  await expect(page.getByText("Medição pela quantidade executada de cada item.")).toBeVisible();
+  await page.getByLabel("Regime de execução").selectOption({ label: "2. Empreitada por preço global" });
+  await expect(page.getByText("Medição pelo percentual executado de cada item.")).toBeVisible();
+  await page.getByLabel("Regime de execução").selectOption("__novo");
+  await page.getByLabel("Nome do novo regime").fill("Regime especial E2E");
+  await page.getByRole("button", { name: "Cadastrar regime" }).click();
+  await expect(page.getByLabel("Regime de execução")).toHaveValue(/[0-9a-f-]{36}/);
+  await expect(page.getByLabel("Regime de execução").locator("option:checked")).toHaveText("Regime especial E2E");
+  await page.getByLabel("Regime de execução").selectOption({ label: "1. Empreitada por preço unitário" });
   await page.getByLabel("Endereço da obra").fill("Rua Exemplo, 100 — Miramar, Macaé/RJ");
   // prazos: términos calculados na hora (dias corridos, contando o início)
   await page.getByLabel("Data de assinatura").fill("2023-08-10");
@@ -106,6 +117,7 @@ test("importa a planilha da proposta: preços idênticos ao arquivo, grupos e to
   await expect(page.getByText("Término da vigência: 29/07/2025")).toBeVisible();
   await expect(page.getByText("Eng. Maria Souza")).toBeVisible();
   await expect(page.getByText("SEI-045/2023")).toBeVisible();
+  await expect(page.getByText("Empreitada por preço unitário — medição por quantidade executada")).toBeVisible();
   await expect(page.getByText("obra@consorcio.com.br · (22) 98888-7777")).toBeVisible();
   await expect(page.getByRole("row", { name: /^2\.2 / })).toContainText("1.000,1234");
   await expect(page.getByRole("row", { name: /^2\.2 / })).toContainText("24.002,96");

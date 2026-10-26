@@ -10,6 +10,7 @@ import {
   excluirContrato, reabrirContrato,
 } from "@/lib/contratos/servico";
 import { criarObra, ErroOrcamento } from "@/lib/orcamento/servico";
+import { criarRegime, ErroRegime } from "@/lib/contratos/regimes";
 import type { DadosNovaObra } from "../orcamentos/acoes";
 
 type Resultado<T> = { ok: true; dados: T } | { ok: false; erro: string };
@@ -23,7 +24,7 @@ async function executar<T>(f: (u: Usuario) => Promise<T>, caminho = "/contratos"
     return { ok: true, dados };
   } catch (e) {
     if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
-    if (e instanceof ErroPermissao || e instanceof ErroContrato || e instanceof ErroOrcamento) return { ok: false, erro: e.message };
+    if (e instanceof ErroPermissao || e instanceof ErroContrato || e instanceof ErroOrcamento || e instanceof ErroRegime) return { ok: false, erro: e.message };
     if (e instanceof z.ZodError) return { ok: false, erro: e.issues[0]?.message ?? "Dados inválidos." };
     const msg = (e as Error).message ?? "";
     if (/vigente|contrato_numero_key/.test(msg)) return { ok: false, erro: /contrato_numero_key/.test(msg) ? "Já existe um contrato com esse número." : msg.replace(/^.*?ERROR:\s*/, "") };
@@ -37,7 +38,7 @@ const data = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).n
 const dadosContrato = z.object({
   numero: z.string().max(60), objeto: z.string().max(2000), empresa: z.string().max(300).nullable().optional(), cnpj: z.string().max(30).nullable().optional(),
   dataAssinatura: data, dataOs: data, prazoExecucaoDias: z.number().int().nullable().optional(), prazoVigenciaDias: z.number().int().nullable().optional(),
-  processo: z.string().max(100).nullable().optional(), empresaId: z.string().uuid().nullable().optional(), endereco: z.string().max(300).nullable().optional(), responsavelTecnico: z.string().max(200).nullable().optional(), artRrt: z.string().max(60).nullable().optional(),
+  processo: z.string().max(100).nullable().optional(), empresaId: z.string().uuid().nullable().optional(), regimeId: z.string().uuid().nullable().optional(), endereco: z.string().max(300).nullable().optional(), responsavelTecnico: z.string().max(200).nullable().optional(), artRrt: z.string().max(60).nullable().optional(),
   emailContato: z.string().max(200).nullable().optional(), telefoneContato: z.string().max(30).nullable().optional(),
 });
 const novaObra = z.object({
@@ -72,6 +73,11 @@ export async function acaoCriarContratoDaPlanilha(d: DadosForm & { obraId: strin
     const obraId = d.obraId ? uuid.parse(d.obraId) : await criarObra(ex, novaObra.parse(d.novaObra), u.id);
     return criarContratoDaPlanilha(ex, { ...dados, obraId, arredondamento: d.arredondamento === "TRUNCAR" ? "TRUNCAR" : "ARREDONDAR" }, planilha, u.id);
   });
+}
+
+/** Cadastra um regime de execução novo (medido por percentual). */
+export async function acaoCriarRegime(nome: string) {
+  return executar(async (u) => criarRegime(await executor(), z.string().max(200).parse(nome), u.id));
 }
 
 export async function acaoAlterarDadosContrato(contratoId: string, versao: number, d: DadosForm) {

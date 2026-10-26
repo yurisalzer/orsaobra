@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
+import type { Regime } from "@/lib/contratos/regimes";
+import { acaoCriarRegime } from "./acoes";
 import type { EmpresaParaContrato } from "@/lib/empresas/servico";
 
 export interface FormContrato {
-  numero: string; processo: string; objeto: string; empresaId: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
+  numero: string; processo: string; objeto: string; empresaId: string; regimeId: string; empresa: string; cnpj: string; dataAssinatura: string; dataOs: string; prazoExecucaoDias: string; prazoVigenciaDias: string;
   endereco: string; responsavelTecnico: string; artRrt: string; emailContato: string; telefoneContato: string;
 }
 export const CONTRATO_VAZIO: FormContrato = {
-  numero: "", processo: "", objeto: "", empresaId: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
+  numero: "", processo: "", objeto: "", empresaId: "", regimeId: "", empresa: "", cnpj: "", dataAssinatura: "", dataOs: "", prazoExecucaoDias: "", prazoVigenciaDias: "",
   endereco: "", responsavelTecnico: "", artRrt: "", emailContato: "", telefoneContato: "",
 };
 
@@ -16,7 +19,7 @@ const dias = (s: string) => (s.trim() && /^\d+$/.test(s.trim()) ? Number(s.trim(
 
 /** Formato aceito pelas ações do servidor. */
 export const paraAcao = (f: FormContrato) => ({
-  numero: f.numero, processo: f.processo || null, objeto: f.objeto, empresaId: f.empresaId || null, empresa: f.empresa || null, cnpj: f.cnpj || null,
+  numero: f.numero, processo: f.processo || null, objeto: f.objeto, empresaId: f.empresaId || null, regimeId: f.regimeId || null, empresa: f.empresa || null, cnpj: f.cnpj || null,
   dataAssinatura: f.dataAssinatura || null, dataOs: f.dataOs || null, prazoExecucaoDias: dias(f.prazoExecucaoDias), prazoVigenciaDias: dias(f.prazoVigenciaDias),
   endereco: f.endereco || null, responsavelTecnico: f.responsavelTecnico || null, artRrt: f.artRrt || null, emailContato: f.emailContato || null, telefoneContato: f.telefoneContato || null,
 });
@@ -26,7 +29,23 @@ const campo = "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm 
 /** Dados do contrato: identificação, prazos (com términos calculados), endereço e responsável técnico. */
 const cnpjFormatado = (d: string) => d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 
-export function CamposContrato({ valor, onChange, desabilitado = false, empresas = [] }: { valor: FormContrato; onChange: (v: FormContrato) => void; desabilitado?: boolean; empresas?: EmpresaParaContrato[] }) {
+const MEDICAO = { QUANTIDADE: "Medição pela quantidade executada de cada item.", PERCENTUAL: "Medição pelo percentual executado de cada item." } as const;
+
+export function CamposContrato({ valor, onChange, desabilitado = false, empresas = [], regimes: regimesIniciais = [] }: {
+  valor: FormContrato; onChange: (v: FormContrato) => void; desabilitado?: boolean; empresas?: EmpresaParaContrato[]; regimes?: Regime[];
+}) {
+  const [regimes, setRegimes] = useState(regimesIniciais);
+  const [novoRegime, setNovoRegime] = useState<string | null>(null);
+  const [erroRegime, setErroRegime] = useState<string | null>(null);
+  const regime = regimes.find((r) => r.id === valor.regimeId);
+  const cadastrarRegime = async () => {
+    setErroRegime(null);
+    const r = await acaoCriarRegime(novoRegime ?? "");
+    if (!r.ok) return setErroRegime(r.erro);
+    setRegimes([...regimes, r.dados]);
+    setNovoRegime(null);
+    onChange({ ...valor, regimeId: r.dados.id });
+  };
   const empresa = empresas.find((e) => e.id === valor.empresaId);
   /** empresa cadastrada: copia razão social, CNPJ e o responsável técnico (principal ou o escolhido) */
   const escolherEmpresa = (id: string) => {
@@ -61,6 +80,32 @@ export function CamposContrato({ valor, onChange, desabilitado = false, empresas
         <label className="text-sm">CNPJ<input {...p("cnpj")} maxLength={20} inputMode="numeric" className={campo} /></label>
         <label className="text-sm">Nº do processo<input {...p("processo")} maxLength={100} placeholder="ex.: SEI-120001/000123/2026" className={campo} /></label>
         <label className="text-sm sm:col-span-2">Objeto (nome da obra)<textarea {...p("objeto")} maxLength={2000} rows={2} className={campo} /></label>
+        {regimes.length > 0 && (
+          <div className="text-sm sm:col-span-3">
+            <label className="block">Regime de execução
+              <select value={novoRegime !== null ? "__novo" : valor.regimeId} disabled={desabilitado} aria-label="Regime de execução" className={campo}
+                onChange={(e) => {
+                  if (e.target.value === "__novo") { setNovoRegime(""); return; }
+                  setNovoRegime(null);
+                  onChange({ ...valor, regimeId: e.target.value });
+                }}>
+                <option value="">— não definido —</option>
+                {regimes.map((r, i) => <option key={r.id} value={r.id}>{r.sistema ? `${i + 1}. ` : ""}{r.nome}</option>)}
+                <option value="__novo">+ Cadastrar novo regime…</option>
+              </select>
+            </label>
+            {novoRegime !== null ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input value={novoRegime} onChange={(e) => setNovoRegime(e.target.value)} maxLength={150} placeholder="Nome do novo regime de execução" aria-label="Nome do novo regime"
+                  className="min-w-64 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm" />
+                <button type="button" onClick={cadastrarRegime} className="rounded-md bg-marca-600 px-3 py-1.5 text-sm text-white">Cadastrar regime</button>
+                <button type="button" onClick={() => { setNovoRegime(null); setErroRegime(null); }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancelar</button>
+                <span className="basis-full text-xs text-slate-500">Regimes novos são medidos por percentual (só a empreitada por preço unitário mede quantidades).</span>
+                {erroRegime && <span role="alert" className="basis-full text-xs text-red-700">{erroRegime}</span>}
+              </div>
+            ) : regime && <span className="text-xs text-slate-500">{MEDICAO[regime.medicao]}</span>}
+          </div>
+        )}
         <label className="text-sm sm:col-span-3">Endereço da obra<input {...p("endereco")} maxLength={300} placeholder="Rua, número, bairro, município/UF" className={campo} /></label>
       </div>
 

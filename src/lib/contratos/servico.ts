@@ -33,6 +33,8 @@ export interface DadosContrato {
   processo?: string | null;
   /** empresa cadastrada (opcional); os dados copiados no contrato continuam valendo */
   empresaId?: string | null;
+  /** regime de execução (Lei 14.133/2021, art. 46) — define se a medição é por quantidade ou por percentual */
+  regimeId?: string | null;
   prazoExecucaoDias?: number | null;
   prazoVigenciaDias?: number | null;
   endereco?: string | null;
@@ -70,7 +72,7 @@ function limpar(d: DadosContrato) {
     numero, objeto, empresa: t(d.empresa)?.slice(0, 300) ?? null, cnpj: cnpj ? formatarCnpj(cnpj) : null,
     dataAssinatura: data(d.dataAssinatura, "Data de assinatura"), dataOs: data(d.dataOs, "Data da ordem de serviço"),
     prazoExecucaoDias: prazo(d.prazoExecucaoDias, "Prazo de execução"), prazoVigenciaDias: prazo(d.prazoVigenciaDias, "Prazo contratual"),
-    processo: t(d.processo)?.slice(0, 100) ?? null, empresaId: d.empresaId || null, endereco: t(d.endereco)?.slice(0, 300) ?? null, responsavelTecnico: t(d.responsavelTecnico)?.slice(0, 200) ?? null, artRrt: t(d.artRrt)?.slice(0, 60) ?? null,
+    processo: t(d.processo)?.slice(0, 100) ?? null, empresaId: d.empresaId || null, regimeId: d.regimeId || null, endereco: t(d.endereco)?.slice(0, 300) ?? null, responsavelTecnico: t(d.responsavelTecnico)?.slice(0, 200) ?? null, artRrt: t(d.artRrt)?.slice(0, 60) ?? null,
     emailContato: email, telefoneContato: telefone || null,
   };
 }
@@ -89,8 +91,8 @@ async function numeroLivre(ex: Executor, numero: string, exceto: string | null =
 function comandoDados(id: string, d: ReturnType<typeof limpar>): Comando {
   return {
     sql: `UPDATE contrato SET empresa = $2, cnpj = $3, data_assinatura = $4, data_os = $5, prazo_execucao_dias = $6, prazo_vigencia_dias = $7,
-                 endereco = $8, responsavel_tecnico = $9, art_rrt = $10, email_contato = $11, telefone_contato = $12, processo = $13, empresa_id = $14 WHERE id = $1`,
-    params: [id, d.empresa, d.cnpj, d.dataAssinatura, d.dataOs, d.prazoExecucaoDias, d.prazoVigenciaDias, d.endereco, d.responsavelTecnico, d.artRrt, d.emailContato, d.telefoneContato, d.processo, d.empresaId],
+                 endereco = $8, responsavel_tecnico = $9, art_rrt = $10, email_contato = $11, telefone_contato = $12, processo = $13, empresa_id = $14, regime_id = $15 WHERE id = $1`,
+    params: [id, d.empresa, d.cnpj, d.dataAssinatura, d.dataOs, d.prazoExecucaoDias, d.prazoVigenciaDias, d.endereco, d.responsavelTecnico, d.artRrt, d.emailContato, d.telefoneContato, d.processo, d.empresaId, d.regimeId],
   };
 }
 
@@ -266,7 +268,7 @@ export interface ItemContrato {
 export interface EstadoContrato {
   contrato: {
     id: string; numero: string; objeto: string; empresa: string | null; cnpj: string | null; dataAssinatura: string | null; dataOs: string | null;
-    prazoExecucaoDias: number | null; prazoVigenciaDias: number | null; endereco: string | null; responsavelTecnico: string | null; empresaId: string | null; artRrt: string | null;
+    prazoExecucaoDias: number | null; prazoVigenciaDias: number | null; endereco: string | null; responsavelTecnico: string | null; empresaId: string | null; regimeId: string | null; regimeNome: string | null; regimeMedicao: "QUANTIDADE" | "PERCENTUAL" | null; artRrt: string | null;
     emailContato: string | null; telefoneContato: string | null;
     origem: "ORCAMENTO" | "PLANILHA"; revisaoId: string | null; orcamento: string | null; arquivoOrigem: string | null; referencia: string | null; bdiPercentual: string | null;
     arredondamento: ModoArredondamento; situacao: "EM_CADASTRO" | "VIGENTE"; versao: number; criadoPorId: string | null; criadoPor: string | null; criadoEm: string;
@@ -280,7 +282,9 @@ export interface EstadoContrato {
 export async function carregarContrato(ex: Executor, contratoId: string): Promise<EstadoContrato> {
   const [c] = await ex.consulta<EstadoContrato["contrato"]>(
     `SELECT c.id, c.numero, c.objeto, c.empresa, c.cnpj, c.data_assinatura::text AS "dataAssinatura", c.data_os::text AS "dataOs", c.prazo_execucao_dias AS "prazoExecucaoDias", c.prazo_vigencia_dias AS "prazoVigenciaDias", c.endereco,
-            c.responsavel_tecnico AS "responsavelTecnico", c.empresa_id AS "empresaId", c.art_rrt AS "artRrt", c.email_contato AS "emailContato", c.telefone_contato AS "telefoneContato",
+            c.responsavel_tecnico AS "responsavelTecnico", c.empresa_id AS "empresaId", c.regime_id AS "regimeId",
+            (SELECT x.nome FROM regime_execucao x WHERE x.id = c.regime_id) AS "regimeNome",
+            (SELECT x.medicao FROM regime_execucao x WHERE x.id = c.regime_id) AS "regimeMedicao", c.art_rrt AS "artRrt", c.email_contato AS "emailContato", c.telefone_contato AS "telefoneContato",
             c.origem, c.revisao_id AS "revisaoId",
             (SELECT concat_ws(' — ', oc.codigo, oc.titulo) || ' (revisão ' || r.numero || ')' FROM orcamento_revisao r JOIN orcamento oc ON oc.id = r.orcamento_id WHERE r.id = c.revisao_id) AS orcamento,
             c.arquivo_origem AS "arquivoOrigem", c.referencia, c.bdi_percentual::text AS "bdiPercentual", c.arredondamento, c.situacao, c.versao,

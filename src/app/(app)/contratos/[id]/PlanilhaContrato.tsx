@@ -8,18 +8,19 @@ import { acaoAlterarDadosContrato, acaoAlterarPreco, acaoConfirmarContrato, acao
 import { calcularPrazos, dataBr } from "@/lib/contratos/prazos";
 import { Compartilhar } from "../../Compartilhar";
 import type { EmpresaParaContrato } from "@/lib/empresas/servico";
+import type { Regime } from "@/lib/contratos/regimes";
 import { CamposContrato, paraAcao, type FormContrato } from "../CamposContrato";
 
 const moeda = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }));
 const preco = (v: string | null) => (v === null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }));
 const qtd = (v: string) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const paraForm = (c: EstadoContrato["contrato"]): FormContrato => ({
-  numero: c.numero, processo: c.processo ?? "", objeto: c.objeto, empresaId: c.empresaId ?? "", empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "",
+  numero: c.numero, processo: c.processo ?? "", objeto: c.objeto, empresaId: c.empresaId ?? "", regimeId: c.regimeId ?? "", empresa: c.empresa ?? "", cnpj: c.cnpj ?? "", dataAssinatura: c.dataAssinatura ?? "", dataOs: c.dataOs ?? "",
   prazoExecucaoDias: c.prazoExecucaoDias ? String(c.prazoExecucaoDias) : "", prazoVigenciaDias: c.prazoVigenciaDias ? String(c.prazoVigenciaDias) : "",
   endereco: c.endereco ?? "", responsavelTecnico: c.responsavelTecnico ?? "", artRrt: c.artRrt ?? "", emailContato: c.emailContato ?? "", telefoneContato: c.telefoneContato ?? "",
 });
 
-export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompartilhar = false, empresas = [] }: { estado: EstadoContrato; podeEditar: boolean; podeGerenciar: boolean; podeCompartilhar?: boolean; empresas?: EmpresaParaContrato[] }) {
+export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompartilhar = false, empresas = [], regimes = [] }: { estado: EstadoContrato; podeEditar: boolean; podeGerenciar: boolean; podeCompartilhar?: boolean; empresas?: EmpresaParaContrato[]; regimes?: Regime[] }) {
   const c = estado.contrato;
   const router = useRouter();
   const [versao, setVersao] = useState(c.versao);
@@ -99,7 +100,7 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompar
         </div>
         {editandoDados ? (
           <>
-            <CamposContrato valor={form} onChange={setForm} empresas={empresas} />
+            <CamposContrato valor={form} onChange={setForm} empresas={empresas} regimes={regimes} />
             <div className="flex gap-2">
               <button disabled={pendente} onClick={() => rodar(() => acaoAlterarDadosContrato(c.id, versao, paraAcao(form)), (v) => { setVersao(v); setEditandoDados(false); }, "Dados do contrato salvos.")}
                 className="rounded-md bg-marca-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">Salvar dados</button>
@@ -109,6 +110,9 @@ export function PlanilhaContrato({ estado, podeEditar, podeGerenciar, podeCompar
         ) : (
           <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
             <div><dt className="inline font-medium">Empresa: </dt><dd className="inline">{c.empresaId ? <Link href={`/empresas/${c.empresaId}`} className="text-marca-700 underline">{c.empresa ?? "—"}</Link> : c.empresa ?? "—"}{c.cnpj ? ` (CNPJ ${c.cnpj})` : ""}</dd></div>
+            <div className="sm:col-span-3"><dt className="inline font-medium">Regime de execução: </dt><dd className="inline">{c.regimeNome
+              ? <>{c.regimeNome} <span className="text-slate-500">— {c.regimeMedicao === "QUANTIDADE" ? "medição por quantidade executada" : "medição por percentual executado"}</span></>
+              : <span className="text-amber-800">não definido{podeEditar ? " (defina em “Editar dados”)" : ""}</span>}</dd></div>
             <div><dt className="inline font-medium">Processo: </dt><dd className="inline">{c.processo ?? "—"}</dd></div>
             <div><dt className="inline font-medium">Endereço: </dt><dd className="inline">{c.endereco ?? "—"}</dd></div>
             <div><dt className="inline font-medium">Assinatura: </dt><dd className="inline">{dataBr(c.dataAssinatura)}</dd></div>

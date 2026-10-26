@@ -5,10 +5,11 @@ import { useState, useTransition } from "react";
 import { acaoCriarContratoDoOrcamento } from "../acoes";
 import { CamposContrato, CONTRATO_VAZIO, paraAcao } from "../CamposContrato";
 import type { EmpresaParaContrato } from "@/lib/empresas/servico";
+import type { Regime } from "@/lib/contratos/regimes";
 
 interface Revisao { revisaoId: string; processo: string | null; rotulo: string; obraNome: string; objeto: string | null; total: string }
 
-export function NovoContrato({ revisoes, inicial, empresas }: { revisoes: Revisao[]; inicial: string; empresas: EmpresaParaContrato[] }) {
+export function NovoContrato({ revisoes, inicial, empresas, regimes }: { revisoes: Revisao[]; inicial: string; empresas: EmpresaParaContrato[]; regimes: Regime[] }) {
   const [revisaoId, setRevisaoId] = useState(inicial);
   const r0 = revisoes.find((r) => r.revisaoId === inicial);
   const [form, setForm] = useState({ ...CONTRATO_VAZIO, objeto: r0?.objeto ?? r0?.obraNome ?? "", processo: r0?.processo ?? "" });
@@ -43,7 +44,7 @@ export function NovoContrato({ revisoes, inicial, empresas }: { revisoes: Revisa
       </section>
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="font-medium">Dados do contrato</h2>
-        <CamposContrato valor={form} onChange={setForm} empresas={empresas} />
+        <CamposContrato valor={form} onChange={setForm} empresas={empresas} regimes={regimes} />
       </section>
       {erro && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <button onClick={criar} disabled={pendente} className="rounded-md bg-marca-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">

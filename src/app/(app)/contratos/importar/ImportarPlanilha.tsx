@@ -9,6 +9,7 @@ import type { DadosNovaObra } from "../../orcamentos/acoes";
 import { acaoCriarContratoDaPlanilha } from "../acoes";
 import { CamposContrato, CONTRATO_VAZIO, paraAcao } from "../CamposContrato";
 import type { EmpresaParaContrato } from "@/lib/empresas/servico";
+import type { Regime } from "@/lib/contratos/regimes";
 
 interface Leitura { arquivo: string; pdf: boolean; abas: { nome: string; grade: Grade }[]; textoExtra: string }
 type CampoContrato = "item" | "codigo" | "descricao" | "unidade" | "quantidade" | "preco" | "total";
@@ -35,7 +36,7 @@ function identificar(texto: string) {
   return { numero, empresa, objeto };
 }
 
-export function ImportarPlanilha({ obras, cabecalhos, empresas = [] }: { obras: { id: string; nome: string; codigo: string | null; processo: string | null }[]; cabecalhos: { id: string; nome: string; padrao: boolean }[]; empresas?: EmpresaParaContrato[] }) {
+export function ImportarPlanilha({ obras, cabecalhos, empresas = [], regimes = [] }: { obras: { id: string; nome: string; codigo: string | null; processo: string | null }[]; cabecalhos: { id: string; nome: string; padrao: boolean }[]; empresas?: EmpresaParaContrato[]; regimes?: Regime[] }) {
   const [leitura, setLeitura] = useState<Leitura | null>(null);
   const [aba, setAba] = useState(0);
   const [cab, setCab] = useState<Cabecalho | null>(null);
@@ -186,7 +187,7 @@ export function ImportarPlanilha({ obras, cabecalhos, empresas = [] }: { obras: 
 
           <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-medium">Dados do contrato</h2>
-            <CamposContrato valor={form} onChange={setForm} empresas={empresas} />
+            <CamposContrato valor={form} onChange={setForm} empresas={empresas} regimes={regimes} />
             <label className="block text-sm sm:w-80">Valor total dos itens sem coluna de total
               <select value={arredondamento} onChange={(e) => setArredondamento(e.target.value)} className={campo}>
                 <option value="ARREDONDAR">quantidade × preço, arredondado</option>
