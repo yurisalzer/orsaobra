@@ -119,3 +119,31 @@ table td:last-child {
 .menu-painel { background-color: #1b1f27; border: 1px solid rgb(255 255 255 / 0.06); }
 .menu-item { color: #f1f5f9; transition: color 0.15s; }
 .menu-item:hover, .menu-item:focus-visible, .menu-item-ativo { color: #7cc4ff; outline: none; }
+
+/*
+ * Opções das listas de seleção: o Windows abre a lista nativa com fundo próprio,
+ * mas herda a cor do texto da página — no tema escuro ficava texto claro sobre
+ * fundo branco. Cores explícitas nos dois temas.
+ */
+select option,
+select optgroup {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+select option:disabled {
+  color: #94a3b8;
+}
+@media screen {
+  html[data-tema="escuro"] select option,
+  html[data-tema="escuro"] select optgroup {
+    background-color: #111c2e;
+    color: #f1f5f9;
+  }
+  html[data-tema="escuro"] select option:disabled {
+    color: #64748b;
+  }
+  html[data-tema="escuro"] select option:checked {
+    background-color: #2f6fb8;
+    color: #ffffff;
+  }
+}
