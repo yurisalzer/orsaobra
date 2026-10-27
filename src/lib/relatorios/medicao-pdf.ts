@@ -37,13 +37,20 @@ function timbre(cab: Boletim["cabecalho"], largura: number): Content {
   } as Content;
 }
 
-const LARG_ASSINATURA = 210;
+const LARG_ASSINATURA = 230;
+/** Espaço livre acima da linha, para a assinatura e o carimbo (~2,8 cm). */
+const ALTURA_ASSINATURA = 80;
 
-/** Bloco de assinatura de largura fixa: linha e, abaixo, as linhas de texto centralizadas. */
+/**
+ * Bloco de assinatura de largura fixa: espaço livre para assinar e carimbar,
+ * a linha e, abaixo, as linhas de texto centralizadas. O espaço é desenhado
+ * (e não margem), para não sumir quando o bloco começa uma página nova.
+ */
 function blocoAssinatura(linhas: { texto: string; destaque?: boolean }[], largura = LARG_ASSINATURA) {
   return {
     width: largura,
     stack: [
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 0, y2: ALTURA_ASSINATURA, lineWidth: 0.1, lineColor: "#ffffff" }] },
       { canvas: [{ type: "line", x1: 0, y1: 0, x2: largura, y2: 0, lineWidth: 0.6 }] },
       ...linhas.filter((l) => l.texto.trim()).map((l, k) => ({
         text: l.texto.trim(), alignment: "center", fontSize: l.destaque ? 8.5 : 7.5, bold: !!l.destaque && k > 0, color: l.destaque ? undefined : "#334155", margin: [0, k === 0 ? 3 : 0, 0, 0],
@@ -64,14 +71,14 @@ function assinaturas(o: OpcoesDocumentoMedicao): Content {
   const e = o.empresa;
   return {
     unbreakable: true,
-    margin: [0, 40, 0, 0],
+    margin: [0, 12, 0, 0],
     stack: [
       ...(fiscais.length ? [linha(fiscais.map((f) => blocoAssinatura([{ texto: f.nome, destaque: true }, { texto: f.cargo }])))] : []),
       ...(e.responsavel.trim() || e.nome.trim() ? [{
         ...linha([blocoAssinatura([
           { texto: e.responsavel, destaque: true }, { texto: e.registro }, { texto: e.nome, destaque: true }, { texto: e.cnpj ? `CNPJ ${e.cnpj}` : "" },
-        ], 280)]),
-        margin: [0, fiscais.length ? 42 : 0, 0, 0],
+        ], 300)]),
+        margin: [0, fiscais.length ? 18 : 0, 0, 0],
       }] : []),
     ],
   } as Content;

@@ -45,7 +45,8 @@ function assinaturasXlsx(ws: Planilha, nCols: number, o: OpcoesDocumentoMedicao)
   // cada fileira de assinaturas: a largura dividida em 2n+1 faixas, assinaturas nas faixas ímpares
   const fileira = (blocos: string[][]) => {
     if (!blocos.length) return;
-    ws.addRow([]); ws.addRow([]);
+    // espaço livre acima da linha para a assinatura e o carimbo (~2,8 cm)
+    for (let i = 0; i < 4; i++) ws.addRow([]).height = 20;
     const n = blocos.length;
     const faixa = Math.max(1, Math.floor(nCols / (2 * n + 1)));
     const sobra = nCols - faixa * (2 * n + 1);
