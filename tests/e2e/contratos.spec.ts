@@ -177,7 +177,12 @@ test("medições: planejamento (até 30 dias), lançamento por quantidade, fecha
   await expect(page.getByLabel("Quantidade do item 2.1")).toBeVisible();
   await page.getByLabel("Quantidade do item 2.1").fill("13");
   await expect(page.getByText("saldo 12")).toBeVisible();
-  await page.getByLabel("Quantidade do item 2.1").fill("6");
+  // memória de cálculo: a conta preenche a quantidade
+  await page.getByRole("button", { name: "Adicionar memória de cálculo do item 2.1" }).click();
+  await page.getByLabel("Memória de cálculo do item 2.1").fill("Containers: 2 x 3 (meses)");
+  await expect(page.getByLabel("Quantidade do item 2.1")).toHaveValue("6,00");
+  await page.getByRole("button", { name: "Concluir" }).click();
+  await expect(page.getByText("Containers: 2 x 3 (meses)")).toBeVisible();
   await page.getByLabel("Quantidade do item 1.1").fill("10,5");
   await page.getByRole("button", { name: "Salvar lançamentos (2)" }).click();
   await expect(page.getByText("Lançamentos salvos.")).toBeVisible();
@@ -212,6 +217,7 @@ test("medições: planejamento (até 30 dias), lançamento por quantidade, fecha
   };
   expect(await baixar("Boletim de medição (PDF)", "boletim.pdf")).toBe("Boletim_medicao_1_contrato_046_2023.pdf");
   expect(await baixar("Boletim (Excel)", "boletim.xlsx")).toBe("Boletim_medicao_1_contrato_046_2023.xlsx");
+  expect(await baixar("Memória de cálculo (PDF)", "memoria-medicao.pdf")).toBe("Memoria_calculo_medicao_1_contrato_046_2023.pdf");
   await page.getByRole("button", { name: /Usar a nota do modelo/ }).click();
   expect(await baixar("Cronograma de desembolso (PDF)", "desembolso.pdf")).toBe("Cronograma_desembolso_medicao_1_contrato_046_2023.pdf");
   expect(await baixar("Cronograma (Excel)", "desembolso.xlsx")).toBe("Cronograma_desembolso_medicao_1_contrato_046_2023.xlsx");

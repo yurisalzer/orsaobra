@@ -15,6 +15,7 @@
 import type { Executor } from "@/lib/banco/executor";
 import { arredondar, dec, lerNumero, type Dec } from "@/lib/calculo/decimal";
 import { comandoAuditoria } from "@/lib/auditoria";
+import { quantidadeDaMemoria } from "@/lib/calculo/memoria";
 import { termino } from "@/lib/contratos/prazos";
 import { formatarCnpj, normalizarCnpj } from "@/lib/empresas/servico";
 import { cabecalhoDaObra, type CabecalhoDocumento } from "@/lib/relatorios/cabecalhos";
@@ -51,6 +52,8 @@ export type LinhaBoletim =
       tipo: "item"; numero: string | null; codigo: string | null; descricao: string; unidade: string | null;
       quantidade: string; precoUnitario: string; valorTotal: string;
       antes: string; medido: string; saldo: string; valorMedido: string; valorSaldo: string; percentual: string;
+      /** memória de cálculo do que foi medido nesta medição e o resultado da conta (pt-BR) */
+      memoria: string | null; memoriaResultado: string | null; memoriaDiverge: boolean;
     };
 
 export interface Boletim {
@@ -59,6 +62,13 @@ export interface Boletim {
   contrato: Omit<DadosContrato, "revisaoId" | "continuo"> & { termino: string | null; regimeNome: string | null; porQuantidade: boolean };
   linhas: LinhaBoletim[];
   totais: { contratado: string; anterior: string; medicao: string; acumulado: string; percentualAcumulado: string; saldo: string };
+}
+
+function resultadoMemoria(memoria: string | null, medido: Dec): { memoriaResultado: string | null; memoriaDiverge: boolean } {
+  if (!memoria) return { memoriaResultado: null, memoriaDiverge: false };
+  const r = quantidadeDaMemoria(memoria);
+  if (!r.quantidade) return { memoriaResultado: null, memoriaDiverge: false };
+  return { memoriaResultado: r.quantidade, memoriaDiverge: !lerNumero(r.quantidade)!.eq(medido) };
 }
 
 export async function dadosBoletim(ex: Executor, medicaoId: string): Promise<Boletim> {
@@ -96,6 +106,7 @@ export async function dadosBoletim(ex: Executor, medicaoId: string): Promise<Bol
         quantidade: porQtd ? l.quantidade : "100", precoUnitario: l.precoUnitario, valorTotal: l.valorTotal,
         antes: antes.toString(), medido: medido.toString(), saldo: antes.minus(medido).toString(),
         valorMedido: dec(l.atualValor).toFixed(2), valorSaldo: dec(l.valorTotal).minus(acumulado).toFixed(2), percentual: p2(pct(acumulado, dec(l.valorTotal))),
+        memoria: l.memoria, ...resultadoMemoria(l.memoria, medido),
       });
     }
   }

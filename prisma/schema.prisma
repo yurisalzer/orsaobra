@@ -1034,6 +1034,7 @@ model MedicaoItem {
   quantidade     Decimal? @db.Decimal(18, 4)
   percentual     Decimal? @db.Decimal(9, 4)
   valor          Decimal  @db.Decimal(18, 2)
+  memoria        String?
 
   medicao      Medicao      @relation(fields: [medicaoId], references: [id], onDelete: Cascade)
   contratoItem ContratoItem @relation(fields: [contratoItemId], references: [id], onDelete: Restrict)

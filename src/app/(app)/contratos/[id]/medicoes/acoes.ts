@@ -70,10 +70,10 @@ export async function acaoIniciarMedicao(contratoId: string, medicaoId: string) 
   return executar(contratoId, async (u, ex) => iniciarMedicao(ex, await daMedicao(ex, contratoId, medicaoId), u.id));
 }
 
-export async function acaoSalvarLancamentos(contratoId: string, medicaoId: string, versao: number, lancamentos: { itemId: string; valor: string }[]) {
+export async function acaoSalvarLancamentos(contratoId: string, medicaoId: string, versao: number, lancamentos: { itemId: string; valor: string; memoria?: string | null }[]) {
   return executar(contratoId, async (u, ex) => salvarLancamentos(
     ex, await daMedicao(ex, contratoId, medicaoId), z.number().int().parse(versao),
-    z.array(z.object({ itemId: uuid, valor: z.string().max(40) })).max(5000).parse(lancamentos), u.id,
+    z.array(z.object({ itemId: uuid, valor: z.string().max(40), memoria: z.string().max(4000).nullable().optional() })).max(5000).parse(lancamentos), u.id,
   ));
 }
 

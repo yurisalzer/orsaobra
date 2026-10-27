@@ -73,27 +73,29 @@ export function DocumentosMedicao({ contratoId, contratoNumero, medicaoId, numer
     return true;
   };
 
-  const gerar = async (doc: "boletim" | "desembolso", formato: "pdf" | "xlsx") => {
+  const gerar = async (doc: "boletim" | "memoria" | "desembolso", formato: "pdf" | "xlsx") => {
     setErro(null);
     setAviso(null);
     if (comNome.length < MIN_FISCAIS) return setErro(`Informe no mínimo ${MIN_FISCAIS} fiscais (nome) para gerar o documento.`);
     setGerando(`${doc}-${formato}`);
     try {
       if (!(await salvarAssinaturas(false))) return;
-      const r = doc === "boletim" ? await acaoDadosBoletim(contratoId, medicaoId) : await acaoDadosDesembolso(contratoId, numero);
+      const r = doc !== "desembolso" ? await acaoDadosBoletim(contratoId, medicaoId) : await acaoDadosDesembolso(contratoId, numero);
       if (!r.ok) return setErro(r.erro);
       const op: OpcoesDocumentoMedicao = {
         empenho: campos.empenho, nota: campos.nota, rodape: r.dados.rodape,
         fiscais: comNome, empresa,
       };
-      const base = nomeArquivo(doc === "boletim" ? `Boletim_medicao_${numero}_contrato_${contratoNumero}` : `Cronograma_desembolso_medicao_${numero}_contrato_${contratoNumero}`);
+      const base = nomeArquivo(doc === "boletim" ? `Boletim_medicao_${numero}_contrato_${contratoNumero}` : doc === "memoria" ? `Memoria_calculo_medicao_${numero}_contrato_${contratoNumero}` : `Cronograma_desembolso_medicao_${numero}_contrato_${contratoNumero}`);
       if (formato === "pdf") {
-        const { definicaoBoletim, definicaoDesembolso } = await import("@/lib/relatorios/medicao-pdf");
-        const def = "boletim" in r.dados ? definicaoBoletim(r.dados.boletim, op) : definicaoDesembolso(r.dados.desembolso, op);
+        const { definicaoBoletim, definicaoDesembolso, definicaoMemoriaMedicao } = await import("@/lib/relatorios/medicao-pdf");
+        const def = "boletim" in r.dados ? (doc === "memoria" ? definicaoMemoriaMedicao : definicaoBoletim)(r.dados.boletim, op) : definicaoDesembolso(r.dados.desembolso, op);
         baixar(await pdf(def), `${base}.pdf`);
       } else {
-        const [{ default: ExcelJS }, { gerarBoletimXlsx, gerarDesembolsoXlsx }] = await Promise.all([import("exceljs"), import("@/lib/relatorios/medicao-xlsx")]);
-        const buf = "boletim" in r.dados ? await gerarBoletimXlsx(ExcelJS, r.dados.boletim, op) : await gerarDesembolsoXlsx(ExcelJS, r.dados.desembolso, op);
+        const [{ default: ExcelJS }, { gerarBoletimXlsx, gerarDesembolsoXlsx, gerarMemoriaMedicaoXlsx }] = await Promise.all([import("exceljs"), import("@/lib/relatorios/medicao-xlsx")]);
+        const buf = "boletim" in r.dados
+          ? await (doc === "memoria" ? gerarMemoriaMedicaoXlsx : gerarBoletimXlsx)(ExcelJS, r.dados.boletim, op)
+          : await gerarDesembolsoXlsx(ExcelJS, r.dados.desembolso, op);
         baixar(new Blob([buf], { type: XLSX }), `${base}.xlsx`);
       }
     } catch (e) {
@@ -111,7 +113,7 @@ export function DocumentosMedicao({ contratoId, contratoNumero, medicaoId, numer
         className={`${largura} rounded-md border border-slate-300 px-2 py-1.5`} />
     </label>
   );
-  const botao = (doc: "boletim" | "desembolso", formato: "pdf" | "xlsx", texto: string) => (
+  const botao = (doc: "boletim" | "memoria" | "desembolso", formato: "pdf" | "xlsx", texto: string) => (
     <button disabled={!!gerando} onClick={() => gerar(doc, formato)} className={`rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${formato === "pdf" ? "bg-marca-600 text-white" : "border border-slate-300"}`}>
       {gerando === `${doc}-${formato}` ? "Gerando…" : texto}
     </button>
@@ -149,6 +151,8 @@ export function DocumentosMedicao({ contratoId, contratoNumero, medicaoId, numer
       <div className="flex flex-wrap gap-2">
         {botao("boletim", "pdf", "Boletim de medição (PDF)")}
         {botao("boletim", "xlsx", "Boletim (Excel)")}
+        {botao("memoria", "pdf", "Memória de cálculo (PDF)")}
+        {botao("memoria", "xlsx", "Memória de cálculo (Excel)")}
       </div>
       <div className="space-y-2 border-t border-slate-100 pt-3">
         <label className="flex flex-col gap-1 text-sm">

@@ -7,7 +7,7 @@ import { SeloFonte } from "@/components/SeloFonte";
 import { ExcluirOrcamento, RenomearOrcamento } from "../../ExcluirOrcamento";
 import { Compartilhar } from "../../../Compartilhar";
 import { dec, formatarMoeda, formatarNumero, lerNumero, type Dec } from "@/lib/calculo/decimal";
-import { avaliarMemoria } from "@/lib/calculo/expressao";
+import { quantidadeDaMemoria } from "@/lib/calculo/memoria";
 import type { EstadoRevisao, EtapaLinha, LinhaItem } from "@/lib/orcamento/servico";
 import {
   acaoAdicionarItem, acaoAlterarItem, acaoBuscarParaOrcamento, acaoConfigurar, acaoCriarEtapa, acaoDuplicar, acaoExcluirEtapa, acaoExcluirItem, acaoTrocarItem,
@@ -25,22 +25,7 @@ const qtd = (v: string | Dec) => {
 };
 const pct = (v: string | null) => (v === null ? "—" : `${formatarNumero(v, 2)}%`);
 
-/** Calcula a expressão da memória: quantidade (texto pt-BR, até 4 casas) ou motivo de não calcular. */
-export function quantidadeDaMemoria(texto: string): { quantidade: string | null; exibir: string | null; aviso: string | null; erro: string | null } {
-  try {
-    const r = avaliarMemoria(texto);
-    if (!r) return { quantidade: null, exibir: null, aviso: null, erro: null };
-    if (r.valor.isNegative()) return { quantidade: null, exibir: null, aviso: null, erro: "O resultado da conta é negativo." };
-    const q = r.valor.toDecimalPlaces(4);
-    const avisos: string[] = [];
-    if (!q.eq(r.valor)) avisos.push("resultado arredondado para 4 casas decimais");
-    if (r.escrito && !r.escrito.eq(r.valor)) avisos.push(`o resultado escrito após "=" (${formatarNumero(r.escrito, Math.min(r.escrito.decimalPlaces(), 4))}) difere do calculado`);
-    const exibir = qtd(q);
-    return { quantidade: exibir, exibir, aviso: avisos.length ? avisos.join("; ") : null, erro: null };
-  } catch (e) {
-    return { quantidade: null, exibir: null, aviso: null, erro: `Não foi possível calcular a conta: ${(e as Error).message}` };
-  }
-}
+export { quantidadeDaMemoria };
 
 export function Editor({ estado, perfis, bases, podeEditar, podeRelatorios, podeGerenciar = false, podeContrato = false, podeCompartilhar = false }: { estado: EstadoRevisao; perfis: Perfil[]; bases: BaseOpcao[]; podeEditar: boolean; podeRelatorios: boolean; podeGerenciar?: boolean; podeContrato?: boolean; podeCompartilhar?: boolean }) {
   const router = useRouter();

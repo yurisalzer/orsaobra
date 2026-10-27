@@ -239,4 +239,29 @@ describe("medições", () => {
     const b = await lerAssinaturas(ex, id);
     expect(b).toEqual({ fiscais: [f("Ana Lima"), f("Bruno")], empresa: a.empresa, salvas: true });
   });
+
+  it("memória de cálculo do lançamento: grava, mantém, apaga e vai para o boletim", async () => {
+    const { id, piso, porta } = await contrato("M-8", "QUANTIDADE");
+    await planejarMedicoes(ex, id, { inicio: "2026-10-10", quantidade: 1, dias: 30, servicoContinuo: false }, u);
+    const [m1] = (await painelMedicoes(ex, id)).medicoes;
+    await iniciarMedicao(ex, m1.id, u);
+    let v = (await carregarMedicao(ex, m1.id)).medicao.versao;
+    await expect(salvarLancamentos(ex, m1.id, v, [{ itemId: piso, valor: "", memoria: "2 x 3" }], u)).rejects.toThrow(/memória de cálculo só é gravada junto/);
+    v = await salvarLancamentos(ex, m1.id, v, [
+      { itemId: piso, valor: "6", memoria: "Sala: 2 x 3 = 6 m²" },
+      { itemId: porta, valor: "1", memoria: "P1 + P2 (2 portas)\n" },
+    ], u);
+    let e = await carregarMedicao(ex, m1.id);
+    expect(e.linhas.map((l) => l.memoria)).toEqual(["Sala: 2 x 3 = 6 m²", "P1 + P2 (2 portas)"]);
+    // sem `memoria`, mantém a gravada; null apaga
+    v = await salvarLancamentos(ex, m1.id, v, [{ itemId: piso, valor: "6,5" }, { itemId: porta, valor: "1", memoria: null }], u);
+    e = await carregarMedicao(ex, m1.id);
+    expect(e.linhas.map((l) => [l.atualQtd, l.memoria])).toEqual([["6.5000", "Sala: 2 x 3 = 6 m²"], ["1.0000", null]]);
+    const b = await dadosBoletim(ex, m1.id);
+    const piso1 = b.linhas.find((l) => l.tipo === "item" && l.numero === "1.1");
+    expect(piso1).toMatchObject({ memoria: "Sala: 2 x 3 = 6 m²", memoriaResultado: "6,00", memoriaDiverge: true });
+    // retirar o lançamento leva a memória junto
+    await salvarLancamentos(ex, m1.id, v, [{ itemId: piso, valor: "" }], u);
+    expect((await carregarMedicao(ex, m1.id)).linhas[0]).toMatchObject({ atualQtd: null, memoria: null });
+  });
 });

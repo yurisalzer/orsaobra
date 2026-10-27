@@ -179,3 +179,51 @@ export async function gerarDesembolsoXlsx(Excel: ExcelJS, d: Desembolso, o: Opco
   assinaturasXlsx(ws, N, o);
   return wb.xlsx.writeBuffer() as Promise<ArrayBuffer>;
 }
+
+/** Memória de cálculo da medição: itens medidos, quantidade/percentual e a memória. */
+export async function gerarMemoriaMedicaoXlsx(Excel: ExcelJS, b: Boletim, o: OpcoesDocumentoMedicao): Promise<ArrayBuffer> {
+  const m = b.medicao;
+  const c = b.contrato;
+  const wb = new Excel.Workbook();
+  wb.creator = "Orçamento de Obras";
+  const ws = wb.addWorksheet(`Memória medição ${m.numero}`, {
+    pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } },
+    headerFooter: { oddFooter: `&L&7${o.rodape.replace(/&/g, "&&")}&RPágina &P de &N` },
+  });
+  const N = 7;
+  [7, 14, 50, 8, 12, 60, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  timbre(Excel, wb, ws, b.cabecalho, N);
+  linhaTexto(ws, N, `MEMÓRIA DE CÁLCULO — Medição ${m.numero} — Contrato ${c.numero} — ${dataBr(m.inicio)} à ${dataBr(m.fim)}`, { negrito: true, tamanho: 12 });
+  linhaTexto(ws, N, `Empreiteira: ${c.empresa ?? "—"}`, { negrito: true });
+  linhaTexto(ws, N, `Obra: ${c.objeto.toUpperCase()}`);
+  ws.addRow([]);
+  const h = ws.addRow(["Item", "Código", "Descrição", "Unid.", c.porQuantidade ? "Quant. medida" : "% medido", "Memória de cálculo", "Resultado"]);
+  h.eachCell((cell) => { cell.font = { bold: true, size: 9 }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CINZA } }; cell.border = borda; });
+  ws.views = [{ state: "frozen", ySplit: h.number }];
+  let grupos: Extract<Boletim["linhas"][number], { tipo: "grupo" }>[] = [];
+  let algum = false;
+  for (const l of b.linhas) {
+    if (l.tipo === "grupo") { grupos = [...grupos.filter((g) => g.nivel < l.nivel), l]; continue; }
+    if (!Number(l.medido)) continue;
+    for (const g of grupos) {
+      const r = ws.addRow([g.numero, g.titulo]);
+      ws.mergeCells(r.number, 2, r.number, N);
+      r.eachCell({ includeEmpty: true }, (cell) => { cell.font = { bold: true, italic: g.nivel > 0 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: g.nivel === 0 ? CINZA : CLARO } }; cell.border = borda; });
+    }
+    grupos = [];
+    algum = true;
+    const r = ws.addRow([l.numero ?? "", l.codigo ?? "", l.descricao, l.unidade ?? "", Number(l.medido), l.memoria ?? "—",
+      l.memoriaResultado ? `${l.memoriaResultado}${l.memoriaDiverge ? " (difere do medido)" : ""}` : ""]);
+    r.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.border = borda;
+      cell.alignment = { vertical: "top", wrapText: col === 3 || col === 6 };
+      if (col === 5) cell.numFmt = FMT4;
+    });
+    const linhasMem = (l.memoria ?? "").split("\n").reduce((a, t) => a + Math.max(1, Math.ceil(t.length / 70)), 0);
+    r.height = Math.max(15, Math.ceil(l.descricao.length / 60) * 12, linhasMem * 12);
+  }
+  if (!algum) linhaTexto(ws, N, "Nenhum item medido nesta medição.");
+  if (m.situacao !== "FECHADA") { ws.addRow([]); linhaTexto(ws, N, "MEDIÇÃO NÃO FECHADA — documento de conferência, sujeito a alteração.", { negrito: true }); }
+  assinaturasXlsx(ws, N, o);
+  return wb.xlsx.writeBuffer() as Promise<ArrayBuffer>;
+}

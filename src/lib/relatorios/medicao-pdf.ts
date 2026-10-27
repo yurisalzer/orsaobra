@@ -5,7 +5,7 @@
  */
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import { formatarNumero } from "../calculo/decimal";
-import type { Boletim, Desembolso } from "../medicoes/relatorios";
+import type { Boletim, Desembolso, LinhaBoletim } from "../medicoes/relatorios";
 
 export interface OpcoesDocumentoMedicao {
   empenho?: string;
@@ -81,7 +81,8 @@ function assinaturas(o: OpcoesDocumentoMedicao): Content {
 // Boletim de medição
 // ---------------------------------------------------------------------------
 
-export function definicaoBoletim(b: Boletim, o: OpcoesDocumentoMedicao): TDocumentDefinitions {
+/** Cabeçalho das páginas dos documentos da medição (boletim e memória de cálculo). */
+function cabecalhoMedicao(b: Boletim, o: OpcoesDocumentoMedicao) {
   const m = b.medicao;
   const c = b.contrato;
   const linhasObjeto = Math.ceil(c.objeto.length / 125);
@@ -127,6 +128,13 @@ export function definicaoBoletim(b: Boletim, o: OpcoesDocumentoMedicao): TDocume
       },
     ],
   });
+  return { topo, header };
+}
+
+export function definicaoBoletim(b: Boletim, o: OpcoesDocumentoMedicao): TDocumentDefinitions {
+  const m = b.medicao;
+  const c = b.contrato;
+  const { topo, header } = cabecalhoMedicao(b, o);
 
   const qtdOuPct = c.porQuantidade ? "Quantitativos" : "Percentuais (%)";
   const cab = (t: string, extra: object = {}): TableCell => ({ text: t, bold: true, alignment: "center", fontSize: 7, ...extra });
@@ -206,6 +214,55 @@ export function definicaoBoletim(b: Boletim, o: OpcoesDocumentoMedicao): TDocume
     header,
     footer: () => ({ text: o.rodape, fontSize: 6.5, color: "#64748b", margin: [20, 8, 20, 0] }),
     content: conteudo,
+  };
+}
+
+/**
+ * Memória de cálculo da medição: os itens medidos nesta medição, com o que foi
+ * medido e a memória de cálculo (conta e resultado), no cabeçalho do boletim.
+ */
+export function definicaoMemoriaMedicao(b: Boletim, o: OpcoesDocumentoMedicao): TDocumentDefinitions {
+  const m = b.medicao;
+  const c = b.contrato;
+  const { topo, header } = cabecalhoMedicao(b, o);
+  const cab = (t: string): TableCell => ({ text: t, bold: true, alignment: "center", fontSize: 7, fillColor: COR.grupo });
+  const corpo: TableCell[][] = [[cab("Item"), cab("Código"), cab("Descrição"), cab("Unid."), cab(c.porQuantidade ? "Quant.\nmedida" : "%\nmedido"), cab("Memória de cálculo")]];
+  // grupos que têm item medido (com os grupos pais)
+  let grupos: Extract<LinhaBoletim, { tipo: "grupo" }>[] = [];
+  for (const l of b.linhas) {
+    if (l.tipo === "grupo") { grupos = [...grupos.filter((g) => g.nivel < l.nivel), l]; continue; }
+    if (!Number(l.medido)) continue;
+    for (const g of grupos) corpo.push([{ text: g.numero, bold: true, fillColor: g.nivel === 0 ? COR.grupo : COR.subgrupo }, { text: g.titulo, colSpan: 5, bold: true, fillColor: g.nivel === 0 ? COR.grupo : COR.subgrupo, italics: g.nivel > 0 }, "", "", "", ""]);
+    grupos = [];
+    corpo.push([
+      { text: l.numero ?? "" }, { text: l.codigo ?? "", fontSize: 6.5 }, { text: l.descricao }, { text: l.unidade ?? "", alignment: "center" },
+      { text: nq(l.medido), alignment: "right", noWrap: true },
+      l.memoria
+        ? { stack: [{ text: l.memoria }, ...(l.memoriaResultado ? [{ text: `Resultado: ${l.memoriaResultado}${l.memoriaDiverge ? " (difere do medido)" : ""}`, bold: true, color: l.memoriaDiverge ? "#b45309" : "#166534" }] : [])] }
+        : { text: "—", color: "#64748b" },
+    ]);
+  }
+  if (corpo.length === 1) corpo.push([{ text: "Nenhum item medido nesta medição.", colSpan: 6, alignment: "center", color: "#64748b" }, "", "", "", "", ""]);
+  return {
+    pageSize: "A4",
+    pageOrientation: "landscape",
+    pageMargins: [20, topo, 20, 26],
+    info: { title: `Memória de cálculo — Medição ${m.numero} — Contrato ${c.numero}`, creator: "Orçamento de Obras" },
+    defaultStyle: { font: "Roboto", fontSize: 7.5, lineHeight: 1.15 },
+    header,
+    footer: () => ({ text: o.rodape, fontSize: 6.5, color: "#64748b", margin: [20, 8, 20, 0] }),
+    content: [
+      { text: "MEMÓRIA DE CÁLCULO DA MEDIÇÃO", bold: true, fontSize: 10, alignment: "center", margin: [0, 0, 0, 5] },
+      {
+        table: { headerRows: 1, dontBreakRows: true, widths: [26, 52, 220, 34, 50, "*"], body: corpo },
+        layout: {
+          hLineWidth: () => 0.4, vLineWidth: () => 0.4, hLineColor: () => COR.borda, vLineColor: () => COR.borda,
+          paddingLeft: () => 3, paddingRight: () => 3, paddingTop: () => 2, paddingBottom: () => 2,
+        },
+      },
+      ...(m.situacao !== "FECHADA" ? [{ text: "MEDIÇÃO NÃO FECHADA — documento de conferência, sujeito a alteração.", bold: true, color: "#b45309", fontSize: 9, margin: [0, 6, 0, 0] } as Content] : []),
+      assinaturas(o),
+    ],
   };
 }
 

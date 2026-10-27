@@ -206,6 +206,8 @@ export interface LinhaMedicao {
   anteriorQtd: string; anteriorPct: string; anteriorValor: string;
   /** esta medição (null = não lançado) */
   atualQtd: string | null; atualPct: string | null; atualValor: string;
+  /** memória de cálculo do lançamento desta medição */
+  memoria: string | null;
 }
 
 export interface EstadoMedicao {
@@ -236,6 +238,7 @@ export async function carregarMedicao(ex: Executor, medicaoId: string): Promise<
               coalesce(sum(mi.valor) FILTER (WHERE m.numero < $2 AND m.situacao = 'FECHADA'), 0)::text AS "anteriorValor",
               max(mi.quantidade::text) FILTER (WHERE m.id = $3) AS "atualQtd",
               max(mi.percentual::text) FILTER (WHERE m.id = $3) AS "atualPct",
+              max(mi.memoria) FILTER (WHERE m.id = $3) AS memoria,
               coalesce(sum(mi.valor) FILTER (WHERE m.id = $3), 0)::text AS "atualValor"
          FROM contrato_item ci
          LEFT JOIN medicao_item mi ON mi.contrato_item_id = ci.id
@@ -294,20 +297,26 @@ export async function iniciarMedicao(ex: Executor, medicaoId: string, usuarioId:
 /**
  * Grava os lançamentos da medição em elaboração. Cada linha traz a
  * quantidade (preço unitário) ou o percentual (demais regimes); vazio ou zero
- * retira o lançamento do item.
+ * retira o lançamento do item (e a sua memória). `memoria` é a memória de
+ * cálculo do item (null apaga; ausente mantém a gravada).
  */
-export async function salvarLancamentos(ex: Executor, medicaoId: string, versao: number, lancamentos: { itemId: string; valor: string }[], usuarioId: string) {
+export async function salvarLancamentos(
+  ex: Executor, medicaoId: string, versao: number, lancamentos: { itemId: string; valor: string; memoria?: string | null }[], usuarioId: string,
+) {
   const e = await carregarMedicao(ex, medicaoId);
   if (e.medicao.situacao !== "EM_ELABORACAO") throw new ErroMedicao(e.medicao.situacao === "FECHADA" ? "Medição fechada não pode ser alterada." : "Inicie a medição antes de lançar.");
   if (e.medicao.versao !== versao) throw new ErroMedicao("A medição foi alterada por outra pessoa. Recarregue a página.");
   const porQtd = e.contrato.medicao === "QUANTIDADE";
   const linhas = new Map(e.linhas.map((l) => [l.itemId, l]));
-  const gravar: { itemId: string; quantidade: string | null; percentual: string | null; valor: string }[] = [];
+  const gravar: { itemId: string; quantidade: string | null; percentual: string | null; valor: string; memoria: string | null; manterMemoria: boolean }[] = [];
   const retirar: string[] = [];
   for (const lc of lancamentos) {
     const l = linhas.get(lc.itemId);
     if (!l) throw new ErroMedicao("Item não pertence ao contrato.");
     const rotulo = `item ${l.numero ?? ""}`.trim();
+    const memoria = lc.memoria === undefined ? undefined : lc.memoria?.trim() || null;
+    if (memoria && memoria.length > 4000) throw new ErroMedicao(`Memória de cálculo com no máximo 4.000 caracteres (${rotulo}).`);
+    if (memoria && !lc.valor.trim()) throw new ErroMedicao(`Informe ${porQtd ? "a quantidade" : "o percentual"} do ${rotulo}: a memória de cálculo só é gravada junto com o lançamento.`);
     if (!lc.valor.trim()) { retirar.push(l.itemId); continue; }
     const v = lerNumero(lc.valor);
     if (!v || v.isNegative()) throw new ErroMedicao(`${porQtd ? "Quantidade" : "Percentual"} inválido no ${rotulo}.`);
@@ -329,17 +338,19 @@ export async function salvarLancamentos(ex: Executor, medicaoId: string, versao:
       valor = acumulado.eq(100) ? total.minus(antValor) : arredondar(total.times(v).div(100), 2, e.contrato.arredondamento);
     }
     if (valor.isNegative()) valor = dec(0);
-    gravar.push({ itemId: l.itemId, quantidade: porQtd ? v.toString() : null, percentual: porQtd ? null : v.toString(), valor: valor.toFixed(2) });
+    gravar.push({ itemId: l.itemId, quantidade: porQtd ? v.toString() : null, percentual: porQtd ? null : v.toString(), valor: valor.toFixed(2), memoria: memoria ?? null, manterMemoria: memoria === undefined });
   }
   await ex.transacao([
     { sql: `UPDATE medicao SET versao = versao + 1, atualizado_em = now() WHERE id = $1 AND versao = $2`, params: [medicaoId, versao] },
     { sql: `SELECT imp_exigir((SELECT versao FROM medicao WHERE id = $1) = $2, 'A medição foi alterada por outra pessoa. Recarregue a página.')`, params: [medicaoId, versao + 1] },
     ...(retirar.length ? [{ sql: `DELETE FROM medicao_item WHERE medicao_id = $1 AND contrato_item_id = ANY($2::uuid[])`, params: [medicaoId, retirar] }] : []),
     ...(gravar.length ? [{
-      sql: `INSERT INTO medicao_item (medicao_id, contrato_item_id, quantidade, percentual, valor)
-            SELECT $1, x."itemId", x.quantidade::numeric, x.percentual::numeric, x.valor::numeric
-              FROM jsonb_to_recordset($2::jsonb) AS x("itemId" uuid, quantidade text, percentual text, valor text)
-            ON CONFLICT (medicao_id, contrato_item_id) DO UPDATE SET quantidade = EXCLUDED.quantidade, percentual = EXCLUDED.percentual, valor = EXCLUDED.valor`,
+      sql: `INSERT INTO medicao_item (medicao_id, contrato_item_id, quantidade, percentual, valor, memoria)
+            SELECT $1, x."itemId", x.quantidade::numeric, x.percentual::numeric, x.valor::numeric, x.memoria
+              FROM jsonb_to_recordset($2::jsonb) AS x("itemId" uuid, quantidade text, percentual text, valor text, memoria text, "manterMemoria" boolean)
+            ON CONFLICT (medicao_id, contrato_item_id) DO UPDATE SET quantidade = EXCLUDED.quantidade, percentual = EXCLUDED.percentual, valor = EXCLUDED.valor,
+              memoria = CASE WHEN (SELECT y."manterMemoria" FROM jsonb_to_recordset($2::jsonb) AS y("itemId" uuid, "manterMemoria" boolean) WHERE y."itemId" = EXCLUDED.contrato_item_id)
+                             THEN medicao_item.memoria ELSE EXCLUDED.memoria END`,
       params: [medicaoId, JSON.stringify(gravar)],
     }] : []),
     aud(usuarioId, "MEDICAO_LANCADA", medicaoId, { gravados: gravar.length, retirados: retirar.length }),

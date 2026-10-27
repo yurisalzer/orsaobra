@@ -7,6 +7,7 @@ import type { EstadoMedicao, LinhaMedicao } from "@/lib/medicoes/servico";
 import { dataBr } from "@/lib/contratos/prazos";
 import { acaoFecharMedicao, acaoIniciarMedicao, acaoReabrirMedicao, acaoSalvarLancamentos } from "../acoes";
 import { ROTULO_SITUACAO } from "../PainelMedicoes";
+import { quantidadeDaMemoria } from "@/lib/calculo/memoria";
 
 const moeda = (v: string | number) => Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 const num = (v: string | number, min = 2) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: min, maximumFractionDigits: 4 });
@@ -15,6 +16,7 @@ const paraCampo = (v: string | null) => (v === null ? "" : Number(v).toLocaleStr
 const lerCampo = (v: string) => Number(v.trim().replace(/\./g, "").replace(",", "."));
 
 const iniciais = (linhas: LinhaMedicao[], porQtd: boolean) => Object.fromEntries(linhas.map((l) => [l.itemId, paraCampo(porQtd ? l.atualQtd : l.atualPct)]));
+const memoriasIniciais = (linhas: LinhaMedicao[]) => Object.fromEntries(linhas.map((l) => [l.itemId, l.memoria ?? ""]));
 
 export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documentos }: { estado: EstadoMedicao; podeEditar: boolean; podeGerenciar: boolean; documentos?: ReactNode }) {
   const m = estado.medicao;
@@ -23,17 +25,27 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
   const router = useRouter();
   const [versao, setVersao] = useState(m.versao);
   const [campos, setCampos] = useState(() => iniciais(estado.linhas, porQtd));
+  const [memorias, setMemorias] = useState(() => memoriasIniciais(estado.linhas));
+  const [editandoMemoria, setEditandoMemoria] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<"todos" | "lancados" | "saldo">("todos");
   const [observacao, setObservacao] = useState(m.observacao ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [pendente, iniciar] = useTransition();
-  useEffect(() => { setVersao(m.versao); setCampos(iniciais(estado.linhas, porQtd)); setObservacao(m.observacao ?? ""); }, [estado, m.versao, m.observacao, porQtd]);
+  useEffect(() => { setVersao(m.versao); setCampos(iniciais(estado.linhas, porQtd)); setMemorias(memoriasIniciais(estado.linhas)); setObservacao(m.observacao ?? ""); }, [estado, m.versao, m.observacao, porQtd]);
 
   const emElaboracao = m.situacao === "EM_ELABORACAO";
   const lanca = podeEditar && emElaboracao;
   const original = useMemo(() => iniciais(estado.linhas, porQtd), [estado.linhas, porQtd]);
-  const alterados = Object.keys(campos).filter((k) => campos[k].trim() !== original[k]);
+  const memoriasOriginais = useMemo(() => memoriasIniciais(estado.linhas), [estado.linhas]);
+  const memoriaMudou = (k: string) => (memorias[k] ?? "").trim() !== memoriasOriginais[k];
+  const alterados = Object.keys(campos).filter((k) => campos[k].trim() !== original[k] || memoriaMudou(k));
+  /** Texto da memória: guarda e, se a conta der resultado, preenche a quantidade/percentual. */
+  const alterarMemoria = (itemId: string, texto: string) => {
+    setMemorias((x) => ({ ...x, [itemId]: texto }));
+    const r = quantidadeDaMemoria(texto);
+    if (r.quantidade) setCampos((x) => ({ ...x, [itemId]: r.quantidade! }));
+  };
 
   const rodar = <T,>(f: () => Promise<{ ok: true; dados: T } | { ok: false; erro: string }>, msg?: string, depois?: (d: T) => void) => iniciar(async () => {
     setErro(null);
@@ -46,7 +58,7 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
   });
 
   const salvar = (depois?: (v: number) => void) => rodar(
-    () => acaoSalvarLancamentos(c.id, m.id, versao, alterados.map((itemId) => ({ itemId, valor: campos[itemId] }))),
+    () => acaoSalvarLancamentos(c.id, m.id, versao, alterados.map((itemId) => ({ itemId, valor: campos[itemId], memoria: (memorias[itemId] ?? "").trim() || null }))),
     depois ? undefined : "Lançamentos salvos.", (v) => { setVersao(v); depois?.(v); },
   );
   const fechar = () => {
@@ -154,8 +166,10 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
                     const acumulado = anterior + (Number.isFinite(v) ? v : 0);
                     const excede = !Number.isFinite(v) || v < 0 || acumulado > limite + 1e-9;
                     const mudou = campo.trim() !== original[l.itemId];
+                    const memoria = memorias[l.itemId] ?? "";
                     return (
-                      <tr key={l.itemId} className="border-t border-slate-100 align-top">
+                      <Fragment key={l.itemId}>
+                      <tr className="border-t border-slate-100 align-top">
                         <td className="px-2 py-1.5 tabular-nums">{l.numero}</td>
                         <td className="px-2 py-1.5"><span className="line-clamp-2" title={l.descricao}>{l.codigo && <span className="text-slate-500">{l.codigo} · </span>}{l.descricao}</span></td>
                         <td className="px-2 py-1.5">{l.unidade}</td>
@@ -175,6 +189,17 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
                         <td className="px-2 py-1.5 text-right tabular-nums">{num(acumulado)}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{num(Number(l.valorTotal) - Number(l.anteriorValor) - Number(l.atualValor))}</td>
                       </tr>
+                      {(memoria || lanca) && (
+                        <tr>
+                          <td />
+                          <td colSpan={10} className="pb-2 pr-3">
+                            <MemoriaMedicao rotulo={`${l.numero ?? ""}`.trim()} unidade={porQtd ? (l.unidade ?? "") : "%"} texto={memoria} valor={campo} editavel={lanca}
+                              editando={editandoMemoria === l.itemId} mudou={memoriaMudou(l.itemId)} porQtd={porQtd}
+                              aoEditar={(sim) => setEditandoMemoria(sim ? l.itemId : null)} aoAlterar={(t) => alterarMemoria(l.itemId, t)} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </Fragment>
@@ -192,6 +217,51 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
         </label>
       )}
       <p className="text-sm"><Link href={`/contratos/${c.id}/medicoes`} className="underline">← Voltar às medições</Link></p>
+    </div>
+  );
+}
+
+/** Memória de cálculo do item medido (mesma regra da memória do orçamento). */
+function MemoriaMedicao({ rotulo, unidade, texto, valor, editavel, editando, mudou, porQtd, aoEditar, aoAlterar }: {
+  rotulo: string; unidade: string; texto: string; valor: string; editavel: boolean; editando: boolean; mudou: boolean; porQtd: boolean;
+  aoEditar: (sim: boolean) => void; aoAlterar: (t: string) => void;
+}) {
+  const calc = quantidadeDaMemoria(texto);
+  const divergente = calc.quantidade !== null && valor.trim() !== "" && Math.abs(lerCampo(calc.quantidade) - lerCampo(valor)) > 1e-9;
+  const resultado = (
+    <>
+      {calc.erro && <span role="alert" className="block text-red-700">{calc.erro}</span>}
+      {calc.exibir && <span className="font-medium text-green-800"> → {calc.exibir} {unidade}</span>}
+      {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
+      {divergente && <span className="block text-amber-800">⚠ {porQtd ? "A quantidade" : "O percentual"} lançad{porQtd ? "a" : "o"} ({valor}) difere do resultado da memória ({calc.exibir}).</span>}
+    </>
+  );
+  if (editando) {
+    return (
+      <div className="flex flex-col gap-1 text-xs">
+        <label htmlFor={`mem-med-${rotulo}`} className="font-medium text-slate-600">Memória de cálculo do item {rotulo} {porQtd ? "" : "(resultado em %)"}</label>
+        <textarea id={`mem-med-${rotulo}`} autoFocus value={texto} rows={3} maxLength={4000} onChange={(e) => aoAlterar(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) aoEditar(false); }}
+          placeholder={porQtd ? "Ex.: Pavimento térreo: 12,40 x 8,15 = 101,06 m²\nPavimento superior: 12,40 x 6,00 = 74,40 m²" : "Ex.: 3 de 8 pilares concluídos: 3/8 x 100"}
+          className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+        <span>{calc.exibir ? <span className="text-slate-500">Resultado usado como {porQtd ? "quantidade" : "percentual"} medid{porQtd ? "a" : "o"}:</span> : texto.trim() ? <span className="text-slate-500">Sem conta para calcular (apenas texto).</span> : null}{resultado}</span>
+        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; use “x” ou “×” para multiplicar e vírgula para decimais. Gravada com “Salvar lançamentos”.</p>
+        <div className="flex gap-2">
+          <button onClick={() => aoEditar(false)} className="rounded bg-marca-600 px-2 py-0.5 text-white">Concluir</button>
+          <span className="text-slate-500">Ctrl+Enter ou Esc fecha</span>
+        </div>
+      </div>
+    );
+  }
+  if (!texto.trim()) {
+    return editavel ? <button onClick={() => aoEditar(true)} className="text-xs text-marca-700 underline" aria-label={`Adicionar memória de cálculo do item ${rotulo}`}>+ memória de cálculo</button> : null;
+  }
+  return (
+    <div className={`whitespace-pre-wrap rounded px-2 py-1 text-xs text-slate-700 ${mudou ? "bg-amber-100/70" : "bg-amber-50/60"}`}>
+      <span className="font-medium">Memória de cálculo:</span> {texto}
+      {resultado}
+      {editavel && <> {" "}<button onClick={() => aoEditar(true)} className="text-marca-700 underline" aria-label={`Editar memória de cálculo do item ${rotulo}`}>editar</button></>}
+      {mudou && <span className="ml-1 text-amber-800">(não salva)</span>}
     </div>
   );
 }
