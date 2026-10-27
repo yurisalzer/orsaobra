@@ -43,4 +43,16 @@ describe("memória de cálculo do quantitativo", () => {
     expect(v("3 caixas x 2")).toBe("6");
     expect(v("2 xícaras")).toBe("2");
   });
+  it("texto entre aspas simples não entra na conta", () => {
+    expect(v("'Eixo 1-2 / trecho 3+4': 12,5 x 3")).toBe("37.5");
+    expect(v("2 x 3 'acréscimo de 10% = 0,6'")).toBe("6");
+    // "=" dentro das aspas não é o resultado escrito
+    const r = avaliarMemoria("'Pav. 2 = cobertura' 4 x 5 = 20")!;
+    expect(r.valor.toString()).toBe("20");
+    expect(r.escrito?.toString()).toBe("20");
+    // aspas tipográficas (Word) e aspas não fechadas (texto até o fim da linha)
+    expect(v("‘Bloco 3*4’ 7 + 1")).toBe("8");
+    expect(v("10 x 2 'obs: 5 + 5")).toBe("20");
+    expect(avaliarMemoria("'Ver prancha 03/12 - 2 + 2'")).toBeNull();
+  });
 });

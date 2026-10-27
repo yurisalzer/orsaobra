@@ -250,7 +250,7 @@ function MemoriaMedicao({ rotulo, unidade, texto, valor, editavel, editando, mud
           placeholder={porQtd ? "Ex.: Pavimento térreo: 12,40 x 8,15 = 101,06 m²\nPavimento superior: 12,40 x 6,00 = 74,40 m²" : "Ex.: 3 de 8 pilares concluídos: 3/8 x 100"}
           className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
         <span>{calc.exibir ? <span className="text-slate-500">Resultado usado como {porQtd ? "quantidade" : "percentual"} medid{porQtd ? "a" : "o"}:</span> : texto.trim() ? <span className="text-slate-500">Sem conta para calcular (apenas texto).</span> : null}{resultado}</span>
-        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; use “x” ou “×” para multiplicar e vírgula para decimais. Gravada com “Salvar lançamentos”.</p>
+        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; texto entre aspas simples ('Eixo 1-2', '50%') não entra na conta; use “x” ou “×” para multiplicar e vírgula para decimais. Gravada com “Salvar lançamentos”.</p>
         <div className="flex gap-2">
           <button onClick={() => aoEditar(false)} className="rounded bg-marca-600 px-2 py-0.5 text-white">Concluir</button>
           <span className="text-slate-500">Ctrl+Enter ou Esc fecha</span>

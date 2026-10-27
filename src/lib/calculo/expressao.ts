@@ -7,6 +7,9 @@
  *    só para conferência (avisamos se diferir do calculado).
  *  - Unidades e comentários são ignorados: "30m", "2 m²", "(comprimento)",
  *    "Parede A:". Parênteses só com texto são comentários.
+ *  - Texto entre aspas simples ('...', também ‘...’) é só texto: números e
+ *    símbolos (/ + - * = %) dentro delas não entram na conta nem no resultado
+ *    escrito. Aspas não fechadas valem até o fim da linha.
  *  - Operadores: + − x X × * / ÷ e parênteses. "2(3+4)" = 2 × (3+4).
  *  - Números no padrão brasileiro: "2,5" = 2.5; "1.234,56" = 1234.56.
  *    Sem vírgula, o ponto é decimal ("2.5" = 2.5).
@@ -120,6 +123,11 @@ function avaliar(tokens: Token[]): Dec {
 const texto = (tokens: Token[]) =>
   tokens.map((t) => (t.t === "num" ? t.v.toString().replace(".", ",") : t.t === "op" ? ` ${t.v === "*" ? "×" : t.v === "/" ? "÷" : t.v === "-" ? "−" : "+"} ` : t.t)).join("").replace(/\s+/g, " ").trim();
 
+/** Remove os trechos entre aspas simples ('...' ou ‘...’), que são só texto. */
+export function removerTextoEntreAspas(linha: string): string {
+  return linha.replace(/['‘’][^'‘’]*(['‘’]|$)/g, " ");
+}
+
 /** null = não há conta na memória (só texto). Lança ErroExpressao se a conta estiver malformada. */
 export function avaliarMemoria(memoria: string): ResultadoExpressao | null {
   let total = new D(0);
@@ -128,7 +136,7 @@ export function avaliarMemoria(memoria: string): ResultadoExpressao | null {
   const expressoes: string[] = [];
   const linhas = memoria.split(/\r?\n/);
   for (const [n, linha] of linhas.entries()) {
-    const [antes, ...depois] = linha.split("=");
+    const [antes, ...depois] = removerTextoEntreAspas(linha).split("=");
     const tokens = tokenizar(antes);
     if (depois.length) {
       const t = tokenizar(depois.join("=")).filter((x) => x.t === "num");

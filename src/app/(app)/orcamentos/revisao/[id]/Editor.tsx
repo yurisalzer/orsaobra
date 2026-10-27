@@ -508,7 +508,7 @@ function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; ed
           onKeyDown={(e) => { if (e.key === "Escape") { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); } if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salvar(); }}
           placeholder="Ex.: (30 m comprimento + 20 m largura) × 2 (perímetro) × 2 m altura = 200 m²" className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
         <ResultadoMemoria texto={texto} />
-        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; use “x” ou “×” para multiplicar e vírgula para decimais.</p>
+        <p className="text-slate-500">Cada linha é calculada e as linhas são somadas. Unidades e textos entre parênteses são ignorados; texto entre aspas simples ('Eixo 1-2', '50%') não entra na conta; use “x” ou “×” para multiplicar e vírgula para decimais.</p>
         <div className="flex gap-2">
           <button onClick={salvar} disabled={!!calc.erro} className="rounded bg-marca-600 px-2 py-0.5 text-white disabled:opacity-50">Salvar memória</button>
           <button onClick={() => { setTexto(item.memoriaQuantitativo ?? ""); setEditando(false); }} className="rounded border border-slate-300 px-2 py-0.5">Cancelar</button>
