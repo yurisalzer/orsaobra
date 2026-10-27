@@ -138,16 +138,21 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+        <table className="w-full min-w-[960px] table-fixed text-xs [&_tr>*:last-child]:pr-3">
+          {/* larguras fixas: a planilha cabe na tela sem rolagem lateral */}
+          <colgroup>
+            <col className="w-[5%]" /><col className="w-[25%]" /><col className="w-[5%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[9%]" />
+            <col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[7%]" /><col className="w-[9%]" />
+          </colgroup>
+          <thead className="bg-slate-50 text-left text-[11px] uppercase leading-tight text-slate-500">
             <tr>
-              <th className="px-2 py-2">Item</th><th className="px-2 py-2">Descrição</th><th className="px-2 py-2">Un</th>
-              <th className="px-2 py-2 text-right">Qtd. contratada</th><th className="px-2 py-2 text-right">Preço unit.</th><th className="px-2 py-2 text-right">Total</th>
-              <th className="px-2 py-2 text-right">Anterior {porQtd ? "(qtd)" : "(%)"}</th>
-              <th className="px-2 py-2 text-right">Esta medição {porQtd ? "(qtd)" : "(%)"}</th>
-              <th className="px-2 py-2 text-right">Valor desta</th>
-              <th className="px-2 py-2 text-right">Acumulado {porQtd ? "(qtd)" : "(%)"}</th>
-              <th className="px-2 py-2 text-right">Saldo (R$)</th>
+              <th className="px-1.5 py-2">Item</th><th className="px-1.5 py-2">Descrição</th><th className="px-1.5 py-2">Un</th>
+              <th className="px-1.5 py-2 text-right">Qtd. contratada</th><th className="px-1.5 py-2 text-right">Preço unit.</th><th className="px-1.5 py-2 text-right">Total</th>
+              <th className="px-1.5 py-2 text-right">Anterior {porQtd ? "(qtd)" : "(%)"}</th>
+              <th className="px-1.5 py-2 text-right">Esta medição {porQtd ? "(qtd)" : "(%)"}</th>
+              <th className="px-1.5 py-2 text-right">Valor desta</th>
+              <th className="px-1.5 py-2 text-right">Acumulado {porQtd ? "(qtd)" : "(%)"}</th>
+              <th className="px-1.5 py-2 text-right">Saldo (R$)</th>
             </tr>
           </thead>
           <tbody>
@@ -157,7 +162,7 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
               if (!itens.length && !temFilhos) return null;
               return (
                 <Fragment key={g.id}>
-                  <tr className={g.nivel === 0 ? "bg-slate-100 font-semibold" : "bg-slate-50 font-medium"}><td className="px-2 py-1.5">{g.numero}</td><td colSpan={10} className="px-2 py-1.5">{g.titulo}</td></tr>
+                  <tr className={g.nivel === 0 ? "bg-slate-100 font-semibold" : "bg-slate-50 font-medium"}><td className="px-1.5 py-1.5">{g.numero}</td><td colSpan={10} className="px-1.5 py-1.5">{g.titulo}</td></tr>
                   {itens.map((l) => {
                     const campo = campos[l.itemId] ?? "";
                     const v = campo.trim() ? lerCampo(campo) : 0;
@@ -170,24 +175,24 @@ export function LancamentoMedicao({ estado, podeEditar, podeGerenciar, documento
                     return (
                       <Fragment key={l.itemId}>
                       <tr className="border-t border-slate-100 align-top">
-                        <td className="px-2 py-1.5 tabular-nums">{l.numero}</td>
-                        <td className="px-2 py-1.5"><span className="line-clamp-2" title={l.descricao}>{l.codigo && <span className="text-slate-500">{l.codigo} · </span>}{l.descricao}</span></td>
-                        <td className="px-2 py-1.5">{l.unidade}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(l.quantidade)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(l.precoUnitario)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(l.valorTotal)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(anterior)}</td>
-                        <td className="px-2 py-1.5 text-right">
+                        <td className="px-1.5 py-1.5 tabular-nums">{l.numero}</td>
+                        <td className="px-1.5 py-1.5"><span className="line-clamp-2 break-words" title={l.descricao}>{l.codigo && <span className="text-slate-500">{l.codigo} · </span>}{l.descricao}</span></td>
+                        <td className="px-1.5 py-1.5">{l.unidade}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(l.quantidade)}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(l.precoUnitario)}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(l.valorTotal)}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(anterior)}</td>
+                        <td className="px-1.5 py-1.5 text-right">
                           {lanca
                             ? <input aria-label={`${porQtd ? "Quantidade" : "Percentual"} do item ${l.numero ?? ""}`} inputMode="decimal" value={campo}
                                 onChange={(e) => setCampos((x) => ({ ...x, [l.itemId]: e.target.value }))}
-                                className={`w-24 rounded border px-1.5 py-0.5 text-right tabular-nums ${excede ? "border-red-500 bg-red-50" : mudou ? "border-amber-400 bg-amber-50" : "border-slate-300"}`} />
+                                className={`w-full rounded border px-1 py-0.5 text-right tabular-nums ${excede ? "border-red-500 bg-red-50" : mudou ? "border-amber-400 bg-amber-50" : "border-slate-300"}`} />
                             : <span className="tabular-nums">{campo ? num(lerCampo(campo)) : "—"}</span>}
                           {lanca && excede && <span className="block text-xs text-red-700">saldo {num(Math.max(0, limite - anterior))}</span>}
                         </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{Number(l.atualValor) ? num(l.atualValor) : "—"}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(acumulado)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{num(Number(l.valorTotal) - Number(l.anteriorValor) - Number(l.atualValor))}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{Number(l.atualValor) ? num(l.atualValor) : "—"}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(acumulado)}</td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{num(Number(l.valorTotal) - Number(l.anteriorValor) - Number(l.atualValor))}</td>
                       </tr>
                       {(memoria || lanca) && (
                         <tr>
