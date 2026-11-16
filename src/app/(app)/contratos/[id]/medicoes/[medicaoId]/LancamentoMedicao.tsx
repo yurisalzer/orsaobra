@@ -237,6 +237,7 @@ function MemoriaMedicao({ rotulo, unidade, texto, valor, editavel, editando, mud
     <>
       {calc.erro && <span role="alert" className="block text-red-700">{calc.erro}</span>}
       {calc.exibir && <span className="font-medium text-green-800"> → {calc.exibir} {unidade}</span>}
+      {calc.nota && <span className="text-slate-500"> ({calc.nota})</span>}
       {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
       {divergente && <span className="block text-amber-800">⚠ {porQtd ? "A quantidade" : "O percentual"} lançad{porQtd ? "a" : "o"} ({valor}) difere do resultado da memória ({calc.exibir}).</span>}
     </>

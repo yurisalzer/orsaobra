@@ -21,13 +21,15 @@ export interface ResultadoExpressao {
   valor: Dec;
   /** Expressão normalizada que foi calculada, linha a linha (para exibição) */
   expressoes: string[];
+  /** Casas decimais como foram DIGITADAS no resultado escrito ("19,90" → 2, "4" → 0) */
+  escritoCasas: number | null;
   /** Resultado escrito após "=" (última linha que tiver), se houver */
   escrito: Dec | null;
 }
 
 export class ErroExpressao extends Error {}
 
-type Token = { t: "num"; v: Dec } | { t: "op"; v: "+" | "-" | "*" | "/" } | { t: "(" } | { t: ")" };
+type Token = { t: "num"; v: Dec; casas: number } | { t: "op"; v: "+" | "-" | "*" | "/" } | { t: "(" } | { t: ")" };
 
 /** Remove parênteses que contêm apenas texto (comentários), de dentro para fora. */
 function removerComentarios(s: string): string {
@@ -52,7 +54,9 @@ function tokenizar(linha: string): Token[] {
       const v = lerNumero(m);
       if (!v) throw new ErroExpressao(`Número inválido: "${m}"`);
       if (termina()) tokens.push({ t: "op", v: "*" }); // "2 (3+4)" ou ")2"
-      tokens.push({ t: "num", v });
+      // casas decimais como digitadas (o "0" final conta: "19,90" tem 2)
+      const sep = m.includes(",") ? m.lastIndexOf(",") : v.decimalPlaces() > 0 ? m.lastIndexOf(".") : -1;
+      tokens.push({ t: "num", v, casas: sep < 0 ? 0 : m.length - sep - 1 });
       i += m.length;
       continue;
     }
@@ -133,6 +137,7 @@ export function avaliarMemoria(memoria: string): ResultadoExpressao | null {
   let total = new D(0);
   let temConta = false;
   let escrito: Dec | null = null;
+  let escritoCasas: number | null = null;
   const expressoes: string[] = [];
   const linhas = memoria.split(/\r?\n/);
   for (const [n, linha] of linhas.entries()) {
@@ -140,7 +145,7 @@ export function avaliarMemoria(memoria: string): ResultadoExpressao | null {
     const tokens = tokenizar(antes);
     if (depois.length) {
       const t = tokenizar(depois.join("=")).filter((x) => x.t === "num");
-      if (t.length) escrito = (t[0] as { v: Dec }).v;
+      if (t.length) { const n = t[0] as { v: Dec; casas: number }; escrito = n.v; escritoCasas = n.casas; }
     }
     if (!tokens.some((t) => t.t === "num")) continue;
     try {
@@ -151,5 +156,5 @@ export function avaliarMemoria(memoria: string): ResultadoExpressao | null {
     temConta = true;
     expressoes.push(texto(tokens));
   }
-  return temConta ? { valor: total, expressoes, escrito } : null;
+  return temConta ? { valor: total, expressoes, escrito, escritoCasas } : null;
 }

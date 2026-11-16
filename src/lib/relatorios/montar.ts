@@ -12,8 +12,8 @@ import type { Executor } from "../banco/executor";
 import { calcularBdi, somasBdi } from "../calculo/bdi";
 import { calcularBdiPorFormula } from "../calculo/formula-bdi";
 import { curvaAbc } from "../calculo/abc";
-import { arredondar, dec, formatarNumero, type Dec } from "../calculo/decimal";
-import { avaliarMemoria } from "../calculo/expressao";
+import { arredondar, dec, formatarNumero, lerNumero, type Dec } from "../calculo/decimal";
+import { quantidadeDaMemoria } from "../calculo/memoria";
 import { listarPerfis, type ParcelaPerfil } from "../orcamento/bdi";
 import {
   carregarRevisao, compararRevisoes, contextoDaRevisao, ErroOrcamento, lerCronograma, montarAnaliticos, perfisDaRevisao,
@@ -641,10 +641,8 @@ function memoria(c: Contexto): Documento {
     for (const it of itensDaEtapa(e, etapa.id)) {
       let mq = it.memoriaQuantitativo ?? "—";
       if (it.memoriaQuantitativo) {
-        try {
-          const r = avaliarMemoria(it.memoriaQuantitativo);
-          if (r) mq += ` — resultado: ${formatarNumero(r.valor.toDecimalPlaces(4), Math.min(Math.max(r.valor.toDecimalPlaces(4).decimalPlaces(), 2), 4))}${r.valor.toDecimalPlaces(4).eq(it.quantidade) ? "" : " (difere da quantidade lançada)"}`;
-        } catch { /* texto sem conta */ }
+        const r = quantidadeDaMemoria(it.memoriaQuantitativo);
+        if (r.quantidade) mq += ` — resultado: ${r.quantidade}${lerNumero(r.quantidade)!.eq(it.quantidade) ? "" : " (difere da quantidade lançada)"}`;
       }
       linhas.push({ celulas: [it.numero, `${rotuloFonte(it.fonte)} ${it.codigo}`, `${it.descricao} (${it.unidade || "s/ unid."})`, it.quantidade, mq] });
     }

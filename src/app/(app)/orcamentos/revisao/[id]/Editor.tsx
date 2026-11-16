@@ -483,6 +483,7 @@ function ResultadoMemoria({ texto }: { texto: string }) {
   return (
     <span className="text-xs">
       <span className="font-medium text-green-800">Resultado: {c.exibir}</span> <span className="text-slate-500">(usado como quantidade)</span>
+      {c.nota && <span className="block text-slate-500">{c.nota}</span>}
       {c.aviso && <span className="block text-amber-800">⚠ {c.aviso}</span>}
     </span>
   );
@@ -526,6 +527,7 @@ function MemoriaQuantitativo({ item, editavel, aoSalvar }: { item: LinhaItem; ed
     <div className="whitespace-pre-wrap rounded bg-amber-50/60 px-2 py-1 text-xs text-slate-700">
       <span className="font-medium">Memória de cálculo:</span> {item.memoriaQuantitativo}
       {calc.exibir && <span className="ml-1 font-medium text-green-800">→ {calc.exibir}</span>}
+      {calc.nota && <span className="ml-1 text-slate-500">({calc.nota})</span>}
       {editavel && <> {" "}<button onClick={() => setEditando(true)} className="text-marca-700 underline" aria-label={`Editar memória de cálculo ${item.numero}`}>editar</button></>}
       {calc.aviso && <span className="block text-amber-800">⚠ {calc.aviso}</span>}
       {divergente && <span className="block text-amber-800">⚠ A quantidade lançada ({qtd(item.quantidade)}) difere do resultado da memória ({calc.exibir}).</span>}
