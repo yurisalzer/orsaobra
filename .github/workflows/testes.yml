@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # botão "Run workflow" na aba Actions (testa e publica a main)
+  workflow_dispatch:
 
 jobs:
   testes:
@@ -48,7 +50,7 @@ jobs:
     # Requer os segredos CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID no GitHub;
     # sem eles, o job termina sem publicar.
     needs: testes
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -66,4 +68,5 @@ jobs:
           node-version: 22
           cache: npm
       - if: steps.seg.outputs.ok == 'true'
-        run: npm ci && npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
+        # o Next 15 saiu do suporte do OpenNext: a opção abaixo permite o build mesmo assim
+        run: npm ci && npx opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && npx opennextjs-cloudflare deploy
