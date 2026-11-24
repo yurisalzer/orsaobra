@@ -12,6 +12,13 @@ declare const self: DedicatedWorkerGlobalScope;
 
 configurarWasmRar(async () => (await fetch("/unrar.wasm")).arrayBuffer());
 
+/**
+ * Registros por envio. Pequeno de propósito: no plano gratuito da Cloudflare
+ * cada requisição tem poucos milissegundos de processamento, e lotes de 2.000
+ * estouravam o limite (o servidor descartava o envio).
+ */
+const TAMANHO_LOTE = 300;
+
 let atual: Identificado | null = null;
 const esperas = new Map<number, (ok: boolean) => void>();
 let seq = 0;
@@ -37,7 +44,7 @@ self.onmessage = async (ev: MessageEvent) => {
           esperas.set(id, (sucesso) => (sucesso ? ok() : falha(new Error("Envio interrompido."))));
           self.postMessage({ tipo: "lote", id, lote });
         }),
-        { tamanhoLote: 2000, regimes: m.regimes, aoProgresso: (p) => self.postMessage({ tipo: "progresso", progresso: p }) },
+        { tamanhoLote: TAMANHO_LOTE, regimes: m.regimes, aoProgresso: (p) => self.postMessage({ tipo: "progresso", progresso: p }) },
       );
       self.postMessage({ tipo: "fim", total });
     } else if (m.tipo === "ack") {

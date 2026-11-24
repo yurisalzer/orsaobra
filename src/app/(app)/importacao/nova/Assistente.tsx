@@ -34,6 +34,7 @@ export function Assistente() {
   const [motivo, setMotivo] = useState("");
   const [duplicidade, setDuplicidade] = useState<{ pedir: boolean; autorizar: boolean }>({ pedir: false, autorizar: false });
   const [erro, setErro] = useState<string | null>(null);
+  const [avisoEnvio, setAvisoEnvio] = useState<string | null>(null);
   const [progresso, setProgresso] = useState<Progresso | null>(null);
   const [importacaoId, setImportacaoId] = useState<string | null>(null);
   const [validacao, setValidacao] = useState<Validacao | null>(null);
@@ -90,20 +91,45 @@ export function Assistente() {
     enviar(r.dados.importacaoId);
   }
 
+  /**
+   * Envia um lote; se o servidor falhar (ex.: limite de processamento da
+   * Cloudflare, rede instável), tenta de novo até 5 vezes, esperando cada vez
+   * mais. Nunca deixa a tela parada sem resposta.
+   */
+  async function enviarComTentativas(id: string, lote: Lote): Promise<boolean> {
+    const esperas = [1000, 2000, 4000, 8000, 15000];
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        const r = await acaoEnviarLote(id, lote);
+        if (r.ok) { setAvisoEnvio(null); return true; }
+        // erro de regra (ex.: importação cancelada): não adianta repetir
+        setErro(r.erro);
+        return false;
+      } catch {
+        if (tentativa >= esperas.length) {
+          setAvisoEnvio(null);
+          setErro("O servidor não conseguiu gravar os dados depois de várias tentativas. A importação foi cancelada: verifique a conexão e inicie de novo.");
+          return false;
+        }
+        setAvisoEnvio(`Falha momentânea no envio; tentando de novo (${tentativa + 1}/${esperas.length})…`);
+        await new Promise((ok) => setTimeout(ok, esperas[tentativa]));
+      }
+    }
+  }
+
   function enviar(id: string) {
     const w = worker.current!;
     w.onmessage = async (ev) => {
       const m = ev.data;
       if (m.tipo === "lote") {
-        const r = await acaoEnviarLote(id, m.lote as Lote);
-        if (!r.ok) setErro(r.erro);
-        w.postMessage({ tipo: "ack", id: m.id, ok: r.ok });
+        const ok = await enviarComTentativas(id, m.lote as Lote);
+        w.postMessage({ tipo: "ack", id: m.id, ok });
       } else if (m.tipo === "progresso") {
         setProgresso(m.progresso);
       } else if (m.tipo === "fim") {
         setProgresso(m.total);
         setFase("validando");
-        const v = await acaoValidar(id);
+        const v = await acaoValidar(id).catch(() => ({ ok: false as const, erro: "O servidor não respondeu à validação. Abra Importações e tente validar de novo, ou inicie a importação outra vez." }));
         if (!v.ok) return setErro(v.erro);
         setValidacao(v.dados);
         setFase("previa");
@@ -119,7 +145,7 @@ export function Assistente() {
     if (!importacaoId) return;
     setErro(null);
     setFase("gravando");
-    const r = await acaoConfirmar(importacaoId, ciente);
+    const r = await acaoConfirmar(importacaoId, ciente).catch(() => ({ ok: false as const, erro: "O servidor não respondeu à gravação. Confira em Importações se a base foi gravada antes de tentar de novo." }));
     if (!r.ok) {
       setErro(r.erro);
       setFase("previa");
@@ -253,6 +279,8 @@ export function Assistente() {
             {progresso ? `${fmtNum(progresso.itens)} itens, ${fmtNum(progresso.precos)} preços, ${fmtNum(progresso.componentes)} componentes de composições` : "Iniciando…"}
           </p>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-1/3 animate-pulse rounded-full bg-marca-600" /></div>
+          {fase === "enviando" && <p className="mt-3 text-xs text-slate-500">Os dados são enviados em pequenos lotes; uma base completa (ex.: SINAPI) pode levar vários minutos. Mantenha esta aba aberta.</p>}
+          {avisoEnvio && <p role="status" className="mt-2 text-sm text-amber-700">{avisoEnvio}</p>}
           {fase === "validando" && <p className="mt-3 text-sm text-slate-500">Conferindo códigos, preços, unidades, componentes e referências circulares…</p>}
         </Cartao>
       )}
